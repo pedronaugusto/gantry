@@ -119,9 +119,22 @@ fn allocationScenario(alloc: std.mem.Allocator) !void {
         .{ .path = "src/a.zig", .text = "const b = @import(\"b.zig\"); const p = @import(\"proto\"); const m = p.mirror;" },
         .{ .path = "src/b.zig", .text = "const a = @import(\"a.zig\");" },
         .{ .path = "package.json", .text = "{\"dependencies\":{\"x\":\"1\"}}" },
+        .{ .path = "tsconfig.json", .text = "{\"extends\": \"./base.json\"}" },
+        .{ .path = "base.json", .text = "{\"compilerOptions\": {\"baseUrl\": \".\", \"paths\": {\"alias\": [\"dep\"]}}}" },
+        .{ .path = "app.ts", .text = "import 'alias';" },
+        .{ .path = "dep.d.ts" },
+        .{ .path = "go.mod", .text = "module example.org/app\nreplace example.org/dep => ./local" },
+        .{ .path = "app_linux.go", .text = "//go:build linux && !custom\n\npackage app\nimport \"example.org/dep\"" },
+        .{ .path = "local/dep.go", .text = "package dep" },
+        .{ .path = "src/lib.rs", .text = "#[cfg(test)] mod helper;" },
+        .{ .path = "src/helper.rs", .text = "use crate::util;" },
+        .{ .path = "src/util.rs" },
+        .{ .path = "pkg/__init__.py", .text = "from .api import *" },
+        .{ .path = "pkg/api.py", .text = "from .impl import Public\n__all__ = ['Public']" },
+        .{ .path = "pkg/impl.py" },
         .{ .path = "notes/a.md", .text = "[[b]]" },
         .{ .path = "notes/b.md", .text = "notes/a.md" },
-    } }).scan(alloc, .{ .kinds = &.{ .import, .link, .asset } });
+    } }).scan(alloc, .{ .kinds = &.{ .import, .@"test", .link, .asset }, .go_target = .{ .os = "linux", .arch = "amd64" } });
     defer graph.deinit();
     var analysis = try graph.analyze(alloc);
     defer analysis.deinit();

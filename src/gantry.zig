@@ -15,6 +15,7 @@ pub const Dependency = t.Dependency;
 pub const Layer = t.Layer;
 pub const Cycle = t.Cycle;
 pub const Spec = t.Spec;
+pub const PythonInitializers = resolver.PythonInitializers;
 pub const GoTarget = @import("go_build.zig").Target;
 pub const GoFile = @import("go_build.zig").File;
 pub const NamedModule = resolver.NamedModule;
@@ -29,6 +30,8 @@ pub const Options = struct {
     include_roots: []const []const u8 = &.{},
     python_roots: []const []const u8 = &.{""},
     go_target: ?GoTarget = null,
+    python_initializers: PythonInitializers = .ancestors,
+    python_star_reexports: bool = true,
 };
 pub fn languageOf(p: []const u8) ?Language {
     const ext = std.fs.path.extension(p);
@@ -121,8 +124,9 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     }
     const configs = try @import("tsconfig.zig").load(a, g.paths, &g.files, context, read, &unread);
     const index = try recover.names(a, g.paths);
-    const base_ctx: resolver.Context = .{ .allocator = a, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .ts_configs = configs };
+    const base_ctx: resolver.Context = .{ .allocator = a, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
     const test_files = try @import("code_kind.zig").rustFiles(a, gpa, g.paths, base_ctx, context, read);
+    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(a, gpa, g.paths, base_ctx, context, read) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
     for (g.paths) |p| {
@@ -138,14 +142,25 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
             _ = scratch.reset(.retain_capacity);
             continue;
         };
-        const ctx: resolver.Context = .{ .allocator = s, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .ts_configs = configs };
+        var ctx: resolver.Context = .{ .allocator = s, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
+        ctx.python_reexports = &reexports;
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
-            for (try extract(s, language.?, text)) |spec| {
+            const specs = try extract(s, language.?, text);
+            for (specs) |spec| {
                 const kind: Kind = if (spec.kind == .@"test" or test_files.contains(p) or @import("code_kind.zig").file(language.?, p)) .@"test" else .import;
                 const targets = try ctx.targets(p, language.?, spec);
                 try refs.append(a, .{ .from = p, .name = try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| try a.dupe(u8, member) else null, .resolved = targets.len > 0, .kind = kind });
                 if (spec.member != null) continue;
+                if (language == .python and options.python_initializers == .explicit and spec.python_base and !spec.star) {
+                    var children: usize = 0;
+                    var missing = false;
+                    for (specs) |child| if (child.offset == spec.offset and !child.python_base) {
+                        children += 1;
+                        if ((try ctx.targets(p, .python, child)).len == 0) missing = true;
+                    };
+                    if (children > 0 and !missing) continue;
+                }
                 for (targets) |target| {
                     const edge_kind: Kind = if (kind == .@"test" or test_files.contains(target) or @import("code_kind.zig").file(language.?, target)) .@"test" else .import;
                     if (!enabled(options, edge_kind)) continue;
