@@ -1,0 +1,158 @@
+const std = @import("std");
+const g = @import("gantry.zig");
+const expect = std.testing.expect;
+const eq = std.testing.expectEqualStrings;
+fn check(language: g.Language, source: []const u8, want: []const []const u8) !void {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    var parsed = try g.imports(std.testing.allocator, language, source);
+    defer parsed.deinit();
+    const specs = parsed.items;
+    try std.testing.expectEqual(want.len, specs.len);
+    for (specs, want) |spec, name| try eq(name, spec.name);
+}
+test "Zig comments strings characters multiline strings and whitespace" {
+    try check(.zig,
+        \\// @import("fake.zig")
+        \\const text = "@import(\"fake.zig\")";
+        \\const character = '"';
+        \\const multi =
+        \\    \\@import("fake.zig")
+        \\;
+        \\const real = @import /* invalid Zig comment: no such syntax */ ("bad.zig");
+        \\const a = @import (
+        \\    "a.zig"
+        \\);
+        \\const b = @import("b\x2ezig");
+    , &.{ "a.zig", "b.zig" });
+}
+test "Zig member references direct bound typed and multiline with no comments or strings" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    var parsed = try g.imports(std.testing.allocator, .zig,
+        \\const p: type = @import("proto");
+        \\const m = p
+        \\    .mirror;
+        \\const x = @import("proto").mirror;
+        \\// p.mirror
+        \\const s = "p.mirror";
+        \\const y = other.p.mirror;
+    );
+    defer parsed.deinit();
+    const specs = parsed.items;
+    var members: usize = 0;
+    for (specs) |s| if (s.member) |m| {
+        try eq("mirror", m);
+        members += 1;
+    };
+    try std.testing.expectEqual(2, members);
+}
+test "C include directives angle headers comments strings raw strings" {
+    try check(.c,
+        \\/* #include "bad.h" */
+        \\const char *s = "#include \"bad.h\"";
+        \\auto raw = R"end(
+        \\#include "bad.h"
+        \\)end";
+        \\// #include "bad.h"
+        \\ # include "local.h"
+        \\#include <lib/other.h>
+        \\#include MACRO
+        \\a #include "bad.h"
+    , &.{ "local.h", "lib/other.h" });
+}
+test "JS and TS imports reexports require dynamic import and comments" {
+    try check(.javascript,
+        \\// import 'bad';
+        \\/* require('bad') */
+        \\const s = "import 'bad'";
+        \\const t = `require('bad')`;
+        \\const r = /import['"]bad['"]/;
+        \\import './side';
+        \\import type { Thing } from "./types";
+        \\export { x } from './x';
+        \\export * from './all';
+        \\const a = require (
+        \\ './cjs'
+        \\);
+        \\const b = import('./dyn', { with: { type: 'json' } });
+        \\import(variable);
+        \\object.require('./bad');
+        \\const c = require('./es\x63');
+    , &.{ "./side", "./types", "./x", "./all", "./cjs", "./dyn", "./esc" });
+}
+test "Python absolute relative aliased and parenthesized imports ignore docstrings" {
+    try check(.python,
+        \\# import bad
+        \\s = "import bad"
+        \\doc = '''
+        \\from bad import broken
+        \\'''
+        \\import a.b as ab, c
+        \\from . import helper
+        \\from ..pkg import (
+        \\    x as other,
+        \\    y,
+        \\)
+        \\from root import *
+    , &.{ "a.b", "c", ".", ".helper", "..pkg", "..pkg.x", "..pkg.y", "root" });
+}
+test "Python semicolons conditional imports escaped and raw triple docstrings" {
+    try check(.python,
+        \\r''' import fake '''
+        \\if True: import a; import b as other
+        \\from pkg import a, \
+        \\ b
+    , &.{ "a", "b", "pkg", "pkg.a", "pkg.b" });
+}
+test "Go aliased dot blank block raw imports ignore comments and raw text" {
+    try check(.go,
+        \\package main
+        \\// import "bad"
+        \\/* import "bad" */
+        \\var text = `import "bad"`
+        \\import alias "example.com/x/a"
+        \\import (
+        \\ . "example.com/x/b"
+        \\ _ `example.com/x/c`
+        \\ "fmt"
+        \\)
+    , &.{ "example.com/x/a", "example.com/x/b", "example.com/x/c", "fmt" });
+}
+test "Rust mod use trees nested comments raw strings and lifetimes" {
+    try check(.rust,
+        \\/* mod bad; /* use crate::bad; */ */
+        \\let s = r###"mod bad; use crate::bad;"###;
+        \\let c = 'x';
+        \\fn f<'a>(x: &'a str) {}
+        \\pub(crate) mod net;
+        \\use crate::util::Thing;
+        \\use super::shared;
+        \\use self::local;
+        \\use crate::{alpha, beta::{one, two}, gamma};
+        \\mod inline { }
+        \\use external::Thing;
+    , &.{ "net", "crate::util::Thing", "super::shared", "self::local", "crate::alpha", "crate::beta::one", "crate::beta::two", "crate::gamma" });
+}
+test "unterminated strings and comments do not invent imports" {
+    for ([_]g.Language{ .zig, .c, .javascript, .python, .go, .rust }) |language| {
+        try check(language, "\" unterminated @import(\"bad\")", &.{});
+    }
+    try check(.rust, "/* mod bad;", &.{});
+}
+test "ordinary escapes decode unicode and reject malformed paths" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const decode = @import("lexer.zig").decode;
+    try eq("xé", try decode(arena.allocator(), "x\\u00e9"));
+    try std.testing.expectError(error.InvalidEscape, decode(arena.allocator(), "\\uD800"));
+    try std.testing.expectError(error.InvalidEscape, decode(arena.allocator(), "\\x"));
+}
+
+test "JS regex after control flow and nested template expressions" {
+    try check(.javascript,
+        \\if (ok) /require('bad')/.test(s);
+        \\while (ok) /import('bad')/.test(s);
+        \\const t = `import('bad') ${import('./yes')} ${`raw ${require('./nested')}`}`;
+    , &.{ "./yes", "./nested" });
+}

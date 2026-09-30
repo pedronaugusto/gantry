@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ZIG_VERSION: 0.16.0
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Formatting
+        run: zig fmt --check build.zig build.zig.zon src examples
+      - name: Casts carry their reason
+        run: python3 ci/casts.py
+      - name: Test -- Debug
+        run: zig build test -Doptimize=Debug
+      - name: Test -- ReleaseSafe
+        run: zig build test -Doptimize=ReleaseSafe
+      - name: Test -- ReleaseFast
+        run: zig build test -Doptimize=ReleaseFast
+      - name: Test -- ReleaseSmall
+        run: zig build test -Doptimize=ReleaseSmall
+      - name: Test filtering
+        run: zig build test -Dtest-filter=fixture:
+  cross-compile:
+    name: cross (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-linux-gnu
+          - aarch64-linux-gnu
+          - x86_64-linux-musl
+          - x86_64-windows-gnu
+          - x86_64-windows-msvc
+          - aarch64-windows-gnu
+          - x86_64-macos
+          - aarch64-macos
+          - x86_64-freebsd
+          - x86_64-netbsd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - run: zig build -Dtarget=${{ matrix.target }}
+  docs:
+    name: documented snippets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: ci/check-docs.sh
