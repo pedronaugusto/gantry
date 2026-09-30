@@ -84,7 +84,10 @@ survive processing that file, until the next read. Allocate them on the
 scratch allocator or borrow from your file store. Scratch storage is reset
 between files. Null records the path in `graph.unread`; an error aborts
 without returning a partial graph. Unsupported files are graph nodes but
-are not read. Manifests are read first so Go resolution has module paths.
+are not read, except selected resolution configs. Manifests and configs are
+read before code; Go constraints, Rust test modules and Python reexports may
+require another read of a source file. Readers should return stable content
+for the duration of a scan.
 
 Paths are relative to one logical repository root and use `/` on every
 platform. `.` and `..` are normalized; absolute paths, drives, backslashes,
@@ -93,10 +96,12 @@ become one node. Comparison is byte and case exact. The reader receives the
 normalized spelling. Resolver roots and named-module paths use this same
 convention.
 
-`Options.kinds` defaults to `&.{.import}`; pass `.link`, `.asset`, or several
-kinds explicitly. Manifest declarations are read by default. Turning them
-off still reads selected `go.mod` files for import resolution. Gantry never
-adds files the caller did not select.
+`Options.kinds` defaults to `&.{ .import, .@"test" }`; pass `&.{.import}`
+for production edges, or include `.link` and `.asset` explicitly. Kind filters
+select edges; raw references retain their source kind. Manifest declarations
+are read by default. Turning them off still reads selected `go.mod`, `go.work`
+and JS/TS configs for resolution. Select configs and their local `extends`
+files along with code. Gantry never adds files the caller did not select.
 
 ## The graph
 
@@ -107,9 +112,20 @@ reaching an initializer by several paths counts it once. Member accesses do
 not add a second import edge. Kinds stay separate during aggregation.
 
 `graph.references` retains literal imports, their byte offsets, whether they
-resolved, and Zig member access. An unresolved reference may name an external
+resolved, their source kind, and Zig member access. An unresolved reference may name an external
 package, a missing file, or syntax whose resolution gantry does not implement.
 It is not automatically a declared external dependency.
+
+`graph.go_files` records each readable Go source's `path`, `package`, optional
+`constraint` expression, optional suffix `os` and `arch`, and `selected` flag.
+With no `Options.go_target`, every selected file participates and constraints
+remain data. A supplied `GoTarget{ .os, .arch, .tags }` evaluates `!`, `&&`,
+`||` and parentheses, OS aliases and `unix`, together with filename suffixes.
+Inactive files stay in `graph.paths` and metadata but contribute no references
+or edges and are excluded from package expansion. Compiler, cgo, release and
+custom tags must be supplied explicitly; gantry does not inspect the host.
+Legacy `// +build`, implicit cgo file selection and architecture feature levels
+are not inferred. Malformed evaluated constraints are errors.
 
 `graph.dependencies` contains manifest declarations, separately: manifest,
 name, requirement, source, group. A declaration in two groups stays as two
@@ -145,16 +161,55 @@ keywords. Resolution is against the selected path set.
 |---|---|---|
 | Zig | Literal `@import`, with whitespace, comments and decoded escapes. Relative `.zig` paths; named imports through `Options.named_modules`, optionally scoped by `from` glob. Direct `@import("pkg").member` and `const`/`var` bindings followed by `.member` are retained for rules. | No build graph evaluation, computed strings, binding scope or chains of aliases. Without a named-module mapping a package stays unresolved. |
 | C/C++ | Line-start `#include "..."` and `<...>`, with comments removed. The importing directory, then `Options.include_roots` in order. | No preprocessing, conditional evaluation, macro includes, compiler search path or C++ module imports. Both include forms use the stated search order. Splicing within an identifier is unsupported. |
-| JS/TS | ESM side effects, `import ... from`, type imports, re-exports, literal `require()` and dynamic `import()`, including template expressions. Relative exact paths, then TS/JS extensions and directory indexes; emitted `.js` paths can fall back to `.ts`/`.tsx`. | No AMD, package exports, package index metadata, tsconfig aliases, binding scope or computed specifiers. Regex/division uses lexical context, not a full JS parser; JSX text and grammar-ambiguous regex contexts are outside the supported syntax. Template text does not count. |
-| Python | Absolute and relative `import`/`from`, aliases, lists, parenthesized lists and continued lines. Searches `Options.python_roots` (repository root by default); relative dots stay inside the source root. Selected package initializers are included. | No interpreter, `sys.path` changes, `importlib`, implicit legacy sibling search or runtime imports. `from package import attribute` resolves the package and a child module only if selected; gantry cannot tell which name is an attribute at runtime. |
-| Go | Single and grouped imports, aliases, dot/blank imports, ordinary and raw string literals. The nearest selected `go.mod` establishes the exact module path; an import expands to all selected `.go` files in that package. Nested modules are boundaries. | No `go.work`, replacements, vendoring, build constraints, cgo or platform selection. Test files participate if selected. No suffix guessing without `go.mod`. |
-| Rust | External `mod name;`, `use crate::`, `super::`, `self::`, aliases and nested use trees. File modules use `name.rs` or `name/mod.rs`; child modules of `foo.rs` live under `foo/`. Uses resolve the longest selected module prefix. | No macro expansion, `cfg` evaluation, `#[path]`, inline-module scope or semantic name resolution. The nearest `src` directory is the crate root; nonstandard roots need caller edges. External crate uses are not file edges. |
+| JS/TS | ESM side effects, `import ... from`, type imports, reexports, literal `require()` and dynamic `import()`, including template expressions. Relative files, declarations, directory indexes, and selected `tsconfig.json`/`jsconfig.json` aliases. | No AMD, package exports/index metadata, installed-package resolution, binding scope or computed specifiers. Regex/division uses lexical context; JSX text and ambiguous regex contexts remain limits. Template text does not count. |
+| Python | Absolute and relative `import`/`from`, aliases, lists, parentheses and continued lines. Searches `Options.python_roots` (repository root by default); relative dots stay inside the source root. Initializer edges and literal star reexports are selectable policies. | No interpreter, `sys.path` changes, `importlib`, implicit legacy sibling search or runtime imports. A selected child module may still be an attribute at runtime. Dynamic export lists and symbol reassignment are not evaluated. |
+| Go | Single/grouped imports, aliases, dot/blank imports, ordinary/raw strings. Selected `go.mod` identities, local replacements and `go.work` use/replace routing. Imports expand to selected package files; nested modules are boundaries. Constraints and package names are retained. | No vendoring, module download, transitive version solving, cgo processing or compiler invocation. Version-specific replacements use selected requirements. Local paths must be relative and remain inside the repository. No module suffix guessing. |
+| Rust | External `mod name;`, `use crate::`, `super::`, `self::`, aliases and nested use trees. File modules use `name.rs` or `name/mod.rs`; child modules of `foo.rs` live under `foo/`. Uses resolve the longest selected module prefix, including lexical inline-module scope. Explicit test guards and test modules carry a test kind. | No macro expansion, general `cfg` evaluation, `#[path]`, semantic definitions, reexports or type resolution. The nearest `src` directory is the crate root; nonstandard roots need caller edges. External crate uses are not file edges. |
 
-JS resolution tries exact spelling first, then `.ts`, `.tsx`, `.js`, `.jsx`,
-`.mjs`, `.mts`, `.cjs`, `.cts`, then `index.ts`, `index.tsx`, `index.js`,
-`index.jsx`, `index.mjs`, `index.cjs`. This is a documented convention, not a
-promise to reproduce every loader. C/C++ also recognizes Objective-C file
-extensions `.m` and `.mm`.
+JS/TS configs accept JSONC comments and trailing commas. The nearest selected
+`tsconfig.json` (preferred over `jsconfig.json` in the same directory) supplies
+`compilerOptions.baseUrl` and `paths`. Relative local `extends` chains and
+arrays inherit options; child `paths` replace the inherited map. Cycles are
+errors. Paths without `baseUrl` are relative to the config that declared them.
+Exact patterns precede wildcard patterns; the longest wildcard prefix wins,
+and targets are tried in order before the `baseUrl` fallback. Unselected,
+external and package-based `extends` stay outside the selected universe.
+Project include/exclude/files selection, rootDirs and project references are
+caller policy, rather than compiler project discovery.
+
+Resolution follows [TypeScript extension substitution](https://www.typescriptlang.org/docs/handbook/modules/reference#file-extension-substitution):
+`.js`/`.jsx` tries `.ts`, `.tsx`, `.d.ts`, `.js`, `.jsx`; `.mjs` tries `.mts`,
+`.d.mts`, `.mjs`; `.cjs` tries `.cts`, `.d.cts`, `.cjs`. Extensionless names
+try exact spelling, those source/declaration extensions, then `index.ts`,
+`index.tsx`, `index.d.ts`, `index.js`, `index.jsx`. Config inheritance follows
+[TSConfig relative-path rules](https://www.typescriptlang.org/tsconfig/extends.html).
+C/C++ also recognizes Objective-C extensions `.m` and `.mm`.
+
+Test edges participate by default. Go `_test.go` files retain their declared
+package, including external `package_test` names; an import expanded into a
+test file also carries `test`. Rust `#[cfg(test)]` items, `#![cfg(test)]` files
+and `mod tests` modules carry `test`, inherited by nested file modules and
+inline bodies. Other cfg expressions are retained lexically without guessed
+evaluation. Python recognizes `test_*.py` and `*_test.py`; JS/TS recognizes
+`*.test.*`, `*.spec.*` and files below `__tests__`. Other test layouts need
+caller classification through `Graph.fromEdges`. Ambiguous directory names
+such as Python `tests` alone do not classify a helper file as test code.
+
+`Options.python_initializers` selects the package-initializer policy:
+
+| Policy | Edges |
+|---|---|
+| `.ancestors` (default) | Literal modules and selected initializer ancestors below the import search root, preserving the original graph policy. |
+| `.explicit` | Direct modules only. A `from package import child` statement uses selected child modules; it retains the package when an imported name has no selected child module. This matches Grimp's direct-import policy. |
+| `.modulefinder` | Ancestors, plus the package ancestry that modulefinder visits for `from . import name`. This matches pydeps' import bookkeeping before its discovery and noise filters. |
+
+`Options.python_star_reexports` defaults to true. For `from x import *`, gantry
+always records `x`; it additionally follows named top-level imports exported
+by a literal `__all__` list or tuple in the selected source of `x`. Aliases
+are honored. Set the option to false for a literal-module graph such as
+Grimp's. Computed/augmented export lists, conditional exports, star chains,
+runtime reassignment, `__getattr__` and exports without literal `__all__` are
+not evaluated. There is no speculative enumeration of package submodules.
 
 ## Links and assets
 
@@ -190,8 +245,8 @@ All selected manifests are read, including those below the repository root.
 The ZON, TOML and Go readers extract declarations; they are not full format
 validators. JSON and malformed dependency shapes are errors. General TOML
 multiline strings, dotted dependency keys, dependency-group inclusion,
-workspace inheritance resolution, Go replacements and lockfiles are outside
-scope. Partial declarations are not returned after an extraction error.
+workspace inheritance resolution and lockfiles are outside scope. Go
+replacement/workspace routing is separate from dependency declarations. Partial declarations are not returned after an extraction error.
 
 ## Rules
 
@@ -202,8 +257,10 @@ depths and caller-declared rule layers are separate things.
 
 `forbidden` matches source and target patterns, optionally an edge kind.
 `nothing_imports` matches a target; it can keep entry files imported by nobody.
-`allowed` names the restriction it exempts, plus source and target patterns,
-so a test root can import an entry file without waiving the other rules.
+`allowed` names the restriction it exempts, plus source/target patterns and
+an optional `kind`. For example, `.allowed = &.{.{ .rule = "layers", .kind =
+.@"test" }}` lets tests import any layer while keeping the named layer rule
+for production edges. Reference rules also accept a source `kind` filter.
 
 `references` restricts raw import names, optionally just unresolved ones or a
 particular Zig member. Raw names match the whole name, including package path
@@ -236,29 +293,42 @@ languages with the same graph and rules. It does not claim the compiler's view
 of a program. Use a language tool when that view is what the check needs;
 `Graph.fromEdges` can hold edges recovered elsewhere.
 
-## Performance
+## How it compares
 
-Measurements live on the `bench` branch; the harness is not part of `main` or
-the package. Run its mixed-language synthetic corpus in ReleaseFast on one
-calling thread. Scan time includes path indexing, lexing, resolution and
-manifest extraction. Listing and analysis are reported separately.
+Agreement-only runs on pinned real repositories, using the `bench` branch's
+harness and Zig 0.16.0. Direction is importer → dependency. Counts are sets
+within each selected scope: files for JS/TS and Python, package directories
+for Go, and file modules for Rust. No transitive closure is added.
 
-Apple M3 Max, Zig 0.16.0, ReleaseFast, 30,002 files across the six languages,
-30.7 MB of source, 75,000 edges, 2026-09-30:
+| Repository / rival | Agreed | Gantry only | Rival only |
+|---|---:|---:|---:|
+| VS Code / madge 8.0.0 | 50,508 | 0 | 0 |
+| VS Code / dependency-cruiser 16.10.4 | 50,479 | 29 | 29 |
+| Django / pydeps 3.0.8 | 4,605 | 705 | 1 |
+| Django / Grimp 3.17 | 3,002 | 0 | 0 |
+| Kubernetes pkg / go list go1.27.1 | 7,113 | 0 | 0 |
+| rust-analyzer ide / cargo-modules 0.26.0 | 115 | 0 | 42 |
+| Zig lib/std / no rival | — | 996 total edges | — |
 
-| Operation | Measured |
-|---|---|
-| Path listing | 83 ms |
-| First filesystem scan | 691 ms |
-| Subsequent filesystem scans | 573–674 ms |
-| Scan with caller-held bytes | 32–34 ms |
-| SCCs, witnesses and longest depths | 5.6–6.1 ms |
-| Directory aggregation | 5.0–5.2 ms |
+JS/TS includes import and test edges. Go uses production edges and an explicit
+`darwin/arm64` target matching the rival. Rust uses production edges. Python
+uses `.modulefinder` with literal reexports for pydeps, and `.explicit` with
+reexports disabled for Grimp. The table therefore describes these selectable
+policies, not one default graph compared with every tool.
 
-The files were just written, about 1 kB each, mostly comments with import
-and string decoys. This measures that corpus on local storage, not cold-disk
-latency or arbitrary loader semantics. Memory loading and corpus generation
-are outside the timings. There is no absolute-time test.
+Dependency-cruiser's 29 differences on each side are runtime `.js` choices
+versus TypeScript's `.d.ts` substitution. Pydeps removes 577 pairs with its
+default noise filter and omits 128 pairs from migration discovery; its one
+extra edge comes from star-submodule enumeration outside literal `__all__`.
+Rust's 42 extra pairs come from semantic definitions, reexports and type
+references. Eleven previously agreed pairs had coincided with test imports;
+filtering tests exposes the semantic difference. Every pair has a witness in
+the [full agreement results](bench/compare/results/README.md).
+
+The harness, corpus pins and full graphs can be inspected without installing
+or invoking another tool from the library. Agreement in these scopes does
+not validate every loader, compiler or architecture rule. Timing and memory
+comparisons will follow a quiet-machine pass; there are no timing claims here.
 
 ## Scope
 
@@ -273,7 +343,8 @@ are outside the timings. There is no absolute-time test.
 
 `zig build test` runs the suite and the usage example. It covers lexical
 exclusions, each resolver, the reference fixtures, manifests, rules,
-ordering and ownership. Generated graphs are checked against transitive
+ordering and ownership. Config inheritance, local Go routing, test kinds,
+target selection and Python policies have regression fixtures. Generated graphs are checked against transitive
 reachability and an independent depth calculation. A 20,000-node chain
 checks iterative traversal; allocation failures check cleanup. Filesystem
 tests use temporary directories under `std.testing`; no personal configuration

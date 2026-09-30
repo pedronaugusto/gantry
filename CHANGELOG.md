@@ -14,3 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Markdown link and asset path recovery, and direct manifest declarations.
 - Owned graphs, directory aggregation, SCCs, cycle witnesses and longest depths.
 - Layer, edge, entry-file, named-import, member-access, presence and cycle rules.
+- Repository JS/TS config inheritance, path aliases and declaration substitution.
+- Local Go workspace and replacement routing, with recorded build constraints
+  and explicit caller targets.
+- Test edge kinds and kind-based rule allowances.
+- Selectable Python initializer policies and literal export-list reexports.
+- Agreement results against pinned repositories and language tools.
