@@ -21,7 +21,7 @@ pub const manifests = @import("manifests.zig");
 pub const path = @import("path.zig");
 const languages = @import("languages.zig");
 pub const Options = struct {
-    kinds: []const Kind = &.{.import},
+    kinds: []const Kind = &.{ .import, .@"test" },
     manifests: bool = true,
     named_modules: []const NamedModule = &.{},
     include_roots: []const []const u8 = &.{},
@@ -104,11 +104,13 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     }
     const configs = try @import("tsconfig.zig").load(a, g.paths, &g.files, context, read, &unread);
     const index = try recover.names(a, g.paths);
+    const base_ctx: resolver.Context = .{ .allocator = a, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .ts_configs = configs };
+    const test_files = try @import("code_kind.zig").rustFiles(a, gpa, g.paths, base_ctx, context, read);
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
     for (g.paths) |p| {
         const language = languageOf(p);
-        const code = enabled(options, .import) and language != null;
+        const code = (enabled(options, .import) or enabled(options, .@"test")) and language != null;
         const links = enabled(options, .link) and std.mem.endsWith(u8, p, ".md");
         const assets = enabled(options, .asset) and recover.assetText(p);
         if (!code and !links and !assets) continue;
@@ -122,13 +124,16 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
             for (try extract(s, language.?, text)) |spec| {
+                const kind: Kind = if (spec.kind == .@"test" or test_files.contains(p) or @import("code_kind.zig").file(language.?, p)) .@"test" else .import;
                 const targets = try ctx.targets(p, language.?, spec);
-                try refs.append(a, .{ .from = p, .name = try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| try a.dupe(u8, member) else null, .resolved = targets.len > 0 });
+                try refs.append(a, .{ .from = p, .name = try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| try a.dupe(u8, member) else null, .resolved = targets.len > 0, .kind = kind });
                 if (spec.member != null) continue;
                 for (targets) |target| {
+                    const edge_kind: Kind = if (kind == .@"test" or test_files.contains(target) or @import("code_kind.zig").file(language.?, target)) .@"test" else .import;
+                    if (!enabled(options, edge_kind)) continue;
                     const key = try std.fmt.allocPrint(s, "{d}:{s}", .{ spec.offset, target });
                     const entry = try seen.getOrPut(s, key);
-                    if (!entry.found_existing) try edges.append(a, .{ .from = p, .to = g.files.getKey(target).? });
+                    if (!entry.found_existing) try edges.append(a, .{ .from = p, .to = g.files.getKey(target).?, .kind = edge_kind });
                 }
             }
         }

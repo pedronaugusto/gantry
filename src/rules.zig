@@ -7,7 +7,7 @@ pub const OrderedLayers = struct { name: []const u8, layers: []const Layer, defa
 pub const EdgeRule = struct { name: []const u8, from: []const u8 = "**", to: []const u8 = "**", kind: ?t.Kind = null };
 /// An allowance exempts an edge from just the named rule. It cannot waive
 /// cycles or required paths. A layer name here means OrderedLayers.name.
-pub const Allow = struct { rule: []const u8, from: []const u8 = "**", to: []const u8 = "**" };
+pub const Allow = struct { rule: []const u8, from: []const u8 = "**", to: []const u8 = "**", kind: ?t.Kind = null };
 pub const ReferenceRule = struct {
     name: []const u8,
     from: []const u8 = "**",
@@ -19,6 +19,7 @@ pub const ReferenceRule = struct {
     relative: bool = false,
     /// false covers every import, true just those not resolved to files.
     unresolved_only: bool = false,
+    kind: ?t.Kind = null,
     except_targets: []const []const u8 = &.{},
     except_from: []const []const u8 = &.{},
 };
@@ -42,7 +43,7 @@ pub const Violation = struct {
     path: ?[]const u8 = null,
 };
 fn allowed(rules: Rules, name: []const u8, e: t.Edge) bool {
-    for (rules.allowed) |r| if (std.mem.eql(u8, r.rule, name) and matches(r.from, e.from) and matches(r.to, e.to)) return true;
+    for (rules.allowed) |r| if (std.mem.eql(u8, r.rule, name) and matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind)) return true;
     return false;
 }
 fn layer(r: OrderedLayers, path: []const u8) usize {
@@ -62,7 +63,7 @@ pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Viola
         if (matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.append(a, .{ .rule = r.name, .reason = .entry, .edge = e });
     };
     for (rules.references) |r| for (g.references) |ref| {
-        if (!matches(r.from, ref.from) or (r.unresolved_only and ref.resolved)) continue;
+        if (!matches(r.from, ref.from) or (r.unresolved_only and ref.resolved) or (r.kind != null and r.kind.? != ref.kind)) continue;
         if (r.suffix) |suffix| if (!std.mem.endsWith(u8, ref.name, suffix)) continue;
         var normalized: ?[]const u8 = null;
         defer if (normalized) |path| a.free(path);

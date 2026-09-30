@@ -4,12 +4,52 @@ const Spec = @import("../types.zig").Spec;
 pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
     const ts = try l.compact(a, try l.lex(.rust, a, source));
     var out: std.ArrayList(Spec) = .empty;
-    for (ts, 0..) |t, i| {
-        if (t.is("mod") and i + 2 < ts.len and ts[i + 1].kind == .word and ts[i + 2].is(";")) {
-            try out.append(a, .{ .name = ts[i + 1].text, .offset = t.offset, .form = .rust_mod });
+    const Frame = struct { test_item: bool, scope: []const u8 };
+    var frames: std.ArrayList(Frame) = .empty;
+    var current: Frame = .{ .test_item = false, .scope = "" };
+    var pending_test = false;
+    var pending_scope: ?[]const u8 = null;
+    var i: usize = 0;
+    while (i < ts.len) : (i += 1) {
+        const t = ts[i];
+        if (t.is("#") and i + 1 < ts.len and (ts[i + 1].is("[") or ts[i + 1].is("!"))) {
+            const inner = ts[i + 1].is("!");
+            var j = i + 1;
+            while (j < ts.len and !ts[j].is("]")) : (j += 1) {}
+            const begin = i + (if (inner) @as(usize, 3) else 2);
+            // Only an explicit cfg(test) is proof; cfg(not(test)) and cfg_attr
+            // remain ordinary lexical items, without guessed evaluation.
+            if (begin + 3 < j and ts[begin].is("cfg") and ts[begin + 1].is("(") and ts[begin + 2].is("test") and ts[begin + 3].is(")")) {
+                if (inner) current.test_item = true else pending_test = true;
+            }
+            i = j;
+            continue;
+        }
+        if (t.is("mod") and i + 2 < ts.len and ts[i + 1].kind == .word) {
+            if (ts[i + 1].is("tests")) pending_test = true;
+            if (ts[i + 2].is(";")) try out.append(a, .{ .name = ts[i + 1].text, .offset = t.offset, .form = .rust_mod, .kind = if (current.test_item or pending_test) .@"test" else .import, .scope = current.scope });
+            if (ts[i + 2].is("{")) pending_scope = try std.mem.join(a, "/", if (current.scope.len == 0) &.{ts[i + 1].text} else &.{ current.scope, ts[i + 1].text });
         } else if (t.is("use") and i + 1 < ts.len) {
             var j = i + 1;
+            const start = out.items.len;
             try tree(a, ts, &j, "", t.offset, &out);
+            for (out.items[start..]) |*spec| {
+                spec.kind = if (current.test_item or pending_test) .@"test" else .import;
+                spec.scope = current.scope;
+            }
+        }
+        if (t.is("{")) {
+            try frames.append(a, current);
+            current = .{ .test_item = current.test_item or pending_test, .scope = pending_scope orelse current.scope };
+            pending_test = false;
+            pending_scope = null;
+        } else if (t.is("}")) {
+            if (frames.pop()) |frame| current = frame;
+            pending_test = false;
+            pending_scope = null;
+        } else if (t.is(";")) {
+            pending_test = false;
+            pending_scope = null;
         }
     }
     return out.toOwnedSlice(a);
@@ -58,6 +98,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     const filename = p.base(from);
     var module_dir = dir;
     if (!std.mem.eql(u8, filename, "mod.rs") and !std.mem.eql(u8, filename, "lib.rs") and !std.mem.eql(u8, filename, "main.rs")) module_dir = from[0 .. from.len - 3];
+    if (spec.scope.len > 0) module_dir = try std.mem.join(a, "/", &.{ module_dir, spec.scope });
     if (spec.form == .rust_mod) {
         if (try c.candidate(module_dir, name, &.{ ".rs", "/mod.rs" })) |v| try out.append(a, v);
     } else {
@@ -82,3 +123,14 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     return out.toOwnedSlice(a);
 }
 pub const extensions = &[_][]const u8{".rs"};
+
+pub fn testFile(a: std.mem.Allocator, source: []const u8) !bool {
+    const ts = try l.compact(a, try l.lex(.rust, a, source));
+    var depth: usize = 0;
+    for (ts, 0..) |t, i| {
+        if (t.is("{")) depth += 1;
+        if (t.is("}") and depth > 0) depth -= 1;
+        if (depth == 0 and i + 7 < ts.len and t.is("#") and ts[i + 1].is("!") and ts[i + 2].is("[") and ts[i + 3].is("cfg") and ts[i + 4].is("(") and ts[i + 5].is("test") and ts[i + 6].is(")") and ts[i + 7].is("]")) return true;
+    }
+    return false;
+}

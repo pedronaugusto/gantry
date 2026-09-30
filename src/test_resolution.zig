@@ -112,7 +112,7 @@ test "Go uses declared module identity all selected package files and nested bou
     try eq(4, graph.edges.len);
     try f.edge(&graph, "cmd/a.go", "pkg/a.go", .import, 1);
     try f.edge(&graph, "cmd/a.go", "pkg/b.go", .import, 1);
-    try f.edge(&graph, "cmd/a.go", "pkg/a_test.go", .import, 1);
+    try f.edge(&graph, "cmd/a.go", "pkg/a_test.go", .@"test", 1);
     try f.edge(&graph, "sub/main.go", "sub/pkg/a.go", .import, 1);
 }
 test "Go without go.mod does not guess by suffix" {
