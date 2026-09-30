@@ -245,6 +245,23 @@ the package. Run its mixed-language synthetic corpus in ReleaseFast on one
 calling thread. Scan time includes path indexing, lexing, resolution and
 manifest extraction. Listing and analysis are reported separately.
 
+Apple M3 Max, Zig 0.16.0, ReleaseFast, 30,002 files across the six languages,
+30.7 MB of source, 75,000 edges, 2026-09-30:
+
+| Operation | Measured |
+|---|---|
+| Path listing | 83 ms |
+| First filesystem scan | 691 ms |
+| Subsequent filesystem scans | 573–674 ms |
+| Scan with caller-held bytes | 32–34 ms |
+| SCCs, witnesses and longest depths | 5.6–6.1 ms |
+| Directory aggregation | 5.0–5.2 ms |
+
+The files were just written, about 1 kB each, mostly comments with import
+and string decoys. This measures that corpus on local storage, not cold-disk
+latency or arbitrary loader semantics. Memory loading and corpus generation
+are outside the timings. There is no absolute-time test.
+
 ## Scope
 
 - Selected source references and declared direct dependencies, not symbol,
