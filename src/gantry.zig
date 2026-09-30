@@ -95,6 +95,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         } else try unread.append(a, p);
         _ = scratch.reset(.retain_capacity);
     }
+    const configs = try @import("tsconfig.zig").load(a, g.paths, &g.files, context, read, &unread);
     const index = try recover.names(a, g.paths);
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
@@ -110,7 +111,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
             _ = scratch.reset(.retain_capacity);
             continue;
         };
-        const ctx: resolver.Context = .{ .allocator = s, .files = &g.files, .packages = &packages, .go_modules = modules.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots };
+        const ctx: resolver.Context = .{ .allocator = s, .files = &g.files, .packages = &packages, .go_modules = modules.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .ts_configs = configs };
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
             for (try extract(s, language.?, text)) |spec| {

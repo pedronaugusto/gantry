@@ -11,6 +11,7 @@ pub const Context = struct {
     named_modules: []const NamedModule,
     include_roots: []const []const u8,
     python_roots: []const []const u8,
+    ts_configs: []const @import("tsconfig.zig").Config = &.{},
     pub fn candidate(c: Context, root: []const u8, name: []const u8, suffixes: []const []const u8) !?[]const u8 {
         for (suffixes) |suffix| {
             const raw = try std.fmt.allocPrint(c.allocator, "{s}/{s}{s}", .{ root, name, suffix });
