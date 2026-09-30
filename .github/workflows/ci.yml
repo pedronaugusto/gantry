@@ -43,7 +43,7 @@ jobs:
       - name: Test -- ReleaseSmall
         run: zig build test -Doptimize=ReleaseSmall
       - name: Test filtering
-        run: zig build test -Dtest-filter=fixture:
+        run: zig build test "-Dtest-filter=fixture:"
   cross-compile:
     name: cross (${{ matrix.target }})
     runs-on: ubuntu-latest
