@@ -1,0 +1,43 @@
+const std = @import("std");
+const g = @import("gantry.zig");
+const f = @import("test_support.zig");
+const a = std.testing.allocator;
+const fixture: f.Fixture = .{ .items = &.{
+    .{ .path = "go.mod", .text = "module example.org/app" },
+    .{ .path = "main.go", .text = "package main\nimport \"example.org/app/lib\"" },
+    .{ .path = "lib/a_linux_amd64.go", .text = "//go:build linux && (amd64 || arm64) && !custom\n\npackage lib\nimport \"example.org/app/dep\"" },
+    .{ .path = "lib/a_windows.go", .text = "package lib\nimport \"example.org/app/dep\"" },
+    .{ .path = "lib/b.go", .text = "//go:build custom || (darwin && arm64)\n\npackage lib\nimport \"example.org/app/dep\"" },
+    .{ .path = "lib/c_test.go", .text = "package lib_test\nimport \"example.org/app/dep\"" },
+    .{ .path = "dep/a.go", .text = "package dep" },
+} };
+
+test "Go records constraints and test package identity without choosing a host" {
+    var graph = try fixture.scan(a, .{});
+    defer graph.deinit();
+    try std.testing.expectEqual(6, graph.go_files.len);
+    try std.testing.expectEqualStrings("lib_test", graph.go_files[4].package);
+    try std.testing.expectEqualStrings("linux && (amd64 || arm64) && !custom", graph.go_files[1].constraint.?);
+    try std.testing.expectEqualStrings("linux", graph.go_files[1].os.?);
+    try std.testing.expectEqualStrings("amd64", graph.go_files[1].arch.?);
+    try std.testing.expect(graph.go_files[3].selected);
+    try f.edge(&graph, "main.go", "lib/a_windows.go", .import, 1);
+}
+
+test "Go caller target filters both importers and package expansion" {
+    var graph = try fixture.scan(a, .{ .go_target = .{ .os = "linux", .arch = "amd64" }, .kinds = &.{.import} });
+    defer graph.deinit();
+    try std.testing.expectEqual(2, graph.edges.len);
+    try f.edge(&graph, "main.go", "lib/a_linux_amd64.go", .import, 1);
+    try f.edge(&graph, "lib/a_linux_amd64.go", "dep/a.go", .import, 1);
+    var custom = try fixture.scan(a, .{ .go_target = .{ .os = "windows", .arch = "arm64", .tags = &.{"custom"} } });
+    defer custom.deinit();
+    try f.edge(&custom, "main.go", "lib/b.go", .import, 1);
+    try std.testing.expect(!custom.go_files[1].selected);
+}
+
+test "Go build expression rejects malformed syntax and honors OS aliases" {
+    const build = @import("go_build.zig");
+    try std.testing.expect(try build.evaluate(a, "unix && linux && !windows", .{ .os = "android", .arch = "arm64" }));
+    for ([_][]const u8{ "a &&", "(a", "a b", "a | b", "a)", "" }) |expression| try std.testing.expectError(error.InvalidBuildConstraint, build.evaluate(a, expression, .{ .os = "linux", .arch = "amd64" }));
+}

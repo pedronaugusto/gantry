@@ -10,6 +10,7 @@ dependencies: []const t.Dependency = &.{},
 references: []const t.Reference = &.{},
 /// Selected files for which the caller returned null; never silently omitted.
 unread: []const []const u8 = &.{},
+go_files: []const @import("go_build.zig").File = &.{},
 files: std.StringHashMapUnmanaged(void) = .empty,
 
 pub fn init(gpa: std.mem.Allocator, paths: []const []const u8) !Graph {

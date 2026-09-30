@@ -15,6 +15,8 @@ pub const Dependency = t.Dependency;
 pub const Layer = t.Layer;
 pub const Cycle = t.Cycle;
 pub const Spec = t.Spec;
+pub const GoTarget = @import("go_build.zig").Target;
+pub const GoFile = @import("go_build.zig").File;
 pub const NamedModule = resolver.NamedModule;
 pub const rules = @import("rules.zig");
 pub const manifests = @import("manifests.zig");
@@ -26,6 +28,7 @@ pub const Options = struct {
     named_modules: []const NamedModule = &.{},
     include_roots: []const []const u8 = &.{},
     python_roots: []const []const u8 = &.{""},
+    go_target: ?GoTarget = null,
 };
 pub fn languageOf(p: []const u8) ?Language {
     const ext = std.fs.path.extension(p);
@@ -71,8 +74,22 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     const a = g.arena.allocator();
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
-    var packages: std.StringHashMapUnmanaged(std.ArrayList([]const u8)) = .empty;
+    var go_files: std.ArrayList(GoFile) = .empty;
+    var inactive: std.StringHashMapUnmanaged(void) = .empty;
     for (g.paths) |p| if (languageOf(p) == .go) {
+        const s = scratch.allocator();
+        if (try read(context, p, s)) |text| {
+            var info = try @import("go_build.zig").parse(s, p, text, options.go_target);
+            info.package = try a.dupe(u8, info.package);
+            if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
+            try go_files.append(a, info);
+            if (!info.selected) try inactive.put(a, p, {});
+        }
+        _ = scratch.reset(.retain_capacity);
+    };
+    g.go_files = try go_files.toOwnedSlice(a);
+    var packages: std.StringHashMapUnmanaged(std.ArrayList([]const u8)) = .empty;
+    for (g.paths) |p| if (languageOf(p) == .go and !inactive.contains(p)) {
         const entry = try packages.getOrPut(a, path.dir(p));
         if (!entry.found_existing) entry.value_ptr.* = .empty;
         try entry.value_ptr.append(a, p);
@@ -109,6 +126,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
     for (g.paths) |p| {
+        if (inactive.contains(p)) continue;
         const language = languageOf(p);
         const code = (enabled(options, .import) or enabled(options, .@"test")) and language != null;
         const links = enabled(options, .link) and std.mem.endsWith(u8, p, ".md");
