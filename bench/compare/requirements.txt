@@ -1,0 +1,10 @@
+click==8.5.0
+grimp==3.17
+import-linter==2.15
+markdown-it-py==4.2.0
+mdurl==0.1.2
+pydeps==3.0.8
+Pygments==2.21.0
+rich==15.0.0
+stdlib-list==0.12.0
+typing_extensions==4.16.0

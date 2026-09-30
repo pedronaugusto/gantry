@@ -14,6 +14,11 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{ .root_source_file = b.path("bench/scan.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "gantry", .module = module }} }),
     });
     b.step("bench", "Build the benchmark (run with python3 bench/run.py)").dependOn(&b.addInstallArtifact(benchmark, .{}).step);
+    const compare = b.addExecutable(.{
+        .name = "compare-scan",
+        .root_module = b.createModule(.{ .root_source_file = b.path("bench/compare/scan.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "gantry", .module = module }} }),
+    });
+    b.step("compare", "Build the real-repository graph exporter").dependOn(&b.addInstallArtifact(compare, .{}).step);
     const test_step = b.step("test", "Run the tests and example");
     test_step.dependOn(&b.addRunArtifact(tests).step);
     b.step("check", "Compile the tests without running them").dependOn(&tests.step);

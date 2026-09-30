@@ -1,0 +1,13 @@
+{
+  "repositories": {
+    "typescript": {"url": "https://github.com/microsoft/vscode.git", "commit": "cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba", "label": "VS Code 1.96.4", "scope": "src"},
+    "python": {"url": "https://github.com/django/django.git", "commit": "3d3d7f5052edb99bafaa5a2f1a7dd5b968643727", "label": "Django 5.1.5", "scope": "django"},
+    "go": {"url": "https://github.com/kubernetes/kubernetes.git", "commit": "e9c9be4007d1664e68796af02b8978640d2c1b26", "label": "Kubernetes 1.32.1", "scope": "pkg"},
+    "rust": {"url": "https://github.com/rust-lang/rust-analyzer.git", "commit": "84b6936e0856d0cac8d616c5ba3306155d8b3b1d", "label": "rust-analyzer 2025-02-17", "scope": "crates/ide/src", "package": "ide"},
+    "zig": {"url": "https://github.com/ziglang/zig.git", "commit": "5ad91a646a753cc3eecd8751e61cf458dadd9ac4", "label": "Zig 0.14.0", "scope": "lib/std"}
+  },
+  "npm": {"madge": "8.0.0", "dependency-cruiser": "16.10.4", "typescript": "5.7.3"},
+  "python": {"pydeps": "3.0.8", "grimp": "3.17", "import-linter": "2.15"},
+  "cargo": {"cargo-modules": "0.26.0"},
+  "toolchains": {"zig": "0.16.0", "go": "go1.27.1", "rust": "1.93.0", "node": "v22.23.2", "python": "3.13.2"}
+}
