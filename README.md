@@ -55,8 +55,6 @@ const dep = b.dependency("gantry", .{ .target = target, .optimize = optimize });
 exe.root_module.addImport("gantry", dep.module("gantry"));
 ```
 
-The repository is private during review. Fetching it currently needs access.
-
 ## The API
 
 | Declaration | What it does |
