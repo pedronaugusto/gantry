@@ -141,7 +141,19 @@ Each measured graph must match its warmup graph or the run fails. Medians
 are convenient summaries; keep the individual samples and environment.
 
 The initial full agreement pass and the smoke test are checked in under
-`results/`. No real benchmark timings were collected on the busy host.
+`results/`. `edges.json.gz` contains all selected paths, complete normalized
+graphs and every disagreement with its witness. It can be read with Python:
+
+```
+import gzip, json
+with gzip.open("bench/compare/results/edges.json.gz", "rt") as stream:
+    edges = json.load(stream)
+```
+
+`agreement.md` / `.json` and `smoke.md` / `.json` are the reports. The
+agreement's source commit records the harness before these artifacts were
+added; its `src` tree is also recorded. Raw tool output remains in the chosen
+scratch directory. No real benchmark timings were collected on the busy host.
 No gantry bugs were confirmed in these scopes, so there are no `edges`
 fix commits. Scope differences are not evidence that either graph is universally
 correct; the full diff remains available for review.

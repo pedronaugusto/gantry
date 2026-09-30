@@ -1,0 +1,266 @@
+{
+  "mode": "smoke",
+  "pins": {
+    "repositories": {
+      "typescript": {
+        "url": "https://github.com/microsoft/vscode.git",
+        "commit": "cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba",
+        "label": "VS Code 1.96.4",
+        "scope": "src"
+      },
+      "python": {
+        "url": "https://github.com/django/django.git",
+        "commit": "3d3d7f5052edb99bafaa5a2f1a7dd5b968643727",
+        "label": "Django 5.1.5",
+        "scope": "django"
+      },
+      "go": {
+        "url": "https://github.com/kubernetes/kubernetes.git",
+        "commit": "e9c9be4007d1664e68796af02b8978640d2c1b26",
+        "label": "Kubernetes 1.32.1",
+        "scope": "pkg"
+      },
+      "rust": {
+        "url": "https://github.com/rust-lang/rust-analyzer.git",
+        "commit": "84b6936e0856d0cac8d616c5ba3306155d8b3b1d",
+        "label": "rust-analyzer 2025-02-17",
+        "scope": "crates/ide/src",
+        "package": "ide"
+      },
+      "zig": {
+        "url": "https://github.com/ziglang/zig.git",
+        "commit": "5ad91a646a753cc3eecd8751e61cf458dadd9ac4",
+        "label": "Zig 0.14.0",
+        "scope": "lib/std"
+      }
+    },
+    "npm": {
+      "madge": "8.0.0",
+      "dependency-cruiser": "16.10.4",
+      "typescript": "5.7.3"
+    },
+    "python": {
+      "pydeps": "3.0.8",
+      "grimp": "3.17",
+      "import-linter": "2.15"
+    },
+    "cargo": {
+      "cargo-modules": "0.26.0"
+    },
+    "toolchains": {
+      "zig": "0.16.0",
+      "go": "go1.27.1",
+      "rust": "1.93.0",
+      "node": "v22.23.2",
+      "python": "3.13.2"
+    }
+  },
+  "gantry_commit": "a02e572b06d7d45bd61c22d74f79730aec1a3b3b",
+  "gantry_dirty": false,
+  "gantry_source_tree": "2b6eeed302119fccded2ed4deaa1c733a807d6d9",
+  "platform": "darwin",
+  "languages": {
+    "python": {
+      "scope": "django/utils",
+      "selected_files": 46,
+      "gantry_edges": 93,
+      "gantry_sample": [
+        [
+          "django/utils/autoreload.py",
+          "django/utils/__init__.py"
+        ],
+        [
+          "django/utils/autoreload.py",
+          "django/utils/functional.py"
+        ],
+        [
+          "django/utils/autoreload.py",
+          "django/utils/version.py"
+        ],
+        [
+          "django/utils/cache.py",
+          "django/utils/__init__.py"
+        ],
+        [
+          "django/utils/cache.py",
+          "django/utils/http.py"
+        ]
+      ],
+      "commands": {
+        "gantry": [
+          "/private/tmp/gantry-compare/gantry/bin/compare-scan",
+          "/private/tmp/gantry-compare/repos/python",
+          "/private/tmp/gantry-compare/published-smoke/python/paths.txt"
+        ],
+        "pydeps": [
+          "/private/tmp/gantry-compare/venv/bin/pydeps",
+          "django",
+          "--no-config",
+          "--show-deps",
+          "--no-show",
+          "--no-output",
+          "--max-bacon=0"
+        ],
+        "grimp": [
+          "/private/tmp/gantry-compare/venv/bin/python",
+          "/Users/gusto/work/tycho/.bench/gantry/bench/compare/python_graph.py",
+          "/private/tmp/gantry-compare/repos/python"
+        ]
+      },
+      "agreement": {
+        "pydeps": {
+          "agreed": {
+            "count": 65,
+            "sample": [
+              [
+                "django/utils/autoreload.py",
+                "django/utils/functional.py"
+              ],
+              [
+                "django/utils/autoreload.py",
+                "django/utils/version.py"
+              ],
+              [
+                "django/utils/cache.py",
+                "django/utils/http.py"
+              ],
+              [
+                "django/utils/cache.py",
+                "django/utils/log.py"
+              ],
+              [
+                "django/utils/cache.py",
+                "django/utils/regex_helper.py"
+              ]
+            ]
+          },
+          "gantry_only": {
+            "count": 28,
+            "sample": [
+              [
+                "django/utils/autoreload.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/utils/cache.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/utils/choices.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/utils/connection.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/utils/crypto.py",
+                "django/utils/__init__.py"
+              ]
+            ]
+          },
+          "rival_only": {
+            "count": 0,
+            "sample": []
+          },
+          "reasons": {
+            "scope: gantry includes selected ancestor/package initializers": 28
+          },
+          "review_required": 0
+        },
+        "grimp": {
+          "agreed": {
+            "count": 63,
+            "sample": [
+              [
+                "django/utils/autoreload.py",
+                "django/utils/functional.py"
+              ],
+              [
+                "django/utils/autoreload.py",
+                "django/utils/version.py"
+              ],
+              [
+                "django/utils/cache.py",
+                "django/utils/http.py"
+              ],
+              [
+                "django/utils/cache.py",
+                "django/utils/log.py"
+              ],
+              [
+                "django/utils/cache.py",
+                "django/utils/regex_helper.py"
+              ]
+            ]
+          },
+          "gantry_only": {
+            "count": 30,
+            "sample": [
+              [
+                "django/utils/autoreload.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/utils/cache.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/utils/choices.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/utils/connection.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/utils/crypto.py",
+                "django/utils/__init__.py"
+              ]
+            ]
+          },
+          "rival_only": {
+            "count": 0,
+            "sample": []
+          },
+          "reasons": {
+            "scope: gantry includes selected ancestor/package initializers": 30
+          },
+          "review_required": 0
+        }
+      },
+      "measurements": {
+        "gantry": [
+          {
+            "run": 1,
+            "wall_seconds": 0.009969708975404501,
+            "peak_rss_bytes": 2228224
+          }
+        ],
+        "pydeps": [
+          {
+            "run": 1,
+            "wall_seconds": 3.894412708003074,
+            "peak_rss_bytes": 84639744
+          }
+        ],
+        "grimp": [
+          {
+            "run": 1,
+            "wall_seconds": 0.1731418753042817,
+            "peak_rss_bytes": 38813696
+          }
+        ]
+      }
+    }
+  },
+  "rival_versions": {
+    "pydeps": "3.0.8",
+    "grimp": "3.17",
+    "import-linter": "2.15"
+  },
+  "runtime_versions": {
+    "python": "3.13.2",
+    "zig": "0.16.0"
+  }
+}
