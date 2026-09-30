@@ -1,0 +1,672 @@
+{
+  "mode": "agreement",
+  "pins": {
+    "repositories": {
+      "typescript": {
+        "url": "https://github.com/microsoft/vscode.git",
+        "commit": "cd4ee3b1c348a13bafd8f9ad8060705f6d4b9cba",
+        "label": "VS Code 1.96.4",
+        "scope": "src"
+      },
+      "python": {
+        "url": "https://github.com/django/django.git",
+        "commit": "3d3d7f5052edb99bafaa5a2f1a7dd5b968643727",
+        "label": "Django 5.1.5",
+        "scope": "django"
+      },
+      "go": {
+        "url": "https://github.com/kubernetes/kubernetes.git",
+        "commit": "e9c9be4007d1664e68796af02b8978640d2c1b26",
+        "label": "Kubernetes 1.32.1",
+        "scope": "pkg"
+      },
+      "rust": {
+        "url": "https://github.com/rust-lang/rust-analyzer.git",
+        "commit": "84b6936e0856d0cac8d616c5ba3306155d8b3b1d",
+        "label": "rust-analyzer 2025-02-17",
+        "scope": "crates/ide/src",
+        "package": "ide"
+      },
+      "zig": {
+        "url": "https://github.com/ziglang/zig.git",
+        "commit": "5ad91a646a753cc3eecd8751e61cf458dadd9ac4",
+        "label": "Zig 0.14.0",
+        "scope": "lib/std"
+      }
+    },
+    "npm": {
+      "madge": "8.0.0",
+      "dependency-cruiser": "16.10.4",
+      "typescript": "5.7.3"
+    },
+    "python": {
+      "pydeps": "3.0.8",
+      "grimp": "3.17",
+      "import-linter": "2.15"
+    },
+    "cargo": {
+      "cargo-modules": "0.26.0"
+    },
+    "toolchains": {
+      "zig": "0.16.0",
+      "go": "go1.27.1",
+      "rust": "1.93.0",
+      "node": "v22.23.2",
+      "python": "3.13.2"
+    }
+  },
+  "gantry_commit": "2761173a2fb925e6c5397c1117b531172633f381",
+  "gantry_dirty": false,
+  "gantry_source_tree": "b3a62c0bf98655e7dd40c238bdb0072c9d482175",
+  "platform": "darwin",
+  "scan_policies": {
+    "typescript": "all import and test edges; selected repo configs and local extends; TypeScript extension substitution",
+    "go": "import kind; go_target darwin/arm64 with explicit gc,cgo,go1.23..go1.27 tags; selected go.work and go.mod",
+    "rust": "import kind (test edges excluded)",
+    "python/pydeps": "modulefinder initializers; literal __all__ reexports enabled",
+    "python/grimp": "explicit initializers; star reexports disabled"
+  },
+  "languages": {
+    "typescript": {
+      "scope": "src",
+      "selected_files": 4323,
+      "gantry_edges": 50508,
+      "gantry_sample": [
+        [
+          "src/bootstrap-esm.ts",
+          "src/bootstrap-meta.ts"
+        ],
+        [
+          "src/bootstrap-esm.ts",
+          "src/bootstrap-node.ts"
+        ],
+        [
+          "src/bootstrap-esm.ts",
+          "src/vs/base/common/performance.ts"
+        ],
+        [
+          "src/bootstrap-esm.ts",
+          "src/vs/nls.ts"
+        ],
+        [
+          "src/bootstrap-fork.ts",
+          "src/bootstrap-esm.ts"
+        ]
+      ],
+      "commands": {
+        "gantry": [
+          "/private/tmp/gantry-compare/gantry/bin/compare-scan",
+          "/private/tmp/gantry-compare/repos/typescript",
+          "/private/tmp/gantry-compare/design-final/typescript/paths.txt"
+        ],
+        "madge": [
+          "node",
+          "/private/tmp/gantry-design-compare/bench/compare/typescript.cjs",
+          "madge",
+          "/private/tmp/gantry-compare",
+          "/private/tmp/gantry-compare/repos/typescript",
+          "src"
+        ],
+        "dependency-cruiser": [
+          "node",
+          "/private/tmp/gantry-design-compare/bench/compare/typescript.cjs",
+          "dependency-cruiser",
+          "/private/tmp/gantry-compare",
+          "/private/tmp/gantry-compare/repos/typescript",
+          "src"
+        ]
+      },
+      "agreement": {
+        "madge": {
+          "agreed": {
+            "count": 50508,
+            "sample": [
+              [
+                "src/bootstrap-esm.ts",
+                "src/bootstrap-meta.ts"
+              ],
+              [
+                "src/bootstrap-esm.ts",
+                "src/bootstrap-node.ts"
+              ],
+              [
+                "src/bootstrap-esm.ts",
+                "src/vs/base/common/performance.ts"
+              ],
+              [
+                "src/bootstrap-esm.ts",
+                "src/vs/nls.ts"
+              ],
+              [
+                "src/bootstrap-fork.ts",
+                "src/bootstrap-esm.ts"
+              ]
+            ]
+          },
+          "gantry_only": {
+            "count": 0,
+            "sample": []
+          },
+          "rival_only": {
+            "count": 0,
+            "sample": []
+          },
+          "reasons": {},
+          "review_required": 0
+        },
+        "dependency-cruiser": {
+          "agreed": {
+            "count": 50479,
+            "sample": [
+              [
+                "src/bootstrap-esm.ts",
+                "src/bootstrap-meta.ts"
+              ],
+              [
+                "src/bootstrap-esm.ts",
+                "src/bootstrap-node.ts"
+              ],
+              [
+                "src/bootstrap-esm.ts",
+                "src/vs/base/common/performance.ts"
+              ],
+              [
+                "src/bootstrap-esm.ts",
+                "src/vs/nls.ts"
+              ],
+              [
+                "src/bootstrap-fork.ts",
+                "src/bootstrap-esm.ts"
+              ]
+            ]
+          },
+          "gantry_only": {
+            "count": 29,
+            "sample": [
+              [
+                "src/vs/base/browser/dom.ts",
+                "src/vs/base/browser/dompurify/dompurify.d.ts"
+              ],
+              [
+                "src/vs/base/browser/markdownRenderer.ts",
+                "src/vs/base/browser/dompurify/dompurify.d.ts"
+              ],
+              [
+                "src/vs/base/browser/markdownRenderer.ts",
+                "src/vs/base/common/marked/marked.d.ts"
+              ],
+              [
+                "src/vs/base/browser/ui/button/button.ts",
+                "src/vs/base/browser/dompurify/dompurify.d.ts"
+              ],
+              [
+                "src/vs/base/test/browser/markdownRenderer.test.ts",
+                "src/vs/base/common/marked/marked.d.ts"
+              ]
+            ]
+          },
+          "rival_only": {
+            "count": 29,
+            "sample": [
+              [
+                "src/vs/base/browser/dom.ts",
+                "src/vs/base/browser/dompurify/dompurify.js"
+              ],
+              [
+                "src/vs/base/browser/markdownRenderer.ts",
+                "src/vs/base/browser/dompurify/dompurify.js"
+              ],
+              [
+                "src/vs/base/browser/markdownRenderer.ts",
+                "src/vs/base/common/marked/marked.js"
+              ],
+              [
+                "src/vs/base/browser/ui/button/button.ts",
+                "src/vs/base/browser/dompurify/dompurify.js"
+              ],
+              [
+                "src/vs/base/test/browser/markdownRenderer.test.ts",
+                "src/vs/base/common/marked/marked.js"
+              ]
+            ]
+          },
+          "reasons": {
+            "rival policy: dependency-cruiser prefers the runtime .js over TypeScript's .d.ts substitution": 58
+          },
+          "review_required": 0
+        }
+      },
+      "measurements": {
+        "gantry": [],
+        "madge": [],
+        "dependency-cruiser": []
+      }
+    },
+    "python": {
+      "scope": "django",
+      "selected_files": 879,
+      "gantry_edges": 5310,
+      "gantry_sample": [
+        [
+          "django/__init__.py",
+          "django/__init__.py"
+        ],
+        [
+          "django/__init__.py",
+          "django/apps/__init__.py"
+        ],
+        [
+          "django/__init__.py",
+          "django/conf/__init__.py"
+        ],
+        [
+          "django/__init__.py",
+          "django/urls/__init__.py"
+        ],
+        [
+          "django/__init__.py",
+          "django/utils/__init__.py"
+        ]
+      ],
+      "commands": {
+        "gantry": [
+          "/private/tmp/gantry-compare/gantry/bin/compare-scan",
+          "/private/tmp/gantry-compare/repos/python",
+          "/private/tmp/gantry-compare/design-final/python/paths.txt"
+        ],
+        "pydeps": [
+          "/private/tmp/gantry-compare/venv/bin/pydeps",
+          "django",
+          "--no-config",
+          "--show-deps",
+          "--no-show",
+          "--no-output",
+          "--max-bacon=0"
+        ],
+        "grimp": [
+          "/private/tmp/gantry-compare/venv/bin/python",
+          "/private/tmp/gantry-design-compare/bench/compare/python_graph.py",
+          "/private/tmp/gantry-compare/repos/python"
+        ],
+        "gantry-grimp": [
+          "/private/tmp/gantry-compare/gantry/bin/compare-scan",
+          "/private/tmp/gantry-compare/repos/python",
+          "/private/tmp/gantry-compare/design-final/python/paths.txt",
+          "explicit"
+        ]
+      },
+      "agreement": {
+        "pydeps": {
+          "agreed": {
+            "count": 4605,
+            "sample": [
+              [
+                "django/__init__.py",
+                "django/__init__.py"
+              ],
+              [
+                "django/__init__.py",
+                "django/apps/__init__.py"
+              ],
+              [
+                "django/__init__.py",
+                "django/conf/__init__.py"
+              ],
+              [
+                "django/__init__.py",
+                "django/urls/__init__.py"
+              ],
+              [
+                "django/__init__.py",
+                "django/utils/log.py"
+              ]
+            ]
+          },
+          "gantry_only": {
+            "count": 705,
+            "sample": [
+              [
+                "django/__init__.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/__main__.py",
+                "django/core/__init__.py"
+              ],
+              [
+                "django/apps/config.py",
+                "django/core/__init__.py"
+              ],
+              [
+                "django/apps/config.py",
+                "django/utils/__init__.py"
+              ],
+              [
+                "django/apps/registry.py",
+                "django/core/__init__.py"
+              ]
+            ]
+          },
+          "rival_only": {
+            "count": 1,
+            "sample": [
+              [
+                "django/db/migrations/__init__.py",
+                "django/db/migrations/operations/base.py"
+              ]
+            ]
+          },
+          "reasons": {
+            "rival policy: pydeps default noise filter removes high-degree packages": 577,
+            "rival limit: pydeps skips migration discovery in its dummy entry module": 128,
+            "rival policy: pydeps star discovery includes submodules absent from literal __all__": 1
+          },
+          "review_required": 0
+        },
+        "grimp": {
+          "agreed": {
+            "count": 3002,
+            "sample": [
+              [
+                "django/__init__.py",
+                "django/apps/__init__.py"
+              ],
+              [
+                "django/__init__.py",
+                "django/conf/__init__.py"
+              ],
+              [
+                "django/__init__.py",
+                "django/urls/__init__.py"
+              ],
+              [
+                "django/__init__.py",
+                "django/utils/log.py"
+              ],
+              [
+                "django/__init__.py",
+                "django/utils/version.py"
+              ]
+            ]
+          },
+          "gantry_only": {
+            "count": 0,
+            "sample": []
+          },
+          "rival_only": {
+            "count": 0,
+            "sample": []
+          },
+          "reasons": {},
+          "review_required": 0
+        }
+      },
+      "measurements": {
+        "gantry": [],
+        "pydeps": [],
+        "grimp": [],
+        "gantry-grimp": []
+      }
+    },
+    "go": {
+      "scope": "pkg",
+      "selected_files": 8145,
+      "gantry_edges": 7113,
+      "gantry_sample": [
+        [
+          "pkg/api/endpoints/testing",
+          "pkg/apis/core"
+        ],
+        [
+          "pkg/api/endpoints/testing",
+          "staging/src/k8s.io/apimachinery/pkg/apis/meta/v1"
+        ],
+        [
+          "pkg/api/job",
+          "pkg/api/pod"
+        ],
+        [
+          "pkg/api/job",
+          "pkg/apis/batch"
+        ],
+        [
+          "pkg/api/job",
+          "pkg/apis/core"
+        ]
+      ],
+      "commands": {
+        "gantry": [
+          "/private/tmp/gantry-compare/gantry/bin/compare-scan",
+          "/private/tmp/gantry-compare/repos/go",
+          "/private/tmp/gantry-compare/design-final/go/paths.txt"
+        ],
+        "go-list": [
+          "go",
+          "list",
+          "-mod=vendor",
+          "-deps",
+          "-json",
+          "./pkg/..."
+        ]
+      },
+      "agreement": {
+        "go-list": {
+          "agreed": {
+            "count": 7113,
+            "sample": [
+              [
+                "pkg/api/endpoints/testing",
+                "pkg/apis/core"
+              ],
+              [
+                "pkg/api/endpoints/testing",
+                "staging/src/k8s.io/apimachinery/pkg/apis/meta/v1"
+              ],
+              [
+                "pkg/api/job",
+                "pkg/api/pod"
+              ],
+              [
+                "pkg/api/job",
+                "pkg/apis/batch"
+              ],
+              [
+                "pkg/api/job",
+                "pkg/apis/core"
+              ]
+            ]
+          },
+          "gantry_only": {
+            "count": 0,
+            "sample": []
+          },
+          "rival_only": {
+            "count": 0,
+            "sample": []
+          },
+          "reasons": {},
+          "review_required": 0
+        }
+      },
+      "measurements": {
+        "gantry": [],
+        "go-list": []
+      }
+    },
+    "rust": {
+      "scope": "crates/ide/src",
+      "selected_files": 74,
+      "gantry_edges": 115,
+      "gantry_sample": [
+        [
+          "ide",
+          "ide::annotations"
+        ],
+        [
+          "ide",
+          "ide::call_hierarchy"
+        ],
+        [
+          "ide",
+          "ide::doc_links"
+        ],
+        [
+          "ide",
+          "ide::expand_macro"
+        ],
+        [
+          "ide",
+          "ide::extend_selection"
+        ]
+      ],
+      "commands": {
+        "gantry": [
+          "/private/tmp/gantry-compare/gantry/bin/compare-scan",
+          "/private/tmp/gantry-compare/repos/rust",
+          "/private/tmp/gantry-compare/design-final/rust/paths.txt"
+        ],
+        "cargo-modules": [
+          "/private/tmp/gantry-compare/cargo/bin/cargo-modules",
+          "dependencies",
+          "--lib",
+          "--package",
+          "ide",
+          "--no-externs",
+          "--no-sysroot"
+        ]
+      },
+      "agreement": {
+        "cargo-modules": {
+          "agreed": {
+            "count": 115,
+            "sample": [
+              [
+                "ide",
+                "ide::annotations"
+              ],
+              [
+                "ide",
+                "ide::call_hierarchy"
+              ],
+              [
+                "ide",
+                "ide::doc_links"
+              ],
+              [
+                "ide",
+                "ide::expand_macro"
+              ],
+              [
+                "ide",
+                "ide::extend_selection"
+              ]
+            ]
+          },
+          "gantry_only": {
+            "count": 0,
+            "sample": []
+          },
+          "rival_only": {
+            "count": 42,
+            "sample": [
+              [
+                "ide::annotations",
+                "ide::navigation_target"
+              ],
+              [
+                "ide::call_hierarchy",
+                "ide"
+              ],
+              [
+                "ide::call_hierarchy",
+                "ide::navigation_target"
+              ],
+              [
+                "ide::goto_declaration",
+                "ide"
+              ],
+              [
+                "ide::goto_definition",
+                "ide"
+              ]
+            ]
+          },
+          "reasons": {
+            "scope: semantic definitions, re-exports and type dependencies are outside gantry resolution": 42
+          },
+          "review_required": 0
+        }
+      },
+      "measurements": {
+        "gantry": [],
+        "cargo-modules": []
+      }
+    },
+    "zig": {
+      "scope": "lib/std",
+      "selected_files": 565,
+      "gantry_edges": 996,
+      "gantry_sample": [
+        [
+          "lib/std/Build.zig",
+          "lib/std/Build/Cache.zig"
+        ],
+        [
+          "lib/std/Build.zig",
+          "lib/std/Build/Fuzz.zig"
+        ],
+        [
+          "lib/std/Build.zig",
+          "lib/std/Build/Module.zig"
+        ],
+        [
+          "lib/std/Build.zig",
+          "lib/std/Build/Step.zig"
+        ],
+        [
+          "lib/std/Build.zig",
+          "lib/std/Build/Watch.zig"
+        ]
+      ],
+      "commands": {
+        "gantry": [
+          "/private/tmp/gantry-compare/gantry/bin/compare-scan",
+          "/private/tmp/gantry-compare/repos/zig",
+          "/private/tmp/gantry-compare/design-final/zig/paths.txt"
+        ]
+      },
+      "agreement": {},
+      "measurements": {
+        "gantry": []
+      }
+    }
+  },
+  "rival_versions": {
+    "madge": "8.0.0",
+    "dependency-cruiser": "16.10.4",
+    "typescript": "5.7.3",
+    "pydeps": "3.0.8",
+    "grimp": "3.17",
+    "import-linter": "2.15",
+    "cargo-modules": "0.26.0"
+  },
+  "runtime_versions": {
+    "python": "3.13.2",
+    "zig": "0.16.0",
+    "go": "go version go1.27.1 darwin/arm64",
+    "rust": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "node": "v22.23.2"
+  },
+  "pydeps_noise_check": {
+    "noise_level": 1000000,
+    "agreed": 5182,
+    "gantry_only": 128,
+    "rival_only": 1,
+    "default_noise_removed_edges": 577,
+    "degrees": {
+      "django.utils": 314,
+      "django.core": 271
+    }
+  },
+  "harness_commit": "b2ba26c9da2a39dee65f2bff2f28c87e70ab0c62"
+}
