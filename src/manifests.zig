@@ -8,7 +8,8 @@ pub fn supported(path: []const u8) bool {
     for ([_][]const u8{ "build.zig.zon", "package.json", "Cargo.toml", "go.mod", "pyproject.toml" }) |s| if (std.mem.eql(u8, s, name)) return true;
     return false;
 }
-/// All strings borrow text or a; use an arena or copy the returned strings.
+/// a must be an arena: parser workspaces and strings share its lifetime.
+/// Returned declarations borrow text or that arena; parse does not own either.
 pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8) ![]const t.Dependency {
     var out: std.ArrayList(t.Dependency) = .empty;
     const name = p.base(path);
@@ -159,16 +160,16 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
                     entry = &out.items[out.items.len - 1];
                 }
                 if (value[0].kind == .string) {
-                    if (std.mem.eql(u8, key, "version")) entry.?.requirement = try l.decode(a, value[0].text);
-                    if (std.mem.eql(u8, key, "path") or std.mem.eql(u8, key, "git")) entry.?.source = try l.decode(a, value[0].text);
+                    if (std.mem.eql(u8, key, "version")) entry.?.requirement = try string(a, text, value[0]);
+                    if (std.mem.eql(u8, key, "path") or std.mem.eql(u8, key, "git")) entry.?.source = try string(a, text, value[0]);
                 }
             } else {
                 var dep: t.Dependency = .{ .manifest = path, .name = key, .group = group };
-                if (value[0].kind == .string) dep.requirement = try l.decode(a, value[0].text) else if (value[0].is("{")) {
+                if (value[0].kind == .string) dep.requirement = try string(a, text, value[0]) else if (value[0].is("{")) {
                     for (value, 0..) |token, j| {
                         if (j + 2 >= value.len or !value[j + 1].is("=")) continue;
                         if (value[j + 2].kind == .string) {
-                            const v = try l.decode(a, value[j + 2].text);
+                            const v = try string(a, text, value[j + 2]);
                             if (token.is("version")) dep.requirement = v;
                             if (token.is("path") or token.is("git")) dep.source = v;
                         } else if (token.is("workspace") and value[j + 2].is("true")) dep.source = "workspace";
@@ -179,14 +180,17 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
         } else if ((std.mem.eql(u8, group, "project") and std.mem.eql(u8, key, "dependencies")) or std.mem.eql(u8, group, "project.optional-dependencies") or std.mem.eql(u8, group, "dependency-groups")) {
             if (!value[0].is("[")) return error.InvalidManifest;
             const label = try std.fmt.allocPrint(a, "{s}.{s}", .{ group, key });
-            for (value) |token| if (token.kind == .string) {
-                try pythonDep(a, path, label, try l.decode(a, token.text), out);
-            };
+            var braces: usize = 0;
+            for (value) |token| {
+                if (token.is("{")) braces += 1;
+                if (token.is("}")) braces -= 1;
+                if (braces == 0 and token.kind == .string) try pythonDep(a, path, label, try string(a, text, token), out);
+            }
         } else if (std.mem.startsWith(u8, group, "tool.poetry.") and std.mem.endsWith(u8, group, "dependencies") and !std.mem.eql(u8, key, "python")) {
             var dep: t.Dependency = .{ .manifest = path, .name = key, .group = group };
-            if (value[0].kind == .string) dep.requirement = try l.decode(a, value[0].text) else for (value, 0..) |token, j| {
+            if (value[0].kind == .string) dep.requirement = try string(a, text, value[0]) else for (value, 0..) |token, j| {
                 if (j + 2 < value.len and value[j + 1].is("=") and value[j + 2].kind == .string) {
-                    const v = try l.decode(a, value[j + 2].text);
+                    const v = try string(a, text, value[j + 2]);
                     if (token.is("version")) dep.requirement = v;
                     if (token.is("git") or token.is("path") or token.is("url")) dep.source = v;
                 }
@@ -211,4 +215,8 @@ fn pythonDep(a: std.mem.Allocator, path: []const u8, group: []const u8, requirem
     const url = std.mem.indexOf(u8, raw, " @ ");
     const source = if (url) |u| std.mem.trim(u8, raw[u + 3 .. std.mem.indexOfScalarPos(u8, raw, u + 3, ';') orelse raw.len], " ") else "";
     try out.append(a, .{ .manifest = path, .name = raw[0..end], .requirement = raw, .source = source, .group = group });
+}
+
+fn string(a: std.mem.Allocator, text: []const u8, token: l.Token) ![]const u8 {
+    return if (text[token.offset] == '\'') token.text else try l.decode(a, token.text);
 }

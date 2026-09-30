@@ -173,3 +173,15 @@ test "DirReader and walk use a temp directory and caller pruning" {
     try eq(1, graph.edges.len);
     try std.testing.expectError(error.StreamTooLong, g.scan(a, paths.items, g.DirReader{ .io = io, .dir = tmp.dir, .limit = .limited(4) }, g.DirReader.read, .{}));
 }
+
+test "language extensions are explicit and unsupported files stay unread" {
+    var buffer: [32]u8 = undefined;
+    for ([_][]const u8{ ".zig", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts", ".py", ".go", ".rs" }) |ext| try expect(g.languageOf(try std.fmt.bufPrint(&buffer, "file{s}", .{ext})) != null);
+    try expect(g.languageOf(".zig") == null);
+    try expect(g.languageOf("a.ZIG") == null);
+    try expect(g.languageOf("a.java") == null);
+    try expect(g.languageOf("a.php") == null);
+    var graph = try g.scan(a, &.{"a.bin"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{});
+    defer graph.deinit();
+    try eq(1, graph.paths.len);
+}

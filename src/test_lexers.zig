@@ -156,3 +156,49 @@ test "JS regex after control flow and nested template expressions" {
         \\const t = `import('bad') ${import('./yes')} ${`raw ${require('./nested')}`}`;
     , &.{ "./yes", "./nested" });
 }
+
+test "prefixed C++ and Rust byte raw strings keep embedded syntax inert" {
+    try check(.c,
+        \\auto s = u8R"tag("quote"
+        \\#include "fake.h"
+        \\)tag";
+        \\auto w = LR"("more"
+        \\#include "fake.h"
+        \\)";
+        \\#include "real.h"
+    , &.{"real.h"});
+    try check(.rust,
+        \\let s = br##""quoted" mod fake; use crate::fake;"##;
+        \\mod real;
+    , &.{"real"});
+}
+test "C directives survive continued lines and multiline comments" {
+    try check(.c,
+        \\int a; /* comment
+        \\*/ # include \
+        \\ "real.h"
+    , &.{"real.h"});
+}
+test "owned raw imports outlive the source and clean up on allocation failure" {
+    const source = try std.testing.allocator.dupe(u8, "const p = @import(\"proto\"); const m = p.mirror;");
+    var parsed = try g.imports(std.testing.allocator, .zig, source);
+    defer parsed.deinit();
+    std.testing.allocator.free(source);
+    try eq("proto", parsed.items[0].name);
+    const S = struct {
+        fn run(a: std.mem.Allocator) !void {
+            var result = try g.imports(a, .zig, "const p = @import(\"proto\"); const m = p.mirror;");
+            defer result.deinit();
+        }
+    };
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, S.run, .{});
+}
+
+test "JS escapes retain Unicode characters and identity escapes in specifiers" {
+    try check(.javascript,
+        \\import './\xE9';
+        \\import './\u{1f600}';
+        \\import './\uD83D\uDE00';
+        \\require('./\q');
+    , &.{ "./é", "./😀", "./😀", "./q" });
+}

@@ -94,3 +94,21 @@ test "first matching layer wins and unspecified paths default to zero" {
     try eq(1, findings.len);
     try std.testing.expectEqualStrings("high", findings[0].edge.?.from);
 }
+
+test "raw import name rules are exact across package paths" {
+    var graph = try (f.Fixture{ .items = &.{.{ .path = "a.ts", .text = "import 'lookout'; import 'vendor/lookout';" }} }).scan(a, .{});
+    defer graph.deinit();
+    const findings = try graph.check(a, .{ .references = &.{.{ .name = "owner", .target = "lookout" }} });
+    defer a.free(findings);
+    try eq(1, findings.len);
+    try std.testing.expectEqualStrings("lookout", findings[0].reference.?.name);
+}
+test "fixture: proto sibling boundary covers unresolved and normalized literal paths" {
+    var graph = try (f.Fixture{ .items = &.{.{ .path = "proto/root.zig", .text = "const a = @import(\"./ok.zig\"); const b = @import(\"x/../ok.zig\"); const c = @import(\"../daemon/missing.zig\"); const d = @import(\"nested/missing.zig\"); const s = @import(\"std\");" }} }).scan(a, .{});
+    defer graph.deinit();
+    const findings = try graph.check(a, .{ .references = &.{.{ .name = "siblings", .from = "proto/*", .suffix = ".zig", .relative = true, .except_targets = &.{"proto/*.zig"} }} });
+    defer a.free(findings);
+    try eq(2, findings.len);
+    try std.testing.expectEqualStrings("../daemon/missing.zig", findings[0].reference.?.name);
+    try std.testing.expectEqualStrings("nested/missing.zig", findings[1].reference.?.name);
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# lookout -- every generated block in the documentation, regenerated and
+# gantry -- every generated block in the documentation, regenerated and
 # compared.
 #
 # A block between `<!-- BEGIN GENERATED <command> -->` and

@@ -86,11 +86,12 @@ pub fn lex(comptime lang: Language, a: std.mem.Allocator, text: []const u8) ![]c
             continue;
         }
         // Rust raw strings and C++ raw string literals.
-        if (lang == .rust and c == 'r') {
-            var q = i + 1;
+        if (lang == .rust and (c == 'r' or (c == 'b' and i + 1 < text.len and text[i + 1] == 'r'))) {
+            const prefix: usize = if (c == 'b') 2 else 1;
+            var q = i + prefix;
             while (q < text.len and text[q] == '#') : (q += 1) {}
             if (q < text.len and text[q] == '"') {
-                const hashes = q - i - 1;
+                const hashes = q - i - prefix;
                 i = q + 1;
                 while (i < text.len) : (i += 1) {
                     if (text[i] != '"' or i + 1 + hashes > text.len) continue;
@@ -104,18 +105,21 @@ pub fn lex(comptime lang: Language, a: std.mem.Allocator, text: []const u8) ![]c
                 continue;
             }
         }
-        if (lang == .c and c == 'R' and i + 1 < text.len and text[i + 1] == '"') {
-            const open = std.mem.indexOfScalarPos(u8, text, i + 2, '(') orelse text.len;
-            if (open -| (i + 2) <= 16 and open < text.len) {
-                const delimiter = text[i + 2 .. open];
-                i = open + 1;
-                while (i < text.len) : (i += 1) {
-                    if (text[i] == ')' and std.mem.startsWith(u8, text[i + 1 ..], delimiter) and i + 1 + delimiter.len < text.len and text[i + 1 + delimiter.len] == '"') {
-                        i += delimiter.len + 2;
-                        break;
+        if (lang == .c) {
+            const prefix: ?usize = if (std.mem.startsWith(u8, text[i..], "R\"")) 2 else if (std.mem.startsWith(u8, text[i..], "u8R\"")) 4 else if (std.mem.startsWith(u8, text[i..], "uR\"") or std.mem.startsWith(u8, text[i..], "UR\"") or std.mem.startsWith(u8, text[i..], "LR\"")) 3 else null;
+            if (prefix) |width| {
+                const open = std.mem.indexOfScalarPos(u8, text, i + width, '(') orelse text.len;
+                if (open -| (i + width) <= 16 and open < text.len) {
+                    const delimiter = text[i + width .. open];
+                    i = open + 1;
+                    while (i < text.len) : (i += 1) {
+                        if (text[i] == ')' and std.mem.startsWith(u8, text[i + 1 ..], delimiter) and i + 1 + delimiter.len < text.len and text[i + 1 + delimiter.len] == '"') {
+                            i += delimiter.len + 2;
+                            break;
+                        }
                     }
+                    continue;
                 }
-                continue;
             }
         }
         if (lang == .javascript and c == '/' and regex_allowed) {
@@ -211,6 +215,12 @@ pub fn compact(a: std.mem.Allocator, tokens: []const Token) ![]const Token {
 /// Decode the ordinary escapes shared by JS, Go and manifest literals.
 /// Unsupported escapes are an error rather than an invented path.
 pub fn decode(a: std.mem.Allocator, text: []const u8) ![]const u8 {
+    return decodeImpl(a, text, false);
+}
+pub fn decodeJS(a: std.mem.Allocator, text: []const u8) ![]const u8 {
+    return decodeImpl(a, text, true);
+}
+fn decodeImpl(a: std.mem.Allocator, text: []const u8, javascript: bool) ![]const u8 {
     if (std.mem.indexOfScalar(u8, text, '\\') == null) return text;
     var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
@@ -227,18 +237,32 @@ pub fn decode(a: std.mem.Allocator, text: []const u8) ![]const u8 {
             'r' => try out.append(a, '\r'),
             't' => try out.append(a, '\t'),
             '\n' => {},
+            'b' => try out.append(a, 8),
+            'f' => try out.append(a, 12),
+            'v' => try out.append(a, 11),
+            '0' => try out.append(a, 0),
             'x', 'u', 'U' => {
-                const n: usize = if (text[i] == 'x') 2 else if (text[i] == 'u') 4 else 8;
-                if (i + 1 + n > text.len) return error.InvalidEscape;
-                const code = std.fmt.parseInt(u21, text[i + 1 .. i + 1 + n], 16) catch return error.InvalidEscape;
-                if (n == 2) try out.append(a, @intCast(code)) else {
+                const escape = text[i];
+                const brace = javascript and escape == 'u' and i + 1 < text.len and text[i + 1] == '{';
+                const begin = i + (if (brace) @as(usize, 2) else 1);
+                const finish = if (brace) std.mem.indexOfScalarPos(u8, text, begin, '}') orelse return error.InvalidEscape else begin + (if (escape == 'x') @as(usize, 2) else if (escape == 'u') @as(usize, 4) else 8);
+                if (finish > text.len or finish == begin) return error.InvalidEscape;
+                var code = std.fmt.parseInt(u21, text[begin..finish], 16) catch return error.InvalidEscape;
+                i = if (brace) finish else finish - 1;
+                if (javascript and !brace and escape == 'u' and code >= 0xd800 and code <= 0xdbff) {
+                    if (i + 7 > text.len or !std.mem.eql(u8, text[i + 1 .. i + 3], "\\u")) return error.InvalidEscape;
+                    const low = std.fmt.parseInt(u21, text[i + 3 .. i + 7], 16) catch return error.InvalidEscape;
+                    if (low < 0xdc00 or low > 0xdfff) return error.InvalidEscape;
+                    code = 0x10000 + (code - 0xd800) * 0x400 + (low - 0xdc00);
+                    i += 6;
+                }
+                if (escape == 'x' and !javascript) try out.append(a, @intCast(code)) else {
                     var buf: [4]u8 = undefined;
                     const len = std.unicode.utf8Encode(code, &buf) catch return error.InvalidEscape;
                     try out.appendSlice(a, buf[0..len]);
                 }
-                i += n;
             },
-            else => return error.InvalidEscape,
+            else => if (javascript) try out.append(a, text[i]) else return error.InvalidEscape,
         }
     }
     return out.toOwnedSlice(a);

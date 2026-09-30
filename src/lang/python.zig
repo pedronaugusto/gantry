@@ -67,3 +67,35 @@ pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
     }
     return out.toOwnedSlice(a);
 }
+
+const p = @import("../path.zig");
+pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    const a = c.allocator;
+    const dir = p.dir(from);
+    const name = spec.name;
+    var dots: usize = 0;
+    while (dots < name.len and name[dots] == '.') : (dots += 1) {}
+    const rel = try std.mem.replaceOwned(u8, a, name[dots..], ".", "/");
+    if (dots > 0) {
+        var root = dir;
+        var n: usize = 1;
+        while (n < dots) : (n += 1) {
+            if (root.len == 0) return &.{};
+            root = p.dir(root);
+        }
+        var boundary: []const u8 = "";
+        for (c.python_roots) |search| if (p.within(search, dir) and search.len > boundary.len) {
+            boundary = search;
+        };
+        if (!p.within(boundary, root) or std.mem.eql(u8, boundary, root)) return &.{};
+        try c.python(&out, root, rel);
+    } else {
+        for (c.python_roots) |root| {
+            try c.python(&out, root, rel);
+            if (out.items.len > 0) break;
+        }
+    }
+    return out.toOwnedSlice(a);
+}
+pub const extensions = &[_][]const u8{".py"};

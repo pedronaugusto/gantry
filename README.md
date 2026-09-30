@@ -208,7 +208,10 @@ depths and caller-declared rule layers are separate things.
 so a test root can import an entry file without waiving the other rules.
 
 `references` restricts raw import names, optionally just unresolved ones or a
-particular Zig member. Exceptions can name permitted targets or importers.
+particular Zig member. Raw names match the whole name, including package path
+components. A suffix filter and relative-path normalization can restrict
+imports of missing files too, such as allowing only `proto/*.zig` as proto
+siblings. Exceptions can name permitted targets or importers.
 This expresses package ownership and an API member forbidden to one tree.
 `required` names exact paths that must exist, for layer tables with named
 modules. `no_cycles` names the rule that rejects every cyclic SCC.

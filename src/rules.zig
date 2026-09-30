@@ -13,6 +13,10 @@ pub const ReferenceRule = struct {
     from: []const u8 = "**",
     target: []const u8 = "**",
     member: ?[]const u8 = null,
+    /// Filter raw spellings, then optionally match the normalized path relative
+    /// to the importer. This can restrict even an import of a missing file.
+    suffix: ?[]const u8 = null,
+    relative: bool = false,
     /// false covers every import, true just those not resolved to files.
     unresolved_only: bool = false,
     except_targets: []const []const u8 = &.{},
@@ -58,12 +62,26 @@ pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Viola
         if (matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.append(a, .{ .rule = r.name, .reason = .entry, .edge = e });
     };
     for (rules.references) |r| for (g.references) |ref| {
-        if (!matches(r.from, ref.from) or !matches(r.target, ref.name) or (r.unresolved_only and ref.resolved)) continue;
+        if (!matches(r.from, ref.from) or (r.unresolved_only and ref.resolved)) continue;
+        if (r.suffix) |suffix| if (!std.mem.endsWith(u8, ref.name, suffix)) continue;
+        var normalized: ?[]const u8 = null;
+        defer if (normalized) |path| a.free(path);
+        if (r.relative) {
+            const dir = @import("path.zig").dir(ref.from);
+            const raw = try std.mem.join(a, "/", if (dir.len == 0) &.{ref.name} else &.{ dir, ref.name });
+            defer a.free(raw);
+            normalized = @import("path.zig").normalize(a, raw) catch |err| switch (err) {
+                error.InvalidPath => null,
+                else => return err,
+            };
+        }
+        const target_name = normalized orelse ref.name;
+        if (!matchesFull(r.target, target_name)) continue;
         if (r.member) |member| {
             if (ref.member == null or !matches(member, ref.member.?)) continue;
         } else if (ref.member != null) continue;
         var except = false;
-        for (r.except_targets) |target| if (matches(target, ref.name)) {
+        for (r.except_targets) |target| if (matchesFull(target, target_name)) {
             except = true;
         };
         for (r.except_from) |from| if (matches(from, ref.from)) {
@@ -79,10 +97,14 @@ pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Viola
         defer analysis.deinit();
         for (analysis.cycles) |cycle| {
             // Return the first witness edge; its paths borrow the graph, not analysis.
-            for (g.edges) |e| if (std.mem.eql(u8, e.from, cycle.path[0]) and std.mem.eql(u8, e.to, cycle.path[1])) {
-                try out.append(a, .{ .rule = name, .reason = .cycle, .edge = e });
-                break;
-            };
+            var low: usize = 0;
+            var high = g.edges.len;
+            const key: t.Edge = .{ .from = cycle.path[0], .to = cycle.path[1] };
+            while (low < high) {
+                const mid = low + (high - low) / 2;
+                if (t.edgesLess({}, g.edges[mid], key)) low = mid + 1 else high = mid;
+            }
+            try out.append(a, .{ .rule = name, .reason = .cycle, .edge = g.edges[low] });
         }
     }
     return out.toOwnedSlice(a);
@@ -92,6 +114,11 @@ pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Viola
 /// the basename. Byte and case exact on every platform; no regex engine.
 pub fn matches(pattern: []const u8, path: []const u8) bool {
     if (std.mem.indexOfScalar(u8, pattern, '/') == null and !std.mem.eql(u8, pattern, "**")) return component(pattern, @import("path.zig").base(path));
+    return matchesFull(pattern, path);
+}
+/// A raw import name is matched in full; unlike file rules, an unqualified
+/// pattern does not also match the basename of a package path.
+fn matchesFull(pattern: []const u8, path: []const u8) bool {
     var pi: usize = 0;
     var si: usize = 0;
     var retry_pattern: ?usize = null;

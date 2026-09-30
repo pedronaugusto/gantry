@@ -159,3 +159,12 @@ test "manifest dependencies are separate from internal graph and scan order dete
     try std.testing.expectEqualDeep(graph.dependencies, other.dependencies);
     try std.testing.expectEqualDeep(graph.references, other.references);
 }
+
+test "dependency group inclusion and TOML literal backslashes are not invented declarations" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const deps = try g.manifests.parse(arena.allocator(), "pyproject.toml", "[dependency-groups]\nall=[{ include-group = 'test' }, 'ruff']\n[tool.poetry.dependencies]\nlocal={path='dir\\name'}");
+    try eq(2, deps.len);
+    try dep(deps, "ruff", "");
+    try dep(deps, "local", "dir\\name");
+}

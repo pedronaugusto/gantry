@@ -19,14 +19,7 @@ pub const NamedModule = resolver.NamedModule;
 pub const rules = @import("rules.zig");
 pub const manifests = @import("manifests.zig");
 pub const path = @import("path.zig");
-const languages = struct {
-    pub const zig = @import("lang/zig.zig");
-    pub const c = @import("lang/c.zig");
-    pub const javascript = @import("lang/javascript.zig");
-    pub const python = @import("lang/python.zig");
-    pub const go = @import("lang/go.zig");
-    pub const rust = @import("lang/rust.zig");
-};
+const languages = @import("languages.zig");
 pub const Options = struct {
     kinds: []const Kind = &.{.import},
     manifests: bool = true,
@@ -36,15 +29,9 @@ pub const Options = struct {
 };
 pub fn languageOf(p: []const u8) ?Language {
     const ext = std.fs.path.extension(p);
-    const table = .{
-        .{ Language.zig, &[_][]const u8{".zig"} },
-        .{ Language.c, &[_][]const u8{ ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm" } },
-        .{ Language.javascript, &[_][]const u8{ ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts" } },
-        .{ Language.python, &[_][]const u8{".py"} },
-        .{ Language.go, &[_][]const u8{".go"} },
-        .{ Language.rust, &[_][]const u8{".rs"} },
-    };
-    inline for (table) |row| for (row[1]) |e| if (std.mem.eql(u8, ext, e)) return row[0];
+    inline for (comptime std.meta.tags(Language)) |lang| {
+        for (@field(languages, @tagName(lang)).extensions) |e| if (std.mem.eql(u8, ext, e)) return lang;
+    }
     return null;
 }
 /// Raw lexical references, owning source bytes and every slice until deinit.

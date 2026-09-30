@@ -30,7 +30,7 @@ fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, _: []const u8, off
             try emit(a, path.items, offset, out);
             if (t.is("}") and prefixes.items.len > 0) _ = prefixes.pop();
             path.clearRetainingCapacity();
-            if (prefixes.getLastOrNull()) |p| try path.appendSlice(a, p);
+            if (prefixes.getLastOrNull()) |prefix| try path.appendSlice(a, prefix);
             continue;
         }
         if (t.is("as")) {
@@ -46,3 +46,39 @@ fn emit(a: std.mem.Allocator, name: []const u8, offset: usize, out: *std.ArrayLi
     if (std.mem.startsWith(u8, name, "crate::") or std.mem.startsWith(u8, name, "super::") or std.mem.startsWith(u8, name, "self::"))
         try out.append(a, .{ .name = try a.dupe(u8, name), .offset = offset, .form = .rust_use });
 }
+
+const p = @import("../path.zig");
+pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    const a = c.allocator;
+    const dir = p.dir(from);
+    const name = spec.name;
+    var root = dir;
+    while (root.len > 0 and !std.mem.eql(u8, p.base(root), "src")) root = p.dir(root);
+    const filename = p.base(from);
+    var module_dir = dir;
+    if (!std.mem.eql(u8, filename, "mod.rs") and !std.mem.eql(u8, filename, "lib.rs") and !std.mem.eql(u8, filename, "main.rs")) module_dir = from[0 .. from.len - 3];
+    if (spec.form == .rust_mod) {
+        if (try c.candidate(module_dir, name, &.{ ".rs", "/mod.rs" })) |v| try out.append(a, v);
+    } else {
+        var s = name;
+        var base_dir = module_dir;
+        if (std.mem.startsWith(u8, s, "crate::")) {
+            base_dir = root;
+            s = s[7..];
+        } else if (std.mem.startsWith(u8, s, "self::")) s = s[6..] else while (std.mem.startsWith(u8, s, "super::")) {
+            base_dir = p.dir(base_dir);
+            s = s[7..];
+        }
+        var rel: []const u8 = try std.mem.replaceOwned(u8, a, s, "::", "/");
+        while (rel.len > 0) {
+            if (try c.candidate(base_dir, rel, &.{ ".rs", "/mod.rs" })) |v| {
+                try out.append(a, v);
+                break;
+            }
+            rel = p.dir(rel);
+        }
+    }
+    return out.toOwnedSlice(a);
+}
+pub const extensions = &[_][]const u8{".rs"};
