@@ -78,18 +78,25 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         try entry.value_ptr.append(a, p);
     };
     var modules: std.ArrayList(resolver.GoModule) = .empty;
+    var workspaces: std.ArrayList(@import("go_config.zig").Workspace) = .empty;
     var deps: std.ArrayList(Dependency) = .empty;
     var unread: std.ArrayList([]const u8) = .empty;
     // Read manifests first: Go imports need the module identity even when
     // manifest dependencies have been disabled.
     for (g.paths) |p| {
-        if (!manifests.supported(p) or (!options.manifests and !std.mem.eql(u8, path.base(p), "go.mod"))) continue;
+        const is_mod = std.mem.eql(u8, path.base(p), "go.mod");
+        const is_work = std.mem.eql(u8, path.base(p), "go.work");
+        if (!is_work and !is_mod and (!manifests.supported(p) or !options.manifests)) continue;
         const s = scratch.allocator();
         if (try read(context, p, s)) |text| {
-            if (std.mem.eql(u8, path.base(p), "go.mod")) if (manifests.modulePath(text)) |name| {
-                try modules.append(a, .{ .root = path.dir(p), .name = try a.dupe(u8, name) });
-            };
-            if (options.manifests) for (try manifests.parse(s, p, text)) |dep| {
+            if (is_mod or is_work) {
+                const parsed = try @import("go_config.zig").parse(a, path.dir(p), try a.dupe(u8, text));
+                if (is_mod) if (parsed.name) |name| {
+                    try modules.append(a, .{ .root = path.dir(p), .name = name, .requires = parsed.requires, .replacements = parsed.replacements });
+                };
+                if (is_work) try workspaces.append(a, .{ .root = path.dir(p), .uses = parsed.uses, .replacements = parsed.replacements });
+            }
+            if (options.manifests and manifests.supported(p)) for (try manifests.parse(s, p, text)) |dep| {
                 try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group) });
             };
         } else try unread.append(a, p);
@@ -111,7 +118,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
             _ = scratch.reset(.retain_capacity);
             continue;
         };
-        const ctx: resolver.Context = .{ .allocator = s, .files = &g.files, .packages = &packages, .go_modules = modules.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .ts_configs = configs };
+        const ctx: resolver.Context = .{ .allocator = s, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .ts_configs = configs };
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
             for (try extract(s, language.?, text)) |spec| {

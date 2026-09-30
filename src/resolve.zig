@@ -2,12 +2,13 @@ const std = @import("std");
 const p = @import("path.zig");
 const t = @import("types.zig");
 pub const NamedModule = struct { name: []const u8, path: []const u8, from: []const u8 = "**" };
-pub const GoModule = struct { root: []const u8, name: []const u8 };
+pub const GoModule = @import("go_config.zig").Module;
 pub const Context = struct {
     allocator: std.mem.Allocator,
     files: *const std.StringHashMapUnmanaged(void),
     packages: *const std.StringHashMapUnmanaged(std.ArrayList([]const u8)),
     go_modules: []const GoModule,
+    go_workspaces: []const @import("go_config.zig").Workspace = &.{},
     named_modules: []const NamedModule,
     include_roots: []const []const u8,
     python_roots: []const []const u8,

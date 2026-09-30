@@ -30,12 +30,67 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
         owner = m;
     };
     const m = owner orelse return &.{};
-    if (!p.within(m.name, name)) return &.{};
-    const tail = if (name.len == m.name.len) "" else name[m.name.len + 1 ..];
-    const joined = try std.fmt.allocPrint(a, "{s}/{s}", .{ m.root, tail });
-    const key = try p.normalize(a, if (m.root.len == 0) joined[1..] else joined);
-    // A nested module is its own compilation boundary.
-    for (c.go_modules) |other| if (other.root.len > m.root.len and p.within(other.root, key)) return &.{};
+    const config = @import("../go_config.zig");
+    var work: ?config.Workspace = null;
+    for (c.go_workspaces) |w| if (p.within(w.root, from) and config.used(w, m.root) and (work == null or w.root.len > work.?.root.len)) {
+        work = w;
+    };
+    var chosen: ?config.Module = null;
+    for (c.go_modules) |other| {
+        const eligible = std.mem.eql(u8, other.root, m.root) or (work != null and config.used(work.?, other.root));
+        if (eligible and p.within(other.name, name) and (chosen == null or other.name.len > chosen.?.name.len)) chosen = other;
+    }
+    var version: []const u8 = "";
+    var dependency: []const u8 = if (chosen) |v| v.name else "";
+    for (m.requires) |req| if (p.within(req.name, name) and req.name.len >= dependency.len) {
+        dependency = req.name;
+        version = req.version;
+    };
+    // A replacement can name a local dependency even when its declaration is
+    // absent from the selected manifest subset; wildcard directives are lexical.
+    for (m.replacements) |r| if (p.within(r.name, name) and r.name.len > dependency.len) {
+        dependency = r.name;
+    };
+    if (work) |w| {
+        for (w.replacements) |r| if (p.within(r.name, name) and r.name.len > dependency.len) {
+            dependency = r.name;
+        };
+        for (c.go_modules) |other| if (config.used(w, other.root)) {
+            for (other.requires) |req| if (p.within(req.name, name) and req.name.len > dependency.len) {
+                dependency = req.name;
+                version = req.version;
+            };
+        };
+    }
+    if (chosen) |main| {
+        // Workspace members (and the importing main module itself) use their
+        // workspace version, regardless of requirements or replacements.
+        const tail = if (name.len == main.name.len) "" else name[main.name.len + 1 ..];
+        const raw = try std.mem.join(a, "/", if (main.root.len == 0) &.{tail} else &.{ main.root, tail });
+        const key = try p.normalize(a, raw);
+        for (c.go_modules) |other| if (other.root.len > main.root.len and p.within(other.root, key)) return &.{};
+        if (c.packages.get(key)) |files| try out.appendSlice(a, files.items);
+        return out.toOwnedSlice(a);
+    }
+    if (dependency.len == 0) return &.{};
+    var route = config.replacement(m.replacements, dependency, version);
+    if (work) |w| {
+        var workspace_route: ?config.Replacement = null;
+        for (c.go_modules) |other| if (config.used(w, other.root)) {
+            if (config.replacement(other.replacements, dependency, version)) |r| {
+                if (workspace_route) |previous| {
+                    if (!std.mem.eql(u8, previous.root orelse "", r.root orelse "") and config.replacement(w.replacements, dependency, version) == null) return error.ConflictingReplacement;
+                }
+                workspace_route = r;
+            }
+        };
+        route = config.replacement(w.replacements, dependency, version) orelse workspace_route;
+    }
+    const root = if (route) |r| r.root orelse return &.{} else if (chosen) |v| v.root else return &.{};
+    const tail = if (name.len == dependency.len) "" else name[dependency.len + 1 ..];
+    const joined = try std.fmt.allocPrint(a, "{s}/{s}", .{ root, tail });
+    const key = try p.normalize(a, if (root.len == 0) joined[1..] else joined);
+    for (c.go_modules) |other| if (other.root.len > root.len and p.within(other.root, key)) return &.{};
     if (c.packages.get(key)) |files| try out.appendSlice(a, files.items);
     return out.toOwnedSlice(a);
 }
