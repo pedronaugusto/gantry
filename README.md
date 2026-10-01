@@ -76,7 +76,9 @@ exe.root_module.addImport("gantry", dep.module("gantry"));
 `Graph`, `Analysis`, `Imports` and `Paths` store their allocator. Call their
 `deinit` once. Their slices and strings belong to them until then. An
 analysis or aggregation survives the original graph. Rule findings borrow
-the graph's paths and the caller's rule names, so both must outlive them.
+graph storage and the caller's rule names and required-path strings
+(`rules.required[].paths[]`). Keep the graph and those strings alive until
+the findings are freed. Free only the returned slice.
 Managed values may be moved but must not be copied and deinitialized twice.
 
 The reader is a function

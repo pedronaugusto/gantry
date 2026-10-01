@@ -50,6 +50,9 @@ fn layer(r: OrderedLayers, path: []const u8) usize {
     for (r.layers, 0..) |item, i| for (item.patterns) |pattern| if (matches(pattern, path)) return i;
     return r.default_layer;
 }
+/// Findings borrow graph storage, rule names and required-path strings.
+/// Keep the graph and those caller strings alive until findings are freed.
+/// Free only the returned slice with a.free.
 pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Violation {
     var out: std.ArrayList(Violation) = .empty;
     errdefer out.deinit(a);

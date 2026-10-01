@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Breaking: `Analysis.init` now validates and orders inputs through `Graph.fromEdges`, returning explicit path and count errors.
+- Document that rule findings borrow required-path strings as well as graph storage and rule names.
 
 ### Added
 
