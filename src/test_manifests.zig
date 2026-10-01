@@ -168,3 +168,111 @@ test "dependency group inclusion and TOML literal backslashes are not invented d
     try dep(deps, "ruff", "");
     try dep(deps, "local", "dir\\name");
 }
+
+test "ZON selects root dependencies after nested blocks and decodes field names" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const deps = try g.manifests.parse(arena.allocator(), "build.zig.zon",
+        \\.{
+        \\ .other = .{ .dependencies = .{ .ghost = .{ .path = "../ghost" } } },
+        \\ .@"depend\x65ncies" = .{ .@"lib\x2dx" = .{ .@"pa\x74h" = "../real" } },
+        \\}
+    );
+    try eq(1, deps.len);
+    try dep(deps, "lib-x", "../real");
+    const nested = try g.manifests.parse(arena.allocator(), "build.zig.zon", ".{ .other = .{ .dependencies = .{ .ghost = .{ .path = \"../ghost\" } } } }");
+    try eq(0, nested.len);
+}
+
+test "ZON validates the whole document before extracting declarations" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    for ([_][]const u8{
+        ".{ .dependencies = .{ .ghost = .{ .path = \"../ghost\" } }, .other = }",
+        ".{ .dependencies = .{} } trailing",
+        ".{ .dependencies = .{} } .{}",
+        ".{ .note = @import(\"x\"), .dependencies = .{} }",
+        ".{ .note = \"\\q\", .dependencies = .{} }",
+        ".{ .note = 1 + 2, .dependencies = .{} }",
+        ".{ .note = 1, .note = 2, .dependencies = .{} }",
+        ".{ .dependencies = .{} }\x00",
+        "",
+        "42",
+        ".{ 1, 2 }",
+    }) |text| try std.testing.expectError(error.InvalidManifest, g.manifests.parse(arena.allocator(), "build.zig.zon", text));
+}
+
+test "ZON rejects malformed dependency field shapes" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    for ([_][]const u8{
+        ".{ .dependencies = 42 }",
+        ".{ .dependencies = .{ .x = .{ .lazy = 42 } } }",
+        ".{ .dependencies = .{ .x = .{ .url = \"x\", .path = \"x\" } } }",
+        ".{ .dependencies = .{ .x = .{ .path = false } } }",
+        ".{ .dependencies = .{ .x = .{ .url = .{ \"x\" } } } }",
+        ".{ .dependencies = .{ .x = .{ .hash = 42 } } }",
+        ".{ .dependencies = .{ .x = \"x\" } }",
+        ".{ .dependencies = .{ .x = .{ .path = \"x\" }, .x = .{ .path = \"y\" } } }",
+    }) |text| try std.testing.expectError(error.InvalidManifest, g.manifests.parse(arena.allocator(), "build.zig.zon", text));
+}
+
+test "ZON decodes multiline declaration strings and ignores nested metadata" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const deps = try g.manifests.parse(arena.allocator(), "pkg/build.zig.zon",
+        \\.{
+        \\ .name = .demo, .fingerprint = 0x1234, .minimum_zig_version = "0.16.0",
+        \\ .paths = .{ "src", "build.zig" },
+        \\ .dependencies = .{
+        \\   .lib = .{
+        \\     .url =
+        \\       \\https://host/lib
+        \\     ,
+        \\     .hash = "lib-0.1.0-\x61", .lazy = true,
+        \\     .metadata = .{ .path = "fake", .hash = "fake" },
+        \\   },
+        \\ },
+        \\}
+    );
+    try eq(1, deps.len);
+    try dep(deps, "lib", "https://host/lib");
+    try std.testing.expectEqualStrings("pkg/build.zig.zon", deps[0].manifest);
+    try std.testing.expectEqualStrings("lib-0.1.0-a", deps[0].requirement);
+    const empty = try g.manifests.parse(arena.allocator(), "build.zig.zon", ".{} // empty\n");
+    try eq(0, empty.len);
+}
+
+test "ZON scan propagates a malformed tail instead of returning a partial graph" {
+    const result = (f.Fixture{ .items = &.{
+        .{ .path = "build.zig.zon", .text = ".{ .dependencies = .{ .x = .{ .path = \"x\" } }, .tail = }" },
+        .{ .path = "a.zig", .text = "const b = @import(\"b.zig\");" },
+        .{ .path = "b.zig" },
+    } }).scan(a, .{});
+    if (result) |value| {
+        var graph = value;
+        defer graph.deinit();
+        return error.TestExpectedError;
+    } else |err| try eq(error.InvalidManifest, err);
+}
+
+fn zonAllocations(alloc: std.mem.Allocator) !void {
+    var arena: std.heap.ArenaAllocator = .init(alloc);
+    defer arena.deinit();
+    var text = ".{ .dependencies = .{ .@\"lib-x\" = .{ .path = \"../lib\" }, .remote = .{ .url = \"https://x\", .hash = \"abc\" } } }".*;
+    const deps = try g.manifests.parse(arena.allocator(), "build.zig.zon", &text);
+    @memset(&text, ' ');
+    try dep(deps, "lib-x", "../lib");
+    try dep(deps, "remote", "https://x");
+    try eq(2, deps.len);
+    try std.testing.expectEqualStrings("abc", deps[1].requirement);
+    _ = g.manifests.parse(arena.allocator(), "build.zig.zon", ".{ .dependencies = .{}, .tail = }") catch |err| {
+        if (err == error.OutOfMemory) return err;
+        try eq(error.InvalidManifest, err);
+        return;
+    };
+    return error.TestExpectedError;
+}
+test "ZON declarations outlive source and parser storage and release every failed allocation" {
+    try std.testing.checkAllAllocationFailures(a, zonAllocations, .{});
+}

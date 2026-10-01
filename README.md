@@ -108,7 +108,10 @@ convention.
 `Options.kinds` defaults to `&.{ .import, .@"test" }`; pass `&.{.import}`
 for production edges, or include `.link` and `.asset` explicitly. Kind filters
 select edges; raw references retain their source kind. Manifest declarations
-are read by default. Turning them off still reads selected `go.mod`, `go.work`
+are read by default. Invalid or cyclic resolution configs abort the scan as well. A caller that
+needs a structural view after an error can use `Graph.init(gpa, paths)`;
+that graph makes no claim about recovered dependencies.
+Turning them off still reads selected `go.mod`, `go.work`
 and JS/TS configs for resolution. Select configs and their local `extends`
 files along with code. Gantry never adds files the caller did not select.
 
@@ -251,13 +254,20 @@ All selected manifests are read, including those below the repository root.
 
 | Manifest | Declarations |
 |---|---|
-| `build.zig.zon` | `.dependencies`, quoted names, URLs, paths and hashes. Comments and strings containing braces do not change the block. |
+| `build.zig.zon` | Whole-document ZON validation and the root struct's `.dependencies`; quoted field names, URLs, paths, hashes and multiline strings. |
 | `package.json` | Dependencies, dev, peer and optional dependencies, with their string requirements. Uses `std.json`. |
 | `Cargo.toml` | Normal, dev, build, workspace and target dependency tables, inline dependency tables and separate per-dependency tables; versions, git, path and `workspace = true`. |
 | `go.mod` | `require` lines and blocks; full module paths, versions and sources. |
 | `pyproject.toml` | PEP 621 project and optional requirements, string dependency groups, and Poetry dependency groups; extras, markers and direct URLs remain in the requirement. |
 
-The ZON, TOML and Go readers extract declarations; they are not full format
+The ZON reader uses Zig's standard parser to validate the whole document
+before extracting the root struct's dependencies. Nested dependency blocks
+are ignored. Invalid syntax, duplicate fields, a non-struct root or dependency
+map, non-struct dependency entries, non-string URL/path/hash fields, conflicting
+URL/path fields and non-boolean lazy fields return `InvalidManifest`. Unknown
+fields still undergo ZON validation. This reads declarations; it does not
+validate the compiler's package schema, fingerprints or hash contents.
+The TOML and Go readers extract declarations; they are not full format
 validators. JSON and malformed dependency shapes are errors. General TOML
 multiline strings, dotted dependency keys, dependency-group inclusion,
 workspace inheritance resolution and lockfiles are outside scope. Go
