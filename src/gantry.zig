@@ -75,6 +75,10 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     var g = try Graph.init(gpa, paths);
     errdefer g.deinit();
     const a = g.arena.allocator();
+    // Resolution indexes live for this scan; only returned data lives in g.
+    var workspace: std.heap.ArenaAllocator = .init(gpa);
+    defer workspace.deinit();
+    const w = workspace.allocator();
     const Reader = @import("scan_reader.zig").Reader(@TypeOf(context), read);
     var reader: Reader = .{ .context = context, .allocator = gpa };
     defer reader.deinit();
@@ -89,16 +93,16 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
             info.package = try a.dupe(u8, info.package);
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
             try go_files.append(a, info);
-            if (!info.selected) try inactive.put(a, p, {});
+            if (!info.selected) try inactive.put(w, p, {});
         }
         _ = scratch.reset(.retain_capacity);
     };
     g.go_files = try go_files.toOwnedSlice(a);
     var packages: std.StringHashMapUnmanaged(std.ArrayList([]const u8)) = .empty;
     for (g.paths) |p| if (languageOf(p) == .go and !inactive.contains(p)) {
-        const entry = try packages.getOrPut(a, path.dir(p));
+        const entry = try packages.getOrPut(w, path.dir(p));
         if (!entry.found_existing) entry.value_ptr.* = .empty;
-        try entry.value_ptr.append(a, p);
+        try entry.value_ptr.append(w, p);
     };
     var modules: std.ArrayList(resolver.GoModule) = .empty;
     var workspaces: std.ArrayList(@import("go_config.zig").Workspace) = .empty;
@@ -112,11 +116,11 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         const s = scratch.allocator();
         if (try reader.readFile(p, s)) |text| {
             if (is_mod or is_work) {
-                const parsed = try @import("go_config.zig").parse(a, path.dir(p), try a.dupe(u8, text));
+                const parsed = try @import("go_config.zig").parse(w, path.dir(p), try w.dupe(u8, text));
                 if (is_mod) if (parsed.name) |name| {
-                    try modules.append(a, .{ .root = path.dir(p), .name = name, .requires = parsed.requires, .replacements = parsed.replacements });
+                    try modules.append(w, .{ .root = path.dir(p), .name = name, .requires = parsed.requires, .replacements = parsed.replacements });
                 };
-                if (is_work) try workspaces.append(a, .{ .root = path.dir(p), .uses = parsed.uses, .replacements = parsed.replacements });
+                if (is_work) try workspaces.append(w, .{ .root = path.dir(p), .uses = parsed.uses, .replacements = parsed.replacements });
             }
             if (options.manifests and manifests.supported(p)) for (try manifests.parse(s, p, text)) |dep| {
                 try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group) });
@@ -124,11 +128,11 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         }
         _ = scratch.reset(.retain_capacity);
     }
-    const configs = try @import("tsconfig.zig").load(a, gpa, g.paths, &g.files, &reader, Reader.readFile);
-    const index = try recover.names(a, g.paths);
-    const base_ctx: resolver.Context = .{ .allocator = a, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
-    const test_files = try @import("code_kind.zig").rustFiles(a, gpa, g.paths, base_ctx, &reader, Reader.readFile);
-    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(a, gpa, g.paths, base_ctx, &reader, Reader.readFile) else std.StringHashMapUnmanaged([]const []const u8).empty;
+    const configs = try @import("tsconfig.zig").load(w, gpa, g.paths, &g.files, &reader, Reader.readFile);
+    const index = try recover.names(w, g.paths);
+    const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
+    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile);
+    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
     for (g.paths) |p| {
@@ -143,7 +147,8 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
             _ = scratch.reset(.retain_capacity);
             continue;
         };
-        var ctx: resolver.Context = .{ .allocator = s, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
+        var ctx = base_ctx;
+        ctx.allocator = s;
         ctx.python_reexports = &reexports;
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
@@ -206,7 +211,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     }.less);
     g.references = try refs.toOwnedSlice(a);
     g.dependencies = try deps.toOwnedSlice(a);
-    g.unread = try reader.unreadPaths(a);
+    g.unread = try reader.unreadPaths(a, &g.files);
     return g;
 }
 /// Reader over an already-open directory; directory ownership stays with caller.

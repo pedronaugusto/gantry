@@ -16,11 +16,12 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
             if (bytes == null) try self.unread.put(self.allocator, path, {});
             return bytes;
         }
-        pub fn unreadPaths(self: *const Self, a: std.mem.Allocator) ![]const []const u8 {
+        /// Use graph-owned keys; config paths can belong to scan workspaces.
+        pub fn unreadPaths(self: *const Self, a: std.mem.Allocator, files: *const std.StringHashMapUnmanaged(void)) ![]const []const u8 {
             const paths = try a.alloc([]const u8, self.unread.count());
             var keys = self.unread.keyIterator();
             var i: usize = 0;
-            while (keys.next()) |key| : (i += 1) paths[i] = key.*;
+            while (keys.next()) |key| : (i += 1) paths[i] = files.getKey(key.*).?;
             std.mem.sort([]const u8, paths, {}, @import("types.zig").stringsLess);
             return paths;
         }

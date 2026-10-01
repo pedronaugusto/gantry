@@ -234,6 +234,35 @@ test "config loading resets reader scratch between files" {
     try boundedScratch("tsconfig.json", true);
 }
 
+test "returned graphs release construction-only resolution storage" {
+    const padding = try a.alloc(u8, 1024 * 1024);
+    defer a.free(padding);
+    @memset(padding, 'x');
+    const config = try std.fmt.allocPrint(a, "{{\"ignored\":\"{s}\",\"extends\":\"./base.json\",\"compilerOptions\":{{\"baseUrl\":\"src\"}}}}", .{padding});
+    defer a.free(config);
+    var accounting: std.testing.FailingAllocator = .init(a, .{});
+    {
+        var graph = try (f.Fixture{ .items = &.{
+            .{ .path = "tsconfig.json", .text = config },
+            .{ .path = "base.json", .text = null },
+            .{ .path = "src/app.ts", .text = "import 'util';" },
+            .{ .path = "src/util.ts" },
+        } }).scan(accounting.allocator(), .{});
+        defer graph.deinit();
+        // The ignored config string is needed only during construction.
+        // Returned nodes, edges, references and unread paths are much smaller.
+        const retained = accounting.allocated_bytes - accounting.freed_bytes;
+        if (retained > 512 * 1024) {
+            std.debug.print("graph retained {d} bytes of construction storage\n", .{retained});
+            return error.ConstructionStorageRetained;
+        }
+        try f.edge(&graph, "src/app.ts", "src/util.ts", .import, 1);
+        try std.testing.expectEqualStrings("util", graph.references[0].name);
+        try std.testing.expectEqualDeep(&[_][]const u8{"base.json"}, graph.unread);
+    }
+    try eq(accounting.allocated_bytes, accounting.freed_bytes);
+}
+
 test "DirReader and walk use a temp directory and caller pruning" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
