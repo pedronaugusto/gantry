@@ -117,3 +117,23 @@ test "absolute config paths never become relative to the config directory" {
         try std.testing.expect(!graph.references()[0].resolved);
     }
 }
+
+test "invalid config shapes abort rather than silently disabling resolution options" {
+    for ([_][]const u8{
+        "[]",
+        "null",
+        "{\"extends\": false}",
+        "{\"extends\": [\"./base\", 42]}",
+        "{\"compilerOptions\": []}",
+        "{\"compilerOptions\": {\"baseUrl\": false}}",
+        "{\"compilerOptions\": {\"paths\": []}}",
+        "{\"compilerOptions\": {\"paths\": {\"alias\": [42]}}}",
+    }) |text| {
+        const result = (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = text }} }).scan(a, .{ .manifests = false });
+        if (result) |value| {
+            var graph = value;
+            defer graph.deinit();
+            return error.TestExpectedError;
+        } else |err| try std.testing.expectEqual(error.InvalidConfig, err);
+    }
+}

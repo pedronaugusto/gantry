@@ -109,12 +109,12 @@ joining it to a source or config directory does not make it relative.
 `Options.kinds` defaults to `&.{ .import, .@"test" }`; pass `&.{.import}`
 for production edges, or include `.link` and `.asset` explicitly. Kind filters
 select edges; raw references retain their source kind. Manifest declarations
-are read by default. Invalid or cyclic resolution configs abort the scan as well. A caller that
-needs a structural view after an error can use `Graph.init(gpa, paths)`;
-that graph makes no claim about recovered dependencies.
-Turning them off still reads selected `go.mod`, `go.work`
+are read by default. Turning them off still reads selected `go.mod`, `go.work`
 and JS/TS configs for resolution. Select configs and their local `extends`
 files along with code. Gantry never adds files the caller did not select.
+Invalid or cyclic resolution configs abort the scan. A caller that needs a
+structural view after an error can use `Graph.init(gpa, paths)`; that graph
+makes no claim about recovered dependencies.
 
 ## The graph
 
@@ -186,7 +186,10 @@ keywords. Resolution is against the selected path set.
 | Rust | External `mod name;`, `use crate::`, `super::`, `self::`, aliases and nested use trees. File modules use `name.rs` or `name/mod.rs`; child modules of `foo.rs` live under `foo/`. Uses resolve the longest selected module prefix, including lexical inline-module scope. Explicit test guards and test modules carry a test kind. | No macro expansion, general `cfg` evaluation, `#[path]`, semantic definitions, reexports or type resolution. The nearest `src` directory is the crate root; nonstandard roots need caller edges. External crate uses are not file edges. |
 
 JS/TS configs accept JSONC comments and trailing commas. Other syntax and
-unterminated comments are errors. The nearest selected
+unterminated comments are errors. The root and `compilerOptions` must be
+objects; `extends` must be a string or an array of strings, `baseUrl` a string,
+and `paths` an object of string arrays. Wrong types return `InvalidConfig`.
+The nearest selected
 `tsconfig.json` (preferred over `jsconfig.json` in the same directory) supplies
 `compilerOptions.baseUrl` and `paths`. Relative local `extends` chains and
 arrays inherit options; child `paths` replace the inherited map. Cycles are

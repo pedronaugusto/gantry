@@ -13,6 +13,25 @@ const Entry = struct { config: Config, value: Value = .null, parents: []const []
 fn field(v: Value, key: []const u8) Value {
     return if (v == .object) v.object.get(key) orelse .null else .null;
 }
+fn validate(value: Value) error{InvalidConfig}!void {
+    if (value != .object) return error.InvalidConfig;
+    if (value.object.get("extends")) |ext| switch (ext) {
+        .string => {},
+        .array => |parents| for (parents.items) |parent| {
+            if (parent != .string) return error.InvalidConfig;
+        },
+        else => return error.InvalidConfig,
+    };
+    if (value.object.get("compilerOptions")) |opts| {
+        if (opts != .object) return error.InvalidConfig;
+        if (opts.object.get("baseUrl")) |base| {
+            if (base != .string) return error.InvalidConfig;
+        }
+        if (opts.object.get("paths")) |paths| {
+            if (paths != .object) return error.InvalidConfig;
+        }
+    }
+}
 fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
     return @import("resolve_path.zig").join(a, root, name, "") catch |err| switch (err) {
         error.InvalidPath => null,
@@ -38,6 +57,7 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         defer _ = scratch.reset(.retain_capacity);
         const text = (try read(context, file, s)) orelse continue;
         const value = try @import("jsonc.zig").parse(a, s, text);
+        try validate(value);
         entries.items[i].value = value;
         const ext = field(value, "extends");
         var parents: std.ArrayList([]const u8) = .empty;
