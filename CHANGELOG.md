@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Keep absolute reference and config paths unresolved through one repository-relative resolution join instead of interpreting them beside the source or config.
 - Parse JSONC configs with JSON-specific comment and comma handling, rejecting source syntax and unterminated comments instead of dropping them.
 - Validate whole ZON documents before reading root dependencies, decode quoted fields and multiline strings, and return `InvalidManifest` for malformed input.
 

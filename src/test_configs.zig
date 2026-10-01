@@ -101,3 +101,19 @@ test "JSONC comments and trailing commas preserve strings and inherited aliases"
     defer graph.deinit();
     try f.edge(&graph, "app.ts", "dep.ts", .import, 1);
 }
+
+test "absolute config paths never become relative to the config directory" {
+    for ([_][]const u8{
+        "{\"compilerOptions\": {\"baseUrl\": \"/src\"}}",
+        "{\"compilerOptions\": {\"paths\": {\"dep\": [\"/src/dep\"]}}}",
+    }) |text| {
+        var graph = try (f.Fixture{ .items = &.{
+            .{ .path = "config/tsconfig.json", .text = text },
+            .{ .path = "config/app.ts", .text = "import 'dep';" },
+            .{ .path = "config/src/dep.ts" },
+        } }).scan(a, .{ .manifests = false });
+        defer graph.deinit();
+        try std.testing.expectEqual(0, graph.edges().len);
+        try std.testing.expect(!graph.references()[0].resolved);
+    }
+}

@@ -1,6 +1,5 @@
 //! Local module routing, independent of dependency declaration extraction.
 const std = @import("std");
-const p = @import("path.zig");
 const l = @import("lexer.zig");
 pub const Requirement = struct { name: []const u8, version: []const u8 };
 pub const Replacement = struct { name: []const u8, version: []const u8, root: ?[]const u8 };
@@ -34,8 +33,7 @@ fn words(a: std.mem.Allocator, line: []const u8) ![]const []const u8 {
 }
 fn local(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
     if (!std.mem.eql(u8, name, ".") and !std.mem.eql(u8, name, "..") and !std.mem.startsWith(u8, name, "./") and !std.mem.startsWith(u8, name, "../")) return null;
-    const raw = try std.mem.join(a, "/", if (root.len == 0) &.{name} else &.{ root, name });
-    return p.normalize(a, raw) catch |err| switch (err) {
+    return @import("resolve_path.zig").join(a, root, name, "") catch |err| switch (err) {
         error.InvalidPath => null,
         else => return err,
     };

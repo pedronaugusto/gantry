@@ -18,9 +18,7 @@ pub const Context = struct {
     ts_configs: []const @import("tsconfig.zig").Config = &.{},
     pub fn candidate(c: Context, root: []const u8, name: []const u8, suffixes: []const []const u8) !?[]const u8 {
         for (suffixes) |suffix| {
-            const raw = try std.fmt.allocPrint(c.allocator, "{s}/{s}{s}", .{ root, name, suffix });
-            // A leading slash is a join separator only for an empty root.
-            const norm = p.normalize(c.allocator, if (root.len == 0) raw[1..] else raw) catch |err| switch (err) {
+            const norm = @import("resolve_path.zig").join(c.allocator, root, name, suffix) catch |err| switch (err) {
                 error.InvalidPath => continue,
                 else => return err,
             };

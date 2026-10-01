@@ -296,3 +296,17 @@ test "language extensions are explicit and unsupported files stay unread" {
     defer graph.deinit();
     try eq(1, graph.paths().len);
 }
+
+test "absolute references stay unresolved beside matching relative files" {
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "src/a.zig", .text = "const abs = @import(\"/b.zig\"); const rel = @import(\"b.zig\");" },
+        .{ .path = "src/b.zig" },
+        .{ .path = "c/main.c", .text = "#include \"/x.h\"\n#include \"x.h\"" },
+        .{ .path = "c/x.h" },
+    } }).scan(a, .{ .manifests = false });
+    defer graph.deinit();
+    for (graph.references()) |ref| if (ref.name[0] == '/') try expect(!ref.resolved);
+    try f.edge(&graph, "src/a.zig", "src/b.zig", .import, 1);
+    try f.edge(&graph, "c/main.c", "c/x.h", .import, 1);
+    try eq(2, graph.edges().len);
+}

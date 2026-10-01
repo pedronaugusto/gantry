@@ -14,8 +14,7 @@ fn field(v: Value, key: []const u8) Value {
     return if (v == .object) v.object.get(key) orelse .null else .null;
 }
 fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
-    const raw = try std.mem.join(a, "/", if (root.len == 0) &.{name} else &.{ root, name });
-    return p.normalize(a, raw) catch |err| switch (err) {
+    return @import("resolve_path.zig").join(a, root, name, "") catch |err| switch (err) {
         error.InvalidPath => null,
         else => return err,
     };

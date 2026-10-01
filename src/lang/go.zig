@@ -66,8 +66,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
         // Workspace members (and the importing main module itself) use their
         // workspace version, regardless of requirements or replacements.
         const tail = if (name.len == main.name.len) "" else name[main.name.len + 1 ..];
-        const raw = try std.mem.join(a, "/", if (main.root.len == 0) &.{tail} else &.{ main.root, tail });
-        const key = try p.normalize(a, raw);
+        const key = try @import("../resolve_path.zig").join(a, main.root, tail, "");
         for (c.go_modules) |other| if (other.root.len > main.root.len and p.within(other.root, key)) return &.{};
         if (c.packages.get(key)) |files| try out.appendSlice(a, files.items);
         return out.toOwnedSlice(a);
@@ -88,8 +87,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     }
     const root = if (route) |r| r.root orelse return &.{} else if (chosen) |v| v.root else return &.{};
     const tail = if (name.len == dependency.len) "" else name[dependency.len + 1 ..];
-    const joined = try std.fmt.allocPrint(a, "{s}/{s}", .{ root, tail });
-    const key = try p.normalize(a, if (root.len == 0) joined[1..] else joined);
+    const key = try @import("../resolve_path.zig").join(a, root, tail, "");
     for (c.go_modules) |other| if (other.root.len > root.len and p.within(other.root, key)) return &.{};
     if (c.packages.get(key)) |files| try out.appendSlice(a, files.items);
     return out.toOwnedSlice(a);

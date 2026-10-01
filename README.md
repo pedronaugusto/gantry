@@ -103,7 +103,8 @@ platform. `.` and `..` are normalized; absolute paths, drives, backslashes,
 NUL and traversal above the root are refused. Duplicate normalized paths
 become one node. Comparison is byte and case exact. The reader receives the
 normalized spelling. Resolver roots and named-module paths use this same
-convention.
+convention. An absolute reference cannot resolve beside its source file;
+joining it to a source or config directory does not make it relative.
 
 `Options.kinds` defaults to `&.{ .import, .@"test" }`; pass `&.{.import}`
 for production edges, or include `.link` and `.asset` explicitly. Kind filters
