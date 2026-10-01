@@ -1,7 +1,6 @@
 //! Selected repository configs only: JSONC, local extends and compilerOptions.
 const std = @import("std");
 const p = @import("path.zig");
-const l = @import("lexer.zig");
 const Value = std.json.Value;
 pub const Mapping = struct { pattern: []const u8, targets: []const []const u8 };
 pub const Config = struct {
@@ -21,16 +20,6 @@ fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
         else => return err,
     };
 }
-fn jsonc(a: std.mem.Allocator, scratch: std.mem.Allocator, text: []const u8) !Value {
-    const tokens = try l.compact(scratch, try l.lex(.javascript, scratch, text));
-    var clean: std.ArrayList(u8) = .empty;
-    for (tokens, 0..) |token, i| {
-        if (token.is(",") and i + 1 < tokens.len and (tokens[i + 1].is("}") or tokens[i + 1].is("]"))) continue;
-        try clean.appendSlice(scratch, text[token.offset..token.end]);
-        try clean.append(scratch, ' ');
-    }
-    return std.json.parseFromSliceLeaky(Value, a, clean.items, .{ .allocate = .alloc_always });
-}
 fn configName(name: []const u8) bool {
     return std.mem.eql(u8, name, "tsconfig.json") or std.mem.eql(u8, name, "jsconfig.json");
 }
@@ -49,7 +38,7 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
         const text = (try read(context, file, s)) orelse continue;
-        const value = try jsonc(a, s, text);
+        const value = try @import("jsonc.zig").parse(a, s, text);
         entries.items[i].value = value;
         const ext = field(value, "extends");
         var parents: std.ArrayList([]const u8) = .empty;

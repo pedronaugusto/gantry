@@ -67,3 +67,37 @@ test "TS config reads stay in a temporary repository and own reader scratch byte
     defer graph.deinit();
     try f.edge(&graph, "src/app.ts", "src/util.d.ts", .import, 1);
 }
+
+test "JSONC config parsing rejects source syntax and unterminated comments" {
+    for ([_][]const u8{
+        "{} /* unterminated",
+        "{} `ignored template`",
+        "{} /ignored_regex/",
+        "{\"compilerOptions\": {\"baseUrl\": \".\"}} /* unterminated",
+    }) |text| {
+        const result = (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = text }} }).scan(a, .{ .manifests = false });
+        if (result) |value| {
+            var graph = value;
+            defer graph.deinit();
+            return error.TestExpectedError;
+        } else |err| try std.testing.expectEqual(error.SyntaxError, err);
+    }
+}
+
+test "JSONC comments and trailing commas preserve strings and inherited aliases" {
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "tsconfig.json", .text =
+        \\{
+        \\ "note": "/* ,} */ // escaped \" quote",
+        \\ "compilerOptions": {
+        \\   "paths": { "alias": [ "dep", /* comment */ ], // line comment
+        \\   },
+        \\ }, /* final comment */
+        \\}
+        },
+        .{ .path = "app.ts", .text = "import 'alias';" },
+        .{ .path = "dep.ts" },
+    } }).scan(a, .{ .manifests = false });
+    defer graph.deinit();
+    try f.edge(&graph, "app.ts", "dep.ts", .import, 1);
+}

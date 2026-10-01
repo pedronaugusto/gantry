@@ -184,7 +184,8 @@ keywords. Resolution is against the selected path set.
 | Go | Single/grouped imports, aliases, dot/blank imports, ordinary/raw strings. Selected `go.mod` identities, local replacements and `go.work` use/replace routing. Imports expand to selected package files; nested modules are boundaries. Constraints and package names are retained. | No vendoring, module download, transitive version solving, cgo processing or compiler invocation. Version-specific replacements use selected requirements. Local paths must be relative and remain inside the repository. No module suffix guessing. |
 | Rust | External `mod name;`, `use crate::`, `super::`, `self::`, aliases and nested use trees. File modules use `name.rs` or `name/mod.rs`; child modules of `foo.rs` live under `foo/`. Uses resolve the longest selected module prefix, including lexical inline-module scope. Explicit test guards and test modules carry a test kind. | No macro expansion, general `cfg` evaluation, `#[path]`, semantic definitions, reexports or type resolution. The nearest `src` directory is the crate root; nonstandard roots need caller edges. External crate uses are not file edges. |
 
-JS/TS configs accept JSONC comments and trailing commas. The nearest selected
+JS/TS configs accept JSONC comments and trailing commas. Other syntax and
+unterminated comments are errors. The nearest selected
 `tsconfig.json` (preferred over `jsconfig.json` in the same directory) supplies
 `compilerOptions.baseUrl` and `paths`. Relative local `extends` chains and
 arrays inherit options; child `paths` replace the inherited map. Cycles are
