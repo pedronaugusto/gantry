@@ -4,6 +4,7 @@ const t = @import("types.zig");
 const resolver = @import("resolve.zig");
 const recover = @import("recover.zig");
 const Graph = @import("graph_store.zig");
+const diagnostics = @import("scan_diagnostic.zig");
 const manifests = @import("manifests.zig");
 const path = @import("path.zig");
 const languages = @import("languages.zig");
@@ -44,7 +45,19 @@ fn enabled(options: Options, kind: Kind) bool {
 /// allocations are released after each file. Input paths and options are copied
 /// where needed, so nothing returned borrows them or the file bytes.
 pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options) !@import("Graph.zig").Graph {
-    const g = try Graph.init(gpa, paths);
+    return scanWithDiagnostic(gpa, paths, context, read, options, null);
+}
+/// Clears the caller's diagnostic on entry. On failure it owns the failed
+/// path, phase and original cause after all scan storage has been released.
+/// A null diagnostic has the same behavior as `scan`. Reporting never changes
+/// the returned error; if its path copy runs out of memory, the path is null.
+pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, diagnostic: ?*diagnostics.ScanDiagnostic) !@import("Graph.zig").Graph {
+    diagnostics.reset(diagnostic);
+    var progress: diagnostics.Progress = .{ .diagnostic = diagnostic };
+    const g = Graph.initTracked(gpa, paths, &progress) catch |cause| {
+        progress.fail(cause);
+        return cause;
+    };
     errdefer g.deinit();
     const a = g.arena.allocator();
     // Resolution indexes live for this scan; only returned data lives in g.
@@ -52,15 +65,18 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     defer workspace.deinit();
     const w = workspace.allocator();
     const Reader = @import("scan_reader.zig").Reader(@TypeOf(context), read);
-    var reader: Reader = .{ .context = context, .allocator = gpa };
+    var reader: Reader = .{ .context = context, .allocator = gpa, .progress = &progress };
     defer reader.deinit();
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
+    // Runs before any path-owning storage is destroyed.
+    errdefer |cause| progress.fail(cause);
     var go_files: std.ArrayList(GoFile) = .empty;
     var inactive: std.StringHashMapUnmanaged(void) = .empty;
     for (g.paths) |p| if (languageOf(p) == .go) {
         const s = scratch.allocator();
         if (try reader.readFile(p, s)) |text| {
+            progress.at(.go_constraints, p);
             var info = try @import("go_build.zig").parse(s, p, text, options.go_target);
             info.package = try a.dupe(u8, info.package);
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
@@ -69,9 +85,11 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         }
         _ = scratch.reset(.retain_capacity);
     };
+    progress.at(.go_constraints, null);
     g.go_files = try go_files.toOwnedSlice(a);
     var packages: std.StringHashMapUnmanaged(std.ArrayList([]const u8)) = .empty;
     for (g.paths) |p| if (languageOf(p) == .go and !inactive.contains(p)) {
+        progress.at(.resolution, p);
         const entry = try packages.getOrPut(w, path.dir(p));
         if (!entry.found_existing) entry.value_ptr.* = .empty;
         try entry.value_ptr.append(w, p);
@@ -87,6 +105,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         if (!is_work and !is_mod and (!manifests.supported(p) or !options.manifests)) continue;
         const s = scratch.allocator();
         if (try reader.readFile(p, s)) |text| {
+            progress.at(.manifests, p);
             if (is_mod or is_work) {
                 const parsed = try @import("go_config.zig").parse(w, path.dir(p), try w.dupe(u8, text));
                 if (is_mod) if (parsed.name) |name| {
@@ -100,11 +119,12 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         }
         _ = scratch.reset(.retain_capacity);
     }
-    const configs = try @import("tsconfig.zig").load(w, gpa, g.paths, &g.files, &reader, Reader.readFile);
+    const configs = try @import("tsconfig.zig").load(w, gpa, g.paths, &g.files, &reader, Reader.readFile, &progress);
+    progress.at(.resolution, null);
     const index = try recover.names(w, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
-    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile);
-    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile) else std.StringHashMapUnmanaged([]const []const u8).empty;
+    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &progress);
+    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
     for (g.paths) |p| {
@@ -124,8 +144,10 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         ctx.python_reexports = &reexports;
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
+            progress.at(.imports, p);
             const specs = try extract(s, language.?, text);
             for (specs) |spec| {
+                progress.at(.resolution, p);
                 const kind: Kind = if (spec.kind == .@"test" or test_files.contains(p) or @import("code_kind.zig").file(language.?, p)) .@"test" else .import;
                 const targets = try ctx.targets(p, language.?, spec);
                 try refs.append(a, .{ .from = p, .name = try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| try a.dupe(u8, member) else null, .resolved = targets.len > 0, .kind = kind });
@@ -148,15 +170,22 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
                 }
             }
         }
-        if (links) for (try recover.links(s, text)) |spec| {
-            if (try recover.linkTarget(ctx, &index, p, spec)) |target| if (!std.mem.eql(u8, target, p)) try edges.append(a, .{ .from = p, .to = g.files.getKey(target).?, .kind = .link });
-        };
-        if (assets) for (try recover.assets(s, text)) |spec| {
-            const target = (try ctx.candidate("", spec.name, &.{""})) orelse (try ctx.candidate(path.dir(p), spec.name, &.{""})) orelse continue;
-            if (!std.mem.eql(u8, target, p)) try edges.append(a, .{ .from = p, .to = g.files.getKey(target).?, .kind = .asset });
-        };
+        if (links) {
+            progress.at(.links, p);
+            for (try recover.links(s, text)) |spec| {
+                if (try recover.linkTarget(ctx, &index, p, spec)) |target| if (!std.mem.eql(u8, target, p)) try edges.append(a, .{ .from = p, .to = g.files.getKey(target).?, .kind = .link });
+            }
+        }
+        if (assets) {
+            progress.at(.assets, p);
+            for (try recover.assets(s, text)) |spec| {
+                const target = (try ctx.candidate("", spec.name, &.{""})) orelse (try ctx.candidate(path.dir(p), spec.name, &.{""})) orelse continue;
+                if (!std.mem.eql(u8, target, p)) try edges.append(a, .{ .from = p, .to = g.files.getKey(target).?, .kind = .asset });
+            }
+        }
         _ = scratch.reset(.retain_capacity);
     }
+    progress.at(.graph, null);
     g.edges = try Graph.coalesce(try edges.toOwnedSlice(a));
     std.mem.sort(Reference, refs.items, {}, struct {
         fn less(_: void, x: Reference, y: Reference) bool {

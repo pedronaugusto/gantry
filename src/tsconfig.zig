@@ -41,12 +41,14 @@ fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
 fn configName(name: []const u8) bool {
     return std.mem.eql(u8, name, "tsconfig.json") or std.mem.eql(u8, name, "jsconfig.json");
 }
-pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype) ![]const Config {
+pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype, progress: *@import("scan_diagnostic.zig").Progress) ![]const Config {
+    progress.at(.configs, null);
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
     var entries: std.ArrayList(Entry) = .empty;
     var index: std.StringHashMapUnmanaged(usize) = .empty;
     for (paths) |file| if (configName(p.base(file))) {
+        progress.at(.configs, file);
         try index.put(a, file, entries.items.len);
         try entries.append(a, .{ .config = .{ .path = file } });
     };
@@ -56,6 +58,7 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
         const text = (try read(context, file, s)) orelse continue;
+        progress.at(.configs, file);
         const value = try @import("jsonc.zig").parse(a, s, text);
         try validate(value);
         entries.items[i].value = value;
@@ -79,9 +82,10 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
     }
     var remaining = entries.items.len;
     while (remaining > 0) {
-        var progress = false;
+        var made_progress = false;
         for (entries.items) |*entry| {
             if (entry.done) continue;
+            progress.at(.configs, entry.config.path);
             var ready = true;
             for (entry.parents) |parent| if (!entries.items[index.get(parent).?].done) {
                 ready = false;
@@ -120,10 +124,25 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
             entry.config = cfg;
             entry.done = true;
             remaining -= 1;
-            progress = true;
+            made_progress = true;
         }
-        if (!progress) return error.ConfigCycle;
+        if (!made_progress) {
+            // Following unfinished parents for at least the entry count lands
+            // inside a cycle, rather than in a config merely depending on it.
+            var cyclic: usize = for (entries.items, 0..) |entry, n| {
+                if (!entry.done) break n;
+            } else unreachable;
+            for (0..entries.items.len) |_| {
+                cyclic = for (entries.items[cyclic].parents) |parent| {
+                    const n = index.get(parent).?;
+                    if (!entries.items[n].done) break n;
+                } else unreachable;
+            }
+            progress.at(.configs, entries.items[cyclic].config.path);
+            return error.ConfigCycle;
+        }
     }
+    progress.at(.configs, null);
     var out: std.ArrayList(Config) = .empty;
     for (entries.items) |entry| if (configName(p.base(entry.config.path))) {
         try out.append(a, entry.config);

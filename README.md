@@ -60,6 +60,8 @@ exe.root_module.addImport("gantry", dep.module("gantry"));
 | Declaration | What it does |
 |---|---|
 | `scan(gpa, paths, context, read, options)` | Reads the selected files and returns an owned `Graph`. |
+| `scanWithDiagnostic(gpa, paths, context, read, options, diagnostic)` | The same atomic scan, with a caller-owned failure report; null omits the report. |
+| `ScanDiagnostic.init(gpa)` | An owned failure path, phase and cause; release with `deinit`. |
 | `Graph.init(gpa, paths)` | An edgeless graph with these nodes. |
 | `Graph.fromEdges(gpa, paths, edges)` | Copies, validates, sorts and coalesces caller edges. |
 | `graph.aggregate(gpa, depth)` | An independent graph of directories, including isolated ones. |
@@ -117,6 +119,51 @@ files along with code. Gantry never adds files the caller did not select.
 Invalid or cyclic resolution configs abort the scan. A caller that needs a
 structural view after an error can use `Graph.init(gpa, paths)`; that graph
 makes no claim about recovered dependencies.
+
+## Scan failures
+
+Use `scanWithDiagnostic` when a caller needs to say what failed. Initialize
+one `ScanDiagnostic` for each concurrent scan and pass its address. Its
+`failure` is null on success; on error it contains `path`, `phase` and
+`cause`. Each call clears the previous failure. The diagnostic owns its
+copy of the path until its next call or `deinit`, independently of the
+graph allocator, input paths and reader bytes. Its allocator can be
+different from the scan's. Move this owner; do not deinitialize copies.
+
+The snippet below is the body of the example's diagnostic wrapper. It
+reports the failure and returns the original error to its caller.
+
+<!-- BEGIN GENERATED ci/readme_usage.sh diagnostic -->
+```zig
+const gantry = @import("gantry");
+
+var diagnostic = gantry.ScanDiagnostic.init(gpa);
+defer diagnostic.deinit();
+return gantry.scanWithDiagnostic(gpa, paths, {}, read, .{}, &diagnostic) catch |cause| {
+    if (diagnostic.failure) |failure| {
+        std.debug.print("{s}: {s}: {s}\n", .{
+            failure.path orelse "<scan>",
+            @tagName(failure.phase),
+            @errorName(failure.cause),
+        });
+    }
+    return cause;
+};
+```
+<!-- END GENERATED -->
+
+`phase` is one of `paths`, `read`, `go_constraints`, `manifests`, `configs`,
+`rust_tests`, `python_exports`, `imports`, `resolution`, `links`, `assets`
+or `graph`. Reader errors use `read`; later phases identify processing of
+the file. Extended-config errors name the extended file; a config cycle
+names a file in the cycle. Path-validation failures retain the raw input;
+other file paths use the normalized spelling given to the reader.
+
+Work without a particular file has a null path. If the diagnostic's path
+copy runs out of memory, the path is also null: the phase and original
+cause still survive, and reporting never replaces the returned error.
+A null reader result is an unread path in a successful graph, without a
+failure diagnostic. Neither entry point returns a partial graph.
 
 ## The graph
 

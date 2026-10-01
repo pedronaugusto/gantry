@@ -47,6 +47,9 @@ pub const imports = @import("scan.zig").imports;
 /// an error aborts without a partial graph. Scratch is released per file.
 /// The returned graph borrows neither input paths and options nor file bytes.
 pub const scan = @import("scan.zig").scan;
+/// The same atomic scan, with a caller-owned file, phase and cause on failure.
+pub const scanWithDiagnostic = @import("scan.zig").scanWithDiagnostic;
+pub const ScanDiagnostic = @import("scan_diagnostic.zig").ScanDiagnostic;
 /// Reader over an already-open directory; directory ownership stays with caller.
 /// The byte limit is caller policy. A missing selected file is an I/O error.
 pub const DirReader = struct {

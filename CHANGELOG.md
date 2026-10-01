@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `scanWithDiagnostic` and caller-owned `ScanDiagnostic` output with the failed file, phase and original cause while keeping graph results atomic.
+
 - Caller-selected files and readers, with directory reading and walking helpers.
 - Import lexers and resolution for Zig, C/C++, JS/TS, Python, Go and Rust.
 - Markdown link and asset path recovery, and direct manifest declarations.

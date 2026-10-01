@@ -16,6 +16,7 @@ test {
     _ = @import("test_lexers.zig");
     _ = @import("test_resolution.zig");
     _ = @import("test_configs.zig");
+    _ = @import("test_scan_diagnostic.zig");
     _ = @import("test_go_modules.zig");
     _ = @import("test_kinds.zig");
     _ = @import("test_constraints.zig");

@@ -85,7 +85,8 @@ fn targets(a: std.mem.Allocator, source: []const u8, from: []const u8, ctx: anyt
     }
     return out.toOwnedSlice(a);
 }
-pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype) !std.StringHashMapUnmanaged([]const []const u8) {
+pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, progress: *@import("scan_diagnostic.zig").Progress) !std.StringHashMapUnmanaged([]const []const u8) {
+    progress.at(.python_exports, null);
     var out: std.StringHashMapUnmanaged([]const []const u8) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
@@ -94,6 +95,7 @@ pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []cons
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
         const source = (try read(context, file, s)) orelse continue;
+        progress.at(.python_exports, file);
         var resolver = ctx;
         resolver.allocator = s;
         resolver.python_initializers = .explicit;

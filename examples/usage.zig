@@ -24,6 +24,25 @@ pub fn main() !void {
     defer gpa.free(findings);
     for (findings) |finding| std.debug.print("{s}: {s}\n", .{ finding.rule, @tagName(finding.reason) });
     // --- README:usage ---
+    var diagnosed = try scanDiagnosed(gpa, paths);
+    defer diagnosed.deinit();
+}
+
+fn scanDiagnosed(gpa: std.mem.Allocator, paths: []const []const u8) !gantry.Graph {
+    // --- README:diagnostic ---
+    var diagnostic = gantry.ScanDiagnostic.init(gpa);
+    defer diagnostic.deinit();
+    return gantry.scanWithDiagnostic(gpa, paths, {}, read, .{}, &diagnostic) catch |cause| {
+        if (diagnostic.failure) |failure| {
+            std.debug.print("{s}: {s}: {s}\n", .{
+                failure.path orelse "<scan>",
+                @tagName(failure.phase),
+                @errorName(failure.cause),
+            });
+        }
+        return cause;
+    };
+    // --- README:diagnostic ---
 }
 
 // Replace this with bytes from your own file store. The supplied allocator

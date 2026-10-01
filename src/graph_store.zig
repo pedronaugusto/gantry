@@ -15,17 +15,22 @@ go_files: []const @import("go_build.zig").File = &.{},
 files: std.StringHashMapUnmanaged(void) = .empty,
 
 pub fn init(gpa: std.mem.Allocator, paths: []const []const u8) !*Graph {
+    return initTracked(gpa, paths, null);
+}
+pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: ?*@import("scan_diagnostic.zig").Progress) !*Graph {
     const g = try gpa.create(Graph);
     g.* = .{ .allocator = gpa, .arena = .init(gpa) };
     errdefer g.deinit();
     const a = g.arena.allocator();
     var list: std.ArrayList([]const u8) = .empty;
     for (paths) |raw| {
+        if (progress) |current| current.at(.paths, raw);
         const path = try @import("path.zig").normalize(a, raw);
         if (path.len == 0) return error.InvalidPath;
         const entry = try g.files.getOrPut(a, path);
         if (!entry.found_existing) try list.append(a, path);
     }
+    if (progress) |current| current.at(.paths, null);
     std.mem.sort([]const u8, list.items, {}, t.stringsLess);
     g.paths = try list.toOwnedSlice(a);
     return g;

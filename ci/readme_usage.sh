@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 #
-# gantry -- README.md's Usage snippet, extracted from examples/usage.zig.
+# gantry -- README.md's snippets, extracted from examples/usage.zig.
 #
 # A code snippet in a README is a claim about how the library is used, and
 # nothing compiles it. This one is a region of an example that `zig build
 # examples` builds AND runs, so comparing this output against the document
 # is what keeps the two the same thing.
 #
-# Usage: ci/readme_usage.sh          # writes the fenced block to stdout
+# Usage: ci/readme_usage.sh [usage|diagnostic] # writes the fenced block to stdout
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-exec python3 - <<'PY'
+exec python3 - "${1:-usage}" <<'PY'
 import pathlib
 import sys
 
 source = pathlib.Path("examples/usage.zig")
 text = source.read_text(encoding="utf-8")
 
-MARKER = "// --- README:usage ---"
+MARKER = "// --- README:%s ---" % sys.argv[1]
 parts = text.split(MARKER)
 if len(parts) != 3:
     sys.exit(

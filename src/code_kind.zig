@@ -16,7 +16,8 @@ pub fn file(language: t.Language, name: []const u8) bool {
     };
 }
 /// File-module declarations propagate cfg(test) through their descendants.
-pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype) !std.StringHashMapUnmanaged(void) {
+pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, progress: *@import("scan_diagnostic.zig").Progress) !std.StringHashMapUnmanaged(void) {
+    progress.at(.rust_tests, null);
     var marked: std.StringHashMapUnmanaged(void) = .empty;
     var declarations: std.ArrayList(t.Edge) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
@@ -26,6 +27,7 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
         const text = (try read(context, from, s)) orelse continue;
+        progress.at(.rust_tests, from);
         if (try @import("lang/rust.zig").testFile(s, text)) try marked.put(a, from, {});
         var resolver = ctx;
         resolver.allocator = s;
@@ -34,6 +36,7 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []
             for (try resolver.targets(from, .rust, spec)) |to| try declarations.append(a, .{ .from = from, .to = ctx.files.getKey(to).?, .kind = spec.kind });
         }
     }
+    progress.at(.rust_tests, null);
     var changed = true;
     while (changed) {
         changed = false;
