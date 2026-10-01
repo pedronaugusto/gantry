@@ -8,12 +8,12 @@ pub fn main() !void {
     var graph = try gantry.scan(gpa, paths, {}, read, .{});
     defer graph.deinit();
 
-    for (graph.edges) |edge| {
+    for (graph.edges()) |edge| {
         std.debug.print("{s} -> {s} ({d})\n", .{ edge.from, edge.to, edge.count });
     }
     var analysis = try graph.analyze(gpa);
     defer analysis.deinit();
-    for (analysis.layers) |layer| {
+    for (analysis.layers()) |layer| {
         std.debug.print("{s}: depth {d}\n", .{ layer.path, layer.depth });
     }
 

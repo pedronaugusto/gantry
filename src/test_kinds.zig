@@ -31,7 +31,7 @@ test "test imports remain edges with kind and rules can exempt them" {
     try std.testing.expectEqual(2, findings.len);
     var production = try fixture.scan(a, .{ .kinds = &.{.import} });
     defer production.deinit();
-    try std.testing.expectEqual(2, production.edges.len);
+    try std.testing.expectEqual(2, production.edges().len);
 }
 
 test "Rust cfg test items inline modules and file modules propagate test kind" {

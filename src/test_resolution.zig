@@ -35,7 +35,7 @@ test "fixture: import fixtures resolve file edges in all six languages" {
     try f.edge(&graph, "go/cmd/main.go", "go/internal/db/db.go", .import, 1);
     try f.edge(&graph, "rs/src/main.rs", "rs/src/net/mod.rs", .import, 1);
     try f.edge(&graph, "rs/src/main.rs", "rs/src/util.rs", .import, 1);
-    try eq(10, graph.edges.len);
+    try eq(10, graph.edges().len);
     var dirs = try graph.aggregate(a, 99);
     defer dirs.deinit();
     try f.edge(&dirs, "py/pkg", "py/pkg", .import, 4);
@@ -47,11 +47,11 @@ test "Zig named modules are scoped to the importing tree" {
         .{ .path = "proto/root.zig" },
     } }).scan(a, .{ .named_modules = &.{.{ .name = "proto", .path = "proto/root.zig", .from = "daemon/**" }} });
     defer graph.deinit();
-    try eq(1, graph.edges.len);
+    try eq(1, graph.edges().len);
     try f.edge(&graph, "daemon/a.zig", "proto/root.zig", .import, 1);
-    try expect(!graph.references[0].resolved);
-    try expect(graph.references[1].resolved);
-    try expect(graph.references[2].member != null);
+    try expect(!graph.references()[0].resolved);
+    try expect(graph.references()[1].resolved);
+    try expect(graph.references()[2].member != null);
 }
 test "C include roots order and traversal" {
     var graph = try (f.Fixture{ .items = &.{
@@ -61,7 +61,7 @@ test "C include roots order and traversal" {
         .{ .path = "local.h" },
     } }).scan(a, .{ .include_roots = &.{ "first", "second" } });
     defer graph.deinit();
-    try eq(2, graph.edges.len);
+    try eq(2, graph.edges().len);
     try f.edge(&graph, "src/a.c", "first/x.h", .import, 1);
     try f.edge(&graph, "src/a.c", "local.h", .import, 1);
 }
@@ -76,7 +76,7 @@ test "JS resolution extensions directory index emitted TS paths and packages" {
         .{ .path = "pkg.ts" },
     } }).scan(a, .{});
     defer graph.deinit();
-    try eq(3, graph.edges.len);
+    try eq(3, graph.edges().len);
     try f.edge(&graph, "app.ts", "a.ts", .import, 1);
     try f.edge(&graph, "app.ts", "b.ts", .import, 1);
     try f.edge(&graph, "app.ts", "dir/index.js", .import, 1);
@@ -95,7 +95,7 @@ test "Python source roots relative parents and package initializer dependencies"
     try f.edge(&graph, "src/pkg/child/main.py", "src/pkg/__init__.py", .import, 2);
     try f.edge(&graph, "src/pkg/child/main.py", "src/pkg/child/__init__.py", .import, 1);
     try f.edge(&graph, "src/pkg/child/main.py", "src/pkg/child/helper.py", .import, 1);
-    try eq(4, graph.edges.len);
+    try eq(4, graph.edges().len);
 }
 test "Go uses declared module identity all selected package files and nested boundaries" {
     var graph = try (f.Fixture{ .items = &.{
@@ -109,7 +109,7 @@ test "Go uses declared module identity all selected package files and nested bou
         .{ .path = "sub/pkg/a.go" },
     } }).scan(a, .{ .manifests = false });
     defer graph.deinit();
-    try eq(4, graph.edges.len);
+    try eq(4, graph.edges().len);
     try f.edge(&graph, "cmd/a.go", "pkg/a.go", .import, 1);
     try f.edge(&graph, "cmd/a.go", "pkg/b.go", .import, 1);
     try f.edge(&graph, "cmd/a.go", "pkg/a_test.go", .@"test", 1);
@@ -118,7 +118,7 @@ test "Go uses declared module identity all selected package files and nested bou
 test "Go without go.mod does not guess by suffix" {
     var graph = try (f.Fixture{ .items = &.{ .{ .path = "main.go", .text = "import \"other.com/pkg\"" }, .{ .path = "pkg/a.go" } } }).scan(a, .{});
     defer graph.deinit();
-    try eq(0, graph.edges.len);
+    try eq(0, graph.edges().len);
 }
 test "Rust file modules directories super and use symbol suffixes" {
     var graph = try (f.Fixture{ .items = &.{
@@ -129,7 +129,7 @@ test "Rust file modules directories super and use symbol suffixes" {
         .{ .path = "src/util/mod.rs" },
     } }).scan(a, .{});
     defer graph.deinit();
-    try eq(6, graph.edges.len);
+    try eq(6, graph.edges().len);
     try f.edge(&graph, "src/lib.rs", "src/a.rs", .import, 1);
     try f.edge(&graph, "src/lib.rs", "src/a/child.rs", .import, 1);
     try f.edge(&graph, "src/lib.rs", "src/util/mod.rs", .import, 1);
@@ -144,12 +144,12 @@ test "path normalization stays inside root and input aliases coalesce" {
     for ([_][]const u8{ "../x", "/x", "C:/x", "a\\b", "a/../../x" }) |p| try std.testing.expectError(error.InvalidPath, g.Graph.init(a, &.{p}));
     var graph = try g.Graph.init(a, &.{ "a.zig", "./a.zig", "x/../a.zig" });
     defer graph.deinit();
-    try eq(1, graph.paths.len);
+    try eq(1, graph.paths().len);
 }
 test "null reads are reported and errors do not return a partial graph" {
     var graph = try (f.Fixture{ .items = &.{ .{ .path = "a.zig", .text = null }, .{ .path = "package.json", .text = null }, .{ .path = "data.bin", .text = null } } }).scan(a, .{});
     defer graph.deinit();
-    try eq(2, graph.unread.len);
+    try eq(2, graph.unread().len);
     try std.testing.expectError(error.MissingFixture, g.scan(a, &.{"a.zig"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{}));
 }
 test "unread paths include every null read when manifest declarations are disabled" {
@@ -161,7 +161,7 @@ test "unread paths include every null read when manifest declarations are disabl
         .{ .path = "src/lib.rs", .text = null },
     } }).scan(a, .{ .manifests = false, .kinds = &.{.asset} });
     defer graph.deinit();
-    try std.testing.expectEqualDeep(&[_][]const u8{ "main.go", "package.json", "pkg.py", "src/lib.rs" }, graph.unread);
+    try std.testing.expectEqualDeep(&[_][]const u8{ "main.go", "package.json", "pkg.py", "src/lib.rs" }, graph.unread());
 }
 test "unread paths appear once across config and asset reads" {
     var graph = try (f.Fixture{ .items = &.{
@@ -171,7 +171,7 @@ test "unread paths appear once across config and asset reads" {
         .{ .path = "main.go", .text = null },
     } }).scan(a, .{ .kinds = &.{ .import, .asset } });
     defer graph.deinit();
-    try std.testing.expectEqualDeep(&[_][]const u8{ "go.mod", "main.go", "tsconfig.json" }, graph.unread);
+    try std.testing.expectEqualDeep(&[_][]const u8{ "go.mod", "main.go", "tsconfig.json" }, graph.unread());
 }
 fn unreadAllocations(alloc: std.mem.Allocator) !void {
     var graph = try (f.Fixture{ .items = &.{
@@ -182,7 +182,7 @@ fn unreadAllocations(alloc: std.mem.Allocator) !void {
         .{ .path = "src/lib.rs", .text = null },
     } }).scan(alloc, .{ .kinds = &.{ .import, .asset } });
     defer graph.deinit();
-    try eq(5, graph.unread.len);
+    try eq(5, graph.unread().len);
 }
 test "unread paths release every failed allocation" {
     try std.testing.checkAllAllocationFailures(a, unreadAllocations, .{});
@@ -220,7 +220,7 @@ fn boundedScratch(suffix: []const u8, config: bool) !void {
         var graph = try g.scan(accounting.allocator(), &paths, &reader, ScratchReader.read, .{ .kinds = &.{} });
         defer graph.deinit();
         try eq(64, reader.calls);
-        try eq(if (config) @as(usize, 0) else 64, graph.unread.len);
+        try eq(if (config) @as(usize, 0) else 64, graph.unread().len);
     }
     try eq(accounting.allocated_bytes, accounting.freed_bytes);
 }
@@ -257,8 +257,8 @@ test "returned graphs release construction-only resolution storage" {
             return error.ConstructionStorageRetained;
         }
         try f.edge(&graph, "src/app.ts", "src/util.ts", .import, 1);
-        try std.testing.expectEqualStrings("util", graph.references[0].name);
-        try std.testing.expectEqualDeep(&[_][]const u8{"base.json"}, graph.unread);
+        try std.testing.expectEqualStrings("util", graph.references()[0].name);
+        try std.testing.expectEqualDeep(&[_][]const u8{"base.json"}, graph.unread());
     }
     try eq(accounting.allocated_bytes, accounting.freed_bytes);
 }
@@ -278,11 +278,11 @@ test "DirReader and walk use a temp directory and caller pruning" {
         }
     }.keep);
     defer paths.deinit();
-    try eq(2, paths.items.len);
-    var graph = try g.scan(a, paths.items, g.DirReader{ .io = io, .dir = tmp.dir }, g.DirReader.read, .{});
+    try eq(2, paths.items().len);
+    var graph = try g.scan(a, paths.items(), g.DirReader{ .io = io, .dir = tmp.dir }, g.DirReader.read, .{});
     defer graph.deinit();
-    try eq(1, graph.edges.len);
-    try std.testing.expectError(error.StreamTooLong, g.scan(a, paths.items, g.DirReader{ .io = io, .dir = tmp.dir, .limit = .limited(4) }, g.DirReader.read, .{}));
+    try eq(1, graph.edges().len);
+    try std.testing.expectError(error.StreamTooLong, g.scan(a, paths.items(), g.DirReader{ .io = io, .dir = tmp.dir, .limit = .limited(4) }, g.DirReader.read, .{}));
 }
 
 test "language extensions are explicit and unsupported files stay unread" {
@@ -294,5 +294,5 @@ test "language extensions are explicit and unsupported files stay unread" {
     try expect(g.languageOf("a.php") == null);
     var graph = try g.scan(a, &.{"a.bin"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{});
     defer graph.deinit();
-    try eq(1, graph.paths.len);
+    try eq(1, graph.paths().len);
 }

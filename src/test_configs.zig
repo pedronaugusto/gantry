@@ -27,7 +27,7 @@ test "TS configs inherit JSONC aliases with longest prefix and ordered fallbacks
     try f.edge(&graph, "src/app.ts", "src/runtime.ts", .import, 1);
     try f.edge(&graph, "src/app.ts", "src/esm.d.mts", .import, 1);
     try f.edge(&graph, "src/app.ts", "src/cjs.d.cts", .import, 1);
-    try std.testing.expectEqual(7, graph.edges.len);
+    try std.testing.expectEqual(7, graph.edges().len);
 }
 
 test "JS config paths without baseUrl and child replacement stay scoped" {
@@ -42,7 +42,7 @@ test "JS config paths without baseUrl and child replacement stay scoped" {
     defer graph.deinit();
     try f.edge(&graph, "app.js", "shared.d.ts", .import, 1);
     try f.edge(&graph, "child/app.ts", "child/util.ts", .import, 1);
-    try std.testing.expectEqual(2, graph.edges.len);
+    try std.testing.expectEqual(2, graph.edges().len);
 }
 
 test "TS config cycles fail and unselected extends never call the reader" {

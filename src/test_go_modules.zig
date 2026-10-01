@@ -20,7 +20,7 @@ test "Go local replacements are scoped and workspace overrides win" {
     defer graph.deinit();
     try f.edge(&graph, "app/a.go", "shared/pkg/a.go", .import, 1);
     try f.edge(&graph, "app/a.go", "override/pkg/a.go", .import, 1);
-    try std.testing.expectEqual(2, graph.edges.len);
+    try std.testing.expectEqual(2, graph.edges().len);
 }
 
 test "Go replacement routes module aliases and versions inside the repository" {
@@ -33,7 +33,7 @@ test "Go replacement routes module aliases and versions inside the repository" {
     } }).scan(a, .{});
     defer graph.deinit();
     try f.edge(&graph, "a.go", "local lib/pkg/a.go", .import, 1);
-    try std.testing.expectEqual(1, graph.edges.len);
+    try std.testing.expectEqual(1, graph.edges().len);
 }
 
 test "Go exact replacement precedes wildcard and workspace members cannot be replaced" {

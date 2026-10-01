@@ -9,7 +9,7 @@ test "empty graph owns its result" {
     defer graph.deinit();
     var a = try graph.analyze(std.testing.allocator);
     defer a.deinit();
-    try std.testing.expectEqual(0, a.layers.len);
+    try std.testing.expectEqual(0, a.layers().len);
 }
 
 test {

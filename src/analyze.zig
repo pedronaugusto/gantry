@@ -1,8 +1,8 @@
 //! Iterative SCC discovery, condensation depths and real cycle witnesses.
 const std = @import("std");
 const t = @import("types.zig");
-const Graph = @import("Graph.zig");
-const Analysis = @import("Analysis.zig");
+const Graph = @import("graph_store.zig");
+const Analysis = @import("Analysis.zig").Analysis;
 const Adjacency = struct {
     offsets: []usize,
     targets: []usize,
@@ -29,7 +29,7 @@ const Frame = struct { node: usize, next: usize };
 pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!Analysis {
     const paths = g.paths;
     const edges = g.edges;
-    var self: Analysis = .{ .allocator = gpa, .arena = .init(gpa) };
+    const self = try @import("analysis_store.zig").init(gpa);
     errdefer self.deinit();
     const a = self.arena.allocator();
     var scratch: std.heap.ArenaAllocator = .init(gpa);
@@ -187,5 +187,5 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
     self.layers = layers;
     self.components = components;
     self.cycles = try cycles.toOwnedSlice(a);
-    return self;
+    return @import("analysis_store.zig").owner(self);
 }

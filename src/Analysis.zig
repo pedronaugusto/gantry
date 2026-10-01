@@ -1,26 +1,33 @@
 //! Owned layers, components and cycle witnesses, independent of the graph.
 const std = @import("std");
 const t = @import("types.zig");
-const Analysis = @This();
-allocator: std.mem.Allocator,
-arena: std.heap.ArenaAllocator,
-layers: []const t.Layer = &.{},
-cycles: []const t.Cycle = &.{},
-/// All SCCs, including acyclic singletons, sorted by their first member.
-components: []const []const []const u8 = &.{},
+const store = @import("analysis_store.zig");
 
-pub fn deinit(self: *Analysis) void {
-    self.arena.deinit();
-    self.* = undefined;
-}
-
-/// Build an owned analysis using Graph.fromEdges validation and ordering.
-/// Paths and endpoints are normalized; duplicate paths and edges are merged.
-/// Returns InvalidPath for invalid or empty node paths, UnknownPath for absent
-/// endpoints, InvalidCount for zero counts, and CountOverflow when counts merge
-/// past usize. Results are sorted independently of input order and borrow nothing.
-pub fn init(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) (std.mem.Allocator.Error || error{ InvalidPath, UnknownPath, InvalidCount, CountOverflow })!Analysis {
-    var graph = try @import("Graph.zig").fromEdges(gpa, paths, edges);
-    defer graph.deinit();
-    return graph.analyze(gpa);
-}
+/// Move this owner; do not copy it and deinitialize it twice.
+pub const Analysis = enum(usize) {
+    _,
+    pub fn deinit(self: *Analysis) void {
+        store.get(self.*).deinit();
+        self.* = undefined;
+    }
+    pub fn layers(self: *const Analysis) []const t.Layer {
+        return store.get(self.*).layers;
+    }
+    pub fn cycles(self: *const Analysis) []const t.Cycle {
+        return store.get(self.*).cycles;
+    }
+    /// All SCCs, including acyclic singletons, sorted by their first member.
+    pub fn components(self: *const Analysis) []const []const []const u8 {
+        return store.get(self.*).components;
+    }
+    /// Build an owned analysis using Graph.fromEdges validation and ordering.
+    /// Paths and endpoints are normalized; duplicate paths and edges are merged.
+    /// Returns InvalidPath for invalid or empty node paths, UnknownPath for absent
+    /// endpoints, InvalidCount for zero counts, and CountOverflow when counts merge
+    /// past usize. Results are sorted independently of input order and borrow nothing.
+    pub fn init(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) (std.mem.Allocator.Error || error{ InvalidPath, UnknownPath, InvalidCount, CountOverflow })!Analysis {
+        var graph = try @import("Graph.zig").Graph.fromEdges(gpa, paths, edges);
+        defer graph.deinit();
+        return graph.analyze(gpa);
+    }
+};

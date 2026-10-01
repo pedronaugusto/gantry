@@ -10,7 +10,7 @@ test "Python initializer policy distinguishes direct imports and modulefinder an
     } };
     var direct = try fixture.scan(a, .{ .python_initializers = .explicit });
     defer direct.deinit();
-    try std.testing.expectEqual(1, direct.edges.len);
+    try std.testing.expectEqual(1, direct.edges().len);
     try f.edge(&direct, "pkg/sub/a.py", "pkg/sub/child.py", .import, 3);
     var ancestors = try fixture.scan(a, .{ .python_initializers = .modulefinder });
     defer ancestors.deinit();
@@ -31,8 +31,8 @@ test "Python star reexports follow literal all and named imports without inventi
     try f.edge(&graph, "pkg/__init__.py", "pkg/impl.py", .import, 1);
     try f.edge(&graph, "pkg/__init__.py", "pkg/api.py", .import, 1);
     try f.edge(&graph, "pkg/__init__.py", "pkg/dynamic.py", .import, 1);
-    for (graph.edges) |edge| try std.testing.expect(!(std.mem.eql(u8, edge.from, "pkg/__init__.py") and std.mem.eql(u8, edge.to, "pkg/hidden.py")));
+    for (graph.edges()) |edge| try std.testing.expect(!(std.mem.eql(u8, edge.from, "pkg/__init__.py") and std.mem.eql(u8, edge.to, "pkg/hidden.py")));
     var literal = try fixture.scan(a, .{ .python_initializers = .explicit, .python_star_reexports = false });
     defer literal.deinit();
-    for (literal.edges) |edge| try std.testing.expect(!(std.mem.eql(u8, edge.from, "pkg/__init__.py") and std.mem.eql(u8, edge.to, "pkg/impl.py")));
+    for (literal.edges()) |edge| try std.testing.expect(!(std.mem.eql(u8, edge.from, "pkg/__init__.py") and std.mem.eql(u8, edge.to, "pkg/impl.py")));
 }

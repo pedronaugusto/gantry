@@ -26,12 +26,12 @@ const paths = &.{ "src/main.zig", "src/store.zig", "src/model.zig" };
 var graph = try gantry.scan(gpa, paths, {}, read, .{});
 defer graph.deinit();
 
-for (graph.edges) |edge| {
+for (graph.edges()) |edge| {
     std.debug.print("{s} -> {s} ({d})\n", .{ edge.from, edge.to, edge.count });
 }
 var analysis = try graph.analyze(gpa);
 defer analysis.deinit();
-for (analysis.layers) |layer| {
+for (analysis.layers()) |layer| {
     std.debug.print("{s}: depth {d}\n", .{ layer.path, layer.depth });
 }
 
@@ -63,18 +63,23 @@ exe.root_module.addImport("gantry", dep.module("gantry"));
 | `Graph.init(gpa, paths)` | An edgeless graph with these nodes. |
 | `Graph.fromEdges(gpa, paths, edges)` | Copies, validates, sorts and coalesces caller edges. |
 | `graph.aggregate(gpa, depth)` | An independent graph of directories, including isolated ones. |
-| `graph.analyze(gpa)` | An independent `Analysis`: `layers`, `components`, `cycles`. |
+| `graph.analyze(gpa)` | An independent `Analysis`: `layers()`, `components()`, `cycles()`. |
 | `Analysis.init(gpa, paths, edges)` | An independent analysis using `Graph.fromEdges` validation and ordering. |
 | `graph.check(gpa, rules)` | Every violation, with its rule name and edge, reference or missing path. Free the returned slice with `gpa.free`. |
-| `imports(gpa, language, bytes)` | An owned `Imports` with raw `items`, including Zig member references. No resolution. |
+| `imports(gpa, language, bytes)` | An owned `Imports` with raw `items()`, including Zig member references. No resolution. |
 | `DirReader{ .io, .dir, .limit }.read` | The reader over a caller-owned directory, with a caller-chosen byte limit. |
 | `walk(gpa, io, dir, context, keep)` | An owned `Paths`; `keep(context, path, kind)` can prune directories. Symlinks and other special entries are skipped. |
 | `languageOf(path)` | The language selected by the file extension, or null. |
 | `manifests.parse(arena, path, bytes)` | Low-level extraction of declarations in one supported manifest. Uses an arena; slices borrow bytes or that arena. |
 | `rules.matches(pattern, path)` | The same path glob matching used by rules. |
 
-`Graph`, `Analysis`, `Imports` and `Paths` store their allocator. Call their
-`deinit` once. Their slices and strings belong to them until then. An
+`Graph`, `Analysis`, `Imports` and `Paths` are opaque value handles that own
+their storage and allocator. Constructors are the only way to create them.
+Call their `deinit` once. Read results through `Graph.paths()`, `edges()`,
+`dependencies()`, `references()`, `unread()` and `goFiles()`, `Analysis.layers()`,
+`components()` and `cycles()`, and `Imports.items()` or `Paths.items()`.
+`Graph.contains(path)` tests exact normalized node membership without exposing
+the index. Their slices and strings belong to them until then. An
 analysis or aggregation survives the original graph. Rule findings borrow
 graph storage and the caller's rule names and required-path strings
 (`rules.required[].paths[]`). Keep the graph and those strings alive until
@@ -85,7 +90,7 @@ The reader is a function
 `read(context, path, scratch_allocator) !?[]const u8`. The bytes need only
 survive processing that file, until the next read. Allocate them on the
 scratch allocator or borrow from your file store. Scratch storage is reset
-between files. Null records the path once in `graph.unread`, across all scan
+between files. Null records the path once in `graph.unread()`, across all scan
 phases and kind selections; an error aborts
 without returning a partial graph. Unsupported files are graph nodes but
 are not read, except selected resolution configs. Manifests and configs are
@@ -115,23 +120,23 @@ occurrences: repeated imports count again, while a single Python statement
 reaching an initializer by several paths counts it once. Member accesses do
 not add a second import edge. Kinds stay separate during aggregation.
 
-`graph.references` retains literal imports, their byte offsets, whether they
+`graph.references()` retains literal imports, their byte offsets, whether they
 resolved, their source kind, and Zig member access. An unresolved reference may name an external
 package, a missing file, or syntax whose resolution gantry does not implement.
 It is not automatically a declared external dependency.
 
-`graph.go_files` records each readable Go source's `path`, `package`, optional
+`graph.goFiles()` records each readable Go source's `path`, `package`, optional
 `constraint` expression, optional suffix `os` and `arch`, and `selected` flag.
 With no `Options.go_target`, every selected file participates and constraints
 remain data. A supplied `GoTarget{ .os, .arch, .tags }` evaluates `!`, `&&`,
 `||` and parentheses, OS aliases and `unix`, together with filename suffixes.
-Inactive files stay in `graph.paths` and metadata but contribute no references
+Inactive files stay in `graph.paths()` and metadata but contribute no references
 or edges and are excluded from package expansion. Compiler, cgo, release and
 custom tags must be supplied explicitly; gantry does not inspect the host.
 Legacy `// +build`, implicit cgo file selection and architecture feature levels
 are not inferred. Malformed evaluated constraints are errors.
 
-`graph.dependencies` contains manifest declarations, separately: manifest,
+`graph.dependencies()` contains manifest declarations, separately: manifest,
 name, requirement, source, group. A declaration in two groups stays as two
 records. Registry versions remain requirements; URLs and local paths remain
 sources. There is no installation, version solving, or transitive closure of

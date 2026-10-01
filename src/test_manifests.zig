@@ -37,18 +37,18 @@ test "fixture: manifest fixtures name dependencies and their sources from temp f
     }
     var graph = try g.scan(a, &paths, g.DirReader{ .io = io, .dir = tmp.dir }, g.DirReader.read, .{});
     defer graph.deinit();
-    try eq(11, graph.dependencies.len);
-    try dep(graph.dependencies, "strand", "git+https://github.com/me/strand#abc");
-    try dep(graph.dependencies, "lib-x", "../lib-x");
-    try dep(graph.dependencies, "astro", "");
-    try dep(graph.dependencies, "kit", "github:me/kit");
-    try dep(graph.dependencies, "local", "file:../local");
-    try dep(graph.dependencies, "serde", "");
-    try dep(graph.dependencies, "engine", "https://github.com/me/engine");
-    try dep(graph.dependencies, "github.com/me/core", "github.com/me/core");
-    try dep(graph.dependencies, "golang.org/x/sys", "golang.org/x/sys");
-    try dep(graph.dependencies, "requests", "");
-    try dep(graph.dependencies, "mylib", "git+https://github.com/me/mylib");
+    try eq(11, graph.dependencies().len);
+    try dep(graph.dependencies(), "strand", "git+https://github.com/me/strand#abc");
+    try dep(graph.dependencies(), "lib-x", "../lib-x");
+    try dep(graph.dependencies(), "astro", "");
+    try dep(graph.dependencies(), "kit", "github:me/kit");
+    try dep(graph.dependencies(), "local", "file:../local");
+    try dep(graph.dependencies(), "serde", "");
+    try dep(graph.dependencies(), "engine", "https://github.com/me/engine");
+    try dep(graph.dependencies(), "github.com/me/core", "github.com/me/core");
+    try dep(graph.dependencies(), "golang.org/x/sys", "golang.org/x/sys");
+    try dep(graph.dependencies(), "requests", "");
+    try dep(graph.dependencies(), "mylib", "git+https://github.com/me/mylib");
 }
 test "package JSON retains all declaration groups and requirements" {
     var arena: std.heap.ArenaAllocator = .init(a);
@@ -153,11 +153,11 @@ test "manifest dependencies are separate from internal graph and scan order dete
     defer graph.deinit();
     var other = try g.scan(a, &.{ "x.ts", "main.ts", "package.json" }, fixture, f.Fixture.read, .{});
     defer other.deinit();
-    try eq(1, graph.edges.len);
-    try eq(2, graph.dependencies.len);
-    try std.testing.expectEqualStrings("a", graph.dependencies[0].name);
-    try std.testing.expectEqualDeep(graph.dependencies, other.dependencies);
-    try std.testing.expectEqualDeep(graph.references, other.references);
+    try eq(1, graph.edges().len);
+    try eq(2, graph.dependencies().len);
+    try std.testing.expectEqualStrings("a", graph.dependencies()[0].name);
+    try std.testing.expectEqualDeep(graph.dependencies(), other.dependencies());
+    try std.testing.expectEqualDeep(graph.references(), other.references());
 }
 
 test "dependency group inclusion and TOML literal backslashes are not invented declarations" {

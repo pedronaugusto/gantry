@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Breaking: hide `Graph`, `Analysis`, `Imports` and `Paths` ownership and storage behind opaque value handles and read-only accessors; use `Graph.contains` for node membership.
+
 - Breaking: `Analysis.init` now validates and orders inputs through `Graph.fromEdges`, returning explicit path and count errors.
 - Document that rule findings borrow required-path strings as well as graph storage and rule names.
 
 ### Fixed
 
-- Record every null read once in `graph.unread`, including resolution passes and assets with manifest declarations disabled.
+- Record every null read once in `graph.unread()`, including resolution passes and assets with manifest declarations disabled.
 - Reset reader scratch after every config and preprocessing read, including null results, instead of retaining source buffers across files.
 - Release resolution configs and indexes when a scan returns, keeping construction workspaces out of the graph's owned storage.
 

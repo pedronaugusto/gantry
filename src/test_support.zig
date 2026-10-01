@@ -17,7 +17,7 @@ pub const Fixture = struct {
     }
 };
 pub fn edge(graph: *const g.Graph, from: []const u8, to: []const u8, kind: g.Kind, count: usize) !void {
-    for (graph.edges) |e| if (std.mem.eql(u8, e.from, from) and std.mem.eql(u8, e.to, to) and e.kind == kind) {
+    for (graph.edges()) |e| if (std.mem.eql(u8, e.from, from) and std.mem.eql(u8, e.to, to) and e.kind == kind) {
         try std.testing.expectEqual(count, e.count);
         return;
     };

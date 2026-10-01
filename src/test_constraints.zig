@@ -15,25 +15,25 @@ const fixture: f.Fixture = .{ .items = &.{
 test "Go records constraints and test package identity without choosing a host" {
     var graph = try fixture.scan(a, .{});
     defer graph.deinit();
-    try std.testing.expectEqual(6, graph.go_files.len);
-    try std.testing.expectEqualStrings("lib_test", graph.go_files[4].package);
-    try std.testing.expectEqualStrings("linux && (amd64 || arm64) && !custom", graph.go_files[1].constraint.?);
-    try std.testing.expectEqualStrings("linux", graph.go_files[1].os.?);
-    try std.testing.expectEqualStrings("amd64", graph.go_files[1].arch.?);
-    try std.testing.expect(graph.go_files[3].selected);
+    try std.testing.expectEqual(6, graph.goFiles().len);
+    try std.testing.expectEqualStrings("lib_test", graph.goFiles()[4].package);
+    try std.testing.expectEqualStrings("linux && (amd64 || arm64) && !custom", graph.goFiles()[1].constraint.?);
+    try std.testing.expectEqualStrings("linux", graph.goFiles()[1].os.?);
+    try std.testing.expectEqualStrings("amd64", graph.goFiles()[1].arch.?);
+    try std.testing.expect(graph.goFiles()[3].selected);
     try f.edge(&graph, "main.go", "lib/a_windows.go", .import, 1);
 }
 
 test "Go caller target filters both importers and package expansion" {
     var graph = try fixture.scan(a, .{ .go_target = .{ .os = "linux", .arch = "amd64" }, .kinds = &.{.import} });
     defer graph.deinit();
-    try std.testing.expectEqual(2, graph.edges.len);
+    try std.testing.expectEqual(2, graph.edges().len);
     try f.edge(&graph, "main.go", "lib/a_linux_amd64.go", .import, 1);
     try f.edge(&graph, "lib/a_linux_amd64.go", "dep/a.go", .import, 1);
     var custom = try fixture.scan(a, .{ .go_target = .{ .os = "windows", .arch = "arm64", .tags = &.{"custom"} } });
     defer custom.deinit();
     try f.edge(&custom, "main.go", "lib/b.go", .import, 1);
-    try std.testing.expect(!custom.go_files[1].selected);
+    try std.testing.expect(!custom.goFiles()[1].selected);
 }
 
 test "Go build expression rejects malformed syntax and honors OS aliases" {
