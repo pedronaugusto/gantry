@@ -85,7 +85,8 @@ The reader is a function
 `read(context, path, scratch_allocator) !?[]const u8`. The bytes need only
 survive processing that file, until the next read. Allocate them on the
 scratch allocator or borrow from your file store. Scratch storage is reset
-between files. Null records the path in `graph.unread`; an error aborts
+between files. Null records the path once in `graph.unread`, across all scan
+phases and kind selections; an error aborts
 without returning a partial graph. Unsupported files are graph nodes but
 are not read, except selected resolution configs. Manifests and configs are
 read before code; Go constraints, Rust test modules and Python reexports may

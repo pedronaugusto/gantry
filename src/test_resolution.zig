@@ -152,6 +152,41 @@ test "null reads are reported and errors do not return a partial graph" {
     try eq(2, graph.unread.len);
     try std.testing.expectError(error.MissingFixture, g.scan(a, &.{"a.zig"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{}));
 }
+test "unread paths include every null read when manifest declarations are disabled" {
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "package.json", .text = null },
+        .{ .path = "data.bin", .text = null },
+        .{ .path = "main.go", .text = null },
+        .{ .path = "pkg.py", .text = null },
+        .{ .path = "src/lib.rs", .text = null },
+    } }).scan(a, .{ .manifests = false, .kinds = &.{.asset} });
+    defer graph.deinit();
+    try std.testing.expectEqualDeep(&[_][]const u8{ "main.go", "package.json", "pkg.py", "src/lib.rs" }, graph.unread);
+}
+test "unread paths appear once across config and asset reads" {
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "tsconfig.json", .text = null },
+        .{ .path = "go.mod", .text = null },
+        .{ .path = "main.go", .text = null },
+        .{ .path = "main.go", .text = null },
+    } }).scan(a, .{ .kinds = &.{ .import, .asset } });
+    defer graph.deinit();
+    try std.testing.expectEqualDeep(&[_][]const u8{ "go.mod", "main.go", "tsconfig.json" }, graph.unread);
+}
+fn unreadAllocations(alloc: std.mem.Allocator) !void {
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "tsconfig.json", .text = null },
+        .{ .path = "package.json", .text = null },
+        .{ .path = "main.go", .text = null },
+        .{ .path = "pkg.py", .text = null },
+        .{ .path = "src/lib.rs", .text = null },
+    } }).scan(alloc, .{ .kinds = &.{ .import, .asset } });
+    defer graph.deinit();
+    try eq(5, graph.unread.len);
+}
+test "unread paths release every failed allocation" {
+    try std.testing.checkAllAllocationFailures(a, unreadAllocations, .{});
+}
 test "DirReader and walk use a temp directory and caller pruning" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

@@ -34,7 +34,7 @@ fn jsonc(a: std.mem.Allocator, text: []const u8) !Value {
 fn configName(name: []const u8) bool {
     return std.mem.eql(u8, name, "tsconfig.json") or std.mem.eql(u8, name, "jsconfig.json");
 }
-pub fn load(a: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype, unread: *std.ArrayList([]const u8)) ![]const Config {
+pub fn load(a: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype) ![]const Config {
     var entries: std.ArrayList(Entry) = .empty;
     var index: std.StringHashMapUnmanaged(usize) = .empty;
     for (paths) |file| if (configName(p.base(file))) {
@@ -44,10 +44,7 @@ pub fn load(a: std.mem.Allocator, paths: []const []const u8, files: anytype, con
     var i: usize = 0;
     while (i < entries.items.len) : (i += 1) {
         const file = entries.items[i].config.path;
-        const text = (try read(context, file, a)) orelse {
-            try unread.append(a, file);
-            continue;
-        };
+        const text = (try read(context, file, a)) orelse continue;
         const value = try jsonc(a, text);
         entries.items[i].value = value;
         const ext = field(value, "extends");

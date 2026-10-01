@@ -75,13 +75,16 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     var g = try Graph.init(gpa, paths);
     errdefer g.deinit();
     const a = g.arena.allocator();
+    const Reader = @import("scan_reader.zig").Reader(@TypeOf(context), read);
+    var reader: Reader = .{ .context = context, .allocator = gpa };
+    defer reader.deinit();
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
     var go_files: std.ArrayList(GoFile) = .empty;
     var inactive: std.StringHashMapUnmanaged(void) = .empty;
     for (g.paths) |p| if (languageOf(p) == .go) {
         const s = scratch.allocator();
-        if (try read(context, p, s)) |text| {
+        if (try reader.readFile(p, s)) |text| {
             var info = try @import("go_build.zig").parse(s, p, text, options.go_target);
             info.package = try a.dupe(u8, info.package);
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
@@ -100,7 +103,6 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     var modules: std.ArrayList(resolver.GoModule) = .empty;
     var workspaces: std.ArrayList(@import("go_config.zig").Workspace) = .empty;
     var deps: std.ArrayList(Dependency) = .empty;
-    var unread: std.ArrayList([]const u8) = .empty;
     // Read manifests first: Go imports need the module identity even when
     // manifest dependencies have been disabled.
     for (g.paths) |p| {
@@ -108,7 +110,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         const is_work = std.mem.eql(u8, path.base(p), "go.work");
         if (!is_work and !is_mod and (!manifests.supported(p) or !options.manifests)) continue;
         const s = scratch.allocator();
-        if (try read(context, p, s)) |text| {
+        if (try reader.readFile(p, s)) |text| {
             if (is_mod or is_work) {
                 const parsed = try @import("go_config.zig").parse(a, path.dir(p), try a.dupe(u8, text));
                 if (is_mod) if (parsed.name) |name| {
@@ -119,14 +121,14 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
             if (options.manifests and manifests.supported(p)) for (try manifests.parse(s, p, text)) |dep| {
                 try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group) });
             };
-        } else try unread.append(a, p);
+        }
         _ = scratch.reset(.retain_capacity);
     }
-    const configs = try @import("tsconfig.zig").load(a, g.paths, &g.files, context, read, &unread);
+    const configs = try @import("tsconfig.zig").load(a, g.paths, &g.files, &reader, Reader.readFile);
     const index = try recover.names(a, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = a, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
-    const test_files = try @import("code_kind.zig").rustFiles(a, gpa, g.paths, base_ctx, context, read);
-    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(a, gpa, g.paths, base_ctx, context, read) else std.StringHashMapUnmanaged([]const []const u8).empty;
+    const test_files = try @import("code_kind.zig").rustFiles(a, gpa, g.paths, base_ctx, &reader, Reader.readFile);
+    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(a, gpa, g.paths, base_ctx, &reader, Reader.readFile) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
     for (g.paths) |p| {
@@ -137,8 +139,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         const assets = enabled(options, .asset) and recover.assetText(p);
         if (!code and !links and !assets) continue;
         const s = scratch.allocator();
-        const text = (try read(context, p, s)) orelse {
-            if (!manifests.supported(p)) try unread.append(a, p);
+        const text = (try reader.readFile(p, s)) orelse {
             _ = scratch.reset(.retain_capacity);
             continue;
         };
@@ -205,8 +206,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     }.less);
     g.references = try refs.toOwnedSlice(a);
     g.dependencies = try deps.toOwnedSlice(a);
-    std.mem.sort([]const u8, unread.items, {}, t.stringsLess);
-    g.unread = try unread.toOwnedSlice(a);
+    g.unread = try reader.unreadPaths(a);
     return g;
 }
 /// Reader over an already-open directory; directory ownership stays with caller.
