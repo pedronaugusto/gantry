@@ -199,15 +199,15 @@ such as Python `tests` alone do not classify a helper file as test code.
 
 | Policy | Edges |
 |---|---|
-| `.ancestors` (default) | Literal modules and selected initializer ancestors below the import search root, preserving the original graph policy. |
-| `.explicit` | Direct modules only. A `from package import child` statement uses selected child modules; it retains the package when an imported name has no selected child module. This matches Grimp's direct-import policy. |
-| `.modulefinder` | Ancestors, plus the package ancestry that modulefinder visits for `from . import name`. This matches pydeps' import bookkeeping before its discovery and noise filters. |
+| `.ancestors` (default) | Literal modules and selected initializer ancestors below the import search root. |
+| `.explicit` | Direct modules only. A `from package import child` statement uses selected child modules; it retains the package when an imported name has no selected child module. |
+| `.modulefinder` | Ancestors, plus the package ancestry that modulefinder visits for `from . import name`. |
 
 `Options.python_star_reexports` defaults to true. For `from x import *`, gantry
 always records `x`; it additionally follows named top-level imports exported
 by a literal `__all__` list or tuple in the selected source of `x`. Aliases
-are honored. Set the option to false for a literal-module graph such as
-Grimp's. Computed/augmented export lists, conditional exports, star chains,
+are honored. Set the option to false for a graph of literal modules
+only. Computed/augmented export lists, conditional exports, star chains,
 runtime reassignment, `__getattr__` and exports without literal `__all__` are
 not evaluated. There is no speculative enumeration of package submodules.
 
@@ -277,58 +277,6 @@ basename. Matching is case exact. Findings are returned in rule order, then
 graph order; every matching restriction reports, even when another also
 forbids the edge. Cycles report one witness edge per component, and missing
 paths report the path, with no invented edge.
-
-## Other tools
-
-| Tool | Where it goes further |
-|---|---|
-| [madge](https://github.com/pahen/madge), [dependency-cruiser](https://github.com/sverweij/dependency-cruiser) | JS ecosystem resolution, more module forms, configuration and visual reports; dependency-cruiser also supplies a larger rule vocabulary. |
-| [pydeps](https://github.com/thebjorn/pydeps), [import-linter](https://import-linter.readthedocs.io/en/stable/) | Python-specific import graphs and contracts, including an installed package's import environment. |
-| [`go list`](https://pkg.go.dev/cmd/go#hdr-List_packages_or_modules), [goda](https://github.com/loov/goda) | The Go toolchain's package/module selection and dependency graph, including build constraints. |
-| [cargo-modules](https://github.com/regexident/cargo-modules) | Rust's semantic module and item structure through rust-analyzer. |
-| [deptrac](https://deptrac.github.io/deptrac/), [ArchUnit](https://www.archunit.org/userguide/html/000_Index.html) | PHP and Java architecture checks. Gantry does not parse those languages or inspect bytecode. |
-
-gantry is an embeddable Zig library over caller-supplied files, covering several
-languages with the same graph and rules. It does not claim the compiler's view
-of a program. Use a language tool when that view is what the check needs;
-`Graph.fromEdges` can hold edges recovered elsewhere.
-
-## How it compares
-
-Agreement-only runs on pinned real repositories, using the `bench` branch's
-harness and Zig 0.16.0. Direction is importer → dependency. Counts are sets
-within each selected scope: files for JS/TS and Python, package directories
-for Go, and file modules for Rust. No transitive closure is added.
-
-| Repository / rival | Agreed | Gantry only | Rival only |
-|---|---:|---:|---:|
-| VS Code / madge 8.0.0 | 50,508 | 0 | 0 |
-| VS Code / dependency-cruiser 16.10.4 | 50,479 | 29 | 29 |
-| Django / pydeps 3.0.8 | 4,605 | 705 | 1 |
-| Django / Grimp 3.17 | 3,002 | 0 | 0 |
-| Kubernetes pkg / go list go1.27.1 | 7,113 | 0 | 0 |
-| rust-analyzer ide / cargo-modules 0.26.0 | 115 | 0 | 42 |
-| Zig lib/std / no rival | — | 996 total edges | — |
-
-JS/TS includes import and test edges. Go uses production edges and an explicit
-`darwin/arm64` target matching the rival. Rust uses production edges. Python
-uses `.modulefinder` with literal reexports for pydeps, and `.explicit` with
-reexports disabled for Grimp. The table therefore describes these selectable
-policies, not one default graph compared with every tool.
-
-Dependency-cruiser's 29 differences on each side are runtime `.js` choices
-versus TypeScript's `.d.ts` substitution. Pydeps removes 577 pairs with its
-default noise filter and omits 128 pairs from migration discovery; its one
-extra edge comes from star-submodule enumeration outside literal `__all__`.
-Rust's 42 extra pairs come from semantic definitions, reexports and type
-references. Eleven previously agreed pairs had coincided with test imports;
-filtering tests exposes the semantic difference. Every pair has a witness in
-the [full agreement results](bench/compare/results/README.md).
-
-The harness, corpus pins and full graphs can be inspected without installing
-or invoking another tool from the library. Agreement in these scopes does
-not validate every loader, compiler or architecture rule. Timing and memory
-comparisons will follow a quiet-machine pass; there are no timing claims here.
 
 ## Scope
 
