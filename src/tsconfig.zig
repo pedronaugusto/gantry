@@ -21,20 +21,22 @@ fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
         else => return err,
     };
 }
-fn jsonc(a: std.mem.Allocator, text: []const u8) !Value {
-    const tokens = try l.compact(a, try l.lex(.javascript, a, text));
+fn jsonc(a: std.mem.Allocator, scratch: std.mem.Allocator, text: []const u8) !Value {
+    const tokens = try l.compact(scratch, try l.lex(.javascript, scratch, text));
     var clean: std.ArrayList(u8) = .empty;
     for (tokens, 0..) |token, i| {
         if (token.is(",") and i + 1 < tokens.len and (tokens[i + 1].is("}") or tokens[i + 1].is("]"))) continue;
-        try clean.appendSlice(a, text[token.offset..token.end]);
-        try clean.append(a, ' ');
+        try clean.appendSlice(scratch, text[token.offset..token.end]);
+        try clean.append(scratch, ' ');
     }
     return std.json.parseFromSliceLeaky(Value, a, clean.items, .{ .allocate = .alloc_always });
 }
 fn configName(name: []const u8) bool {
     return std.mem.eql(u8, name, "tsconfig.json") or std.mem.eql(u8, name, "jsconfig.json");
 }
-pub fn load(a: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype) ![]const Config {
+pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype) ![]const Config {
+    var scratch: std.heap.ArenaAllocator = .init(gpa);
+    defer scratch.deinit();
     var entries: std.ArrayList(Entry) = .empty;
     var index: std.StringHashMapUnmanaged(usize) = .empty;
     for (paths) |file| if (configName(p.base(file))) {
@@ -44,8 +46,10 @@ pub fn load(a: std.mem.Allocator, paths: []const []const u8, files: anytype, con
     var i: usize = 0;
     while (i < entries.items.len) : (i += 1) {
         const file = entries.items[i].config.path;
-        const text = (try read(context, file, a)) orelse continue;
-        const value = try jsonc(a, text);
+        const s = scratch.allocator();
+        defer _ = scratch.reset(.retain_capacity);
+        const text = (try read(context, file, s)) orelse continue;
+        const value = try jsonc(a, s, text);
         entries.items[i].value = value;
         const ext = field(value, "extends");
         var parents: std.ArrayList([]const u8) = .empty;

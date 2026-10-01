@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Record every null read once in `graph.unread`, including resolution passes and assets with manifest declarations disabled.
+- Reset reader scratch after every config and preprocessing read, including null results, instead of retaining source buffers across files.
 
 ### Added
 

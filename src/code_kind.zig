@@ -24,6 +24,7 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []
     for (paths) |from| {
         if (!std.mem.endsWith(u8, from, ".rs")) continue;
         const s = scratch.allocator();
+        defer _ = scratch.reset(.retain_capacity);
         const text = (try read(context, from, s)) orelse continue;
         if (try @import("lang/rust.zig").testFile(s, text)) try marked.put(a, from, {});
         var resolver = ctx;
@@ -32,7 +33,6 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []
             if (spec.form != .rust_mod) continue;
             for (try resolver.targets(from, .rust, spec)) |to| try declarations.append(a, .{ .from = from, .to = ctx.files.getKey(to).?, .kind = spec.kind });
         }
-        _ = scratch.reset(.retain_capacity);
     }
     var changed = true;
     while (changed) {

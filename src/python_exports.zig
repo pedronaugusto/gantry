@@ -92,6 +92,7 @@ pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []cons
     for (paths) |file| {
         if (!std.mem.endsWith(u8, file, ".py")) continue;
         const s = scratch.allocator();
+        defer _ = scratch.reset(.retain_capacity);
         const source = (try read(context, file, s)) orelse continue;
         var resolver = ctx;
         resolver.allocator = s;
@@ -102,7 +103,6 @@ pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []cons
             for (found, owned) |target, *dest| dest.* = try a.dupe(u8, target);
             try out.put(a, file, owned);
         }
-        _ = scratch.reset(.retain_capacity);
     }
     return out;
 }

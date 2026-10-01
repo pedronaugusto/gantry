@@ -124,7 +124,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         }
         _ = scratch.reset(.retain_capacity);
     }
-    const configs = try @import("tsconfig.zig").load(a, g.paths, &g.files, &reader, Reader.readFile);
+    const configs = try @import("tsconfig.zig").load(a, gpa, g.paths, &g.files, &reader, Reader.readFile);
     const index = try recover.names(a, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = a, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
     const test_files = try @import("code_kind.zig").rustFiles(a, gpa, g.paths, base_ctx, &reader, Reader.readFile);

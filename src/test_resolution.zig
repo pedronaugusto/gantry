@@ -187,6 +187,53 @@ fn unreadAllocations(alloc: std.mem.Allocator) !void {
 test "unread paths release every failed allocation" {
     try std.testing.checkAllAllocationFailures(a, unreadAllocations, .{});
 }
+
+const ScratchReader = struct {
+    accounting: *std.testing.FailingAllocator,
+    config: bool,
+    calls: usize = 0,
+    fn read(self: *ScratchReader, _: []const u8, scratch: std.mem.Allocator) !?[]const u8 {
+        const retained = self.accounting.allocated_bytes - self.accounting.freed_bytes;
+        // A 64 KiB read buffer must be reused rather than retaining one for
+        // every file. Leave room for graph nodes and parser/index workspaces.
+        if (retained > 512 * 1024) {
+            std.debug.print("reader scratch retained {d} bytes before read\n", .{retained});
+            return error.ScratchRetained;
+        }
+        const bytes = try scratch.alloc(u8, 64 * 1024);
+        @memset(bytes, ' ');
+        self.calls += 1;
+        if (!self.config) return null;
+        bytes[0] = '{';
+        bytes[1] = '}';
+        return bytes;
+    }
+};
+fn boundedScratch(suffix: []const u8, config: bool) !void {
+    var inputs: std.heap.ArenaAllocator = .init(a);
+    defer inputs.deinit();
+    var paths: [64][]const u8 = undefined;
+    for (&paths, 0..) |*path, i| path.* = try std.fmt.allocPrint(inputs.allocator(), "{d}/{s}", .{ i, suffix });
+    var accounting: std.testing.FailingAllocator = .init(a, .{});
+    var reader: ScratchReader = .{ .accounting = &accounting, .config = config };
+    {
+        var graph = try g.scan(accounting.allocator(), &paths, &reader, ScratchReader.read, .{ .kinds = &.{} });
+        defer graph.deinit();
+        try eq(64, reader.calls);
+        try eq(if (config) @as(usize, 0) else 64, graph.unread.len);
+    }
+    try eq(accounting.allocated_bytes, accounting.freed_bytes);
+}
+test "Rust preprocessing resets scratch even when the reader returns null" {
+    try boundedScratch("lib.rs", false);
+}
+test "Python preprocessing resets scratch even when the reader returns null" {
+    try boundedScratch("pkg.py", false);
+}
+test "config loading resets reader scratch between files" {
+    try boundedScratch("tsconfig.json", true);
+}
+
 test "DirReader and walk use a temp directory and caller pruning" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
