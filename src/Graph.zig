@@ -82,7 +82,7 @@ pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) !Graph {
 }
 /// Analysis owns its results independently of the graph.
 pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import("Analysis.zig") {
-    return @import("Analysis.zig").init(gpa, g.paths, g.edges);
+    return @import("analyze.zig").analyze(g, gpa);
 }
 /// Findings borrow graph paths and rule names. Free only the returned slice.
 pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules.zig").Rules) ![]const @import("rules.zig").Violation {

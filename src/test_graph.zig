@@ -4,6 +4,55 @@ const f = @import("test_support.zig");
 const a = std.testing.allocator;
 const eq = std.testing.expectEqual;
 const expect = std.testing.expect;
+test "checked analysis rejects unknown source paths" {
+    try std.testing.expectError(error.UnknownPath, g.Analysis.init(a, &.{"a"}, &.{.{ .from = "missing", .to = "a" }}));
+}
+test "checked analysis rejects unknown target paths" {
+    try std.testing.expectError(error.UnknownPath, g.Analysis.init(a, &.{"a"}, &.{.{ .from = "a", .to = "missing" }}));
+}
+test "checked analysis rejects invalid paths and counts" {
+    try std.testing.expectError(error.InvalidPath, g.Analysis.init(a, &.{"../a"}, &.{}));
+    try std.testing.expectError(error.InvalidPath, g.Analysis.init(a, &.{"."}, &.{}));
+    try std.testing.expectError(error.InvalidPath, g.Analysis.init(a, &.{"a"}, &.{.{ .from = "a", .to = "/a" }}));
+    try std.testing.expectError(error.InvalidCount, g.Analysis.init(a, &.{"a"}, &.{.{ .from = "a", .to = "a", .count = 0 }}));
+    try std.testing.expectError(error.CountOverflow, g.Analysis.init(a, &.{"a"}, &.{ .{ .from = "a", .to = "a", .count = std.math.maxInt(usize) }, .{ .from = "a", .to = "a" } }));
+}
+test "checked analysis uses graph normalization and deterministic ordering" {
+    const paths = &[_][]const u8{ "c", "b", "./a", "a" };
+    const edges = &[_]g.Edge{
+        .{ .from = "c", .to = "a" },
+        .{ .from = "a", .to = "c" },
+        .{ .from = "b", .to = "a" },
+        .{ .from = "a", .to = "b" },
+        .{ .from = "a", .to = "b" },
+    };
+    var graph = try g.Graph.fromEdges(a, paths, edges);
+    var expected = try graph.analyze(a);
+    defer expected.deinit();
+    graph.deinit();
+    var actual = try g.Analysis.init(a, paths, edges);
+    defer actual.deinit();
+    try std.testing.expectEqualDeep(expected.layers, actual.layers);
+    try std.testing.expectEqualDeep(expected.components, actual.components);
+    try std.testing.expectEqualDeep(expected.cycles, actual.cycles);
+    var normalized = try g.Analysis.init(a, &.{ "./b", "x/../a" }, &.{ .{ .from = "./a", .to = "x/../b" }, .{ .from = "b", .to = "a" } });
+    defer normalized.deinit();
+    try std.testing.expectEqualDeep(&[_][]const u8{ "a", "b", "a" }, normalized.cycles[0].path);
+}
+
+fn checkedAnalysisAllocations(alloc: std.mem.Allocator) !void {
+    var analysis = try g.Analysis.init(alloc, &.{ "./b", "a", "c", "a" }, &.{
+        .{ .from = "a", .to = "b" }, .{ .from = "./b", .to = "a" }, .{ .from = "b", .to = "c" },
+    });
+    defer analysis.deinit();
+    try eq(3, analysis.layers.len);
+    try eq(1, analysis.cycles.len);
+    try eq(1, analysis.layers[2].depth);
+}
+test "checked analysis releases every failed allocation" {
+    try std.testing.checkAllAllocationFailures(a, checkedAnalysisAllocations, .{});
+}
+
 test "longest path depths include shortcuts disconnected nodes and collapsed SCCs" {
     var graph = try g.Graph.fromEdges(a, &.{ "a", "b", "c", "d", "e", "isolated" }, &.{
         .{ .from = "a", .to = "b" }, .{ .from = "b", .to = "c" }, .{ .from = "c", .to = "d" }, .{ .from = "a", .to = "d" }, .{ .from = "d", .to = "e" }, .{ .from = "e", .to = "d" },
@@ -78,6 +127,9 @@ test "aggregation at every depth counts isolated directories and root files" {
     defer root.deinit();
     try eq(1, root.paths.len);
     try f.edge(&root, ".", ".", .import, 3);
+    var root_analysis = try root.analyze(a);
+    defer root_analysis.deinit();
+    try std.testing.expectEqualDeep(&[_][]const u8{ ".", "." }, root_analysis.cycles[0].path);
     var one = try graph.aggregate(a, 1);
     defer one.deinit();
     try eq(3, one.paths.len);

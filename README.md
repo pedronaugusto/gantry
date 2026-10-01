@@ -64,6 +64,7 @@ exe.root_module.addImport("gantry", dep.module("gantry"));
 | `Graph.fromEdges(gpa, paths, edges)` | Copies, validates, sorts and coalesces caller edges. |
 | `graph.aggregate(gpa, depth)` | An independent graph of directories, including isolated ones. |
 | `graph.analyze(gpa)` | An independent `Analysis`: `layers`, `components`, `cycles`. |
+| `Analysis.init(gpa, paths, edges)` | An independent analysis using `Graph.fromEdges` validation and ordering. |
 | `graph.check(gpa, rules)` | Every violation, with its rule name and edge, reference or missing path. Free the returned slice with `gpa.free`. |
 | `imports(gpa, language, bytes)` | An owned `Imports` with raw `items`, including Zig member references. No resolution. |
 | `DirReader{ .io, .dir, .limit }.read` | The reader over a caller-owned directory, with a caller-chosen byte limit. |
@@ -150,6 +151,12 @@ order. Components and cycles are ordered by their first member; witnesses
 start there and choose the first outgoing edge within the component, then
 a breadth-first return path. Graph algorithms use heap stacks, so a long
 chain does not consume the machine's call stack.
+
+`Analysis.init` builds directly from caller paths and edges. It uses
+`Graph.fromEdges` to normalize paths, merge duplicates, sort and coalesce
+edges. Invalid or empty node paths return `InvalidPath`; absent endpoints
+return `UnknownPath`; zero counts return `InvalidCount`; merged counts above
+`usize` return `CountOverflow`. Both analysis entry points own their results.
 
 ## Imports
 
