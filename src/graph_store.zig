@@ -48,7 +48,7 @@ pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []con
         if (!g.files.contains(from) or !g.files.contains(to)) return error.UnknownPath;
         dest.* = .{ .from = from, .to = to, .kind = edge.kind, .count = edge.count };
     }
-    g.edges = try coalesce(a, owned);
+    g.edges = try coalesce(owned);
     return g;
 }
 /// Directory nodes at depth (0 is the root, 1 the first component).
@@ -80,14 +80,14 @@ pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) !*Graph 
         dest.from = try ra.dupe(u8, edge.from);
         dest.to = try ra.dupe(u8, edge.to);
     }
-    result.edges = try coalesce(ra, copied);
+    result.edges = try coalesce(copied);
     return result;
 }
 /// Analysis owns its results independently of the graph.
 pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import("Analysis.zig").Analysis {
     return @import("analyze.zig").analyze(g, gpa);
 }
-pub fn coalesce(_: std.mem.Allocator, edges: []t.Edge) ![]const t.Edge {
+pub fn coalesce(edges: []t.Edge) ![]const t.Edge {
     std.mem.sort(t.Edge, edges, {}, t.edgesLess);
     var n: usize = 0;
     for (edges) |edge| {

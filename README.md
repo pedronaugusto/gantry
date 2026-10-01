@@ -85,6 +85,8 @@ graph storage and the caller's rule names and required-path strings
 (`rules.required[].paths[]`). Keep the graph and those strings alive until
 the findings are freed. Free only the returned slice.
 Managed values may be moved but must not be copied and deinitialized twice.
+Sorting and coalescing belong to graph construction. Use `Graph.fromEdges`
+for caller-supplied edges; it leaves the input unchanged.
 
 The reader is a function
 `read(context, path, scratch_allocator) !?[]const u8`. The bytes need only

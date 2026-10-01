@@ -157,7 +157,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
         };
         _ = scratch.reset(.retain_capacity);
     }
-    g.edges = try Graph.coalesce(a, try edges.toOwnedSlice(a));
+    g.edges = try Graph.coalesce(try edges.toOwnedSlice(a));
     std.mem.sort(Reference, refs.items, {}, struct {
         fn less(_: void, x: Reference, y: Reference) bool {
             const from = std.mem.order(u8, x.from, y.from);

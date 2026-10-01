@@ -57,7 +57,4 @@ pub const Graph = enum(usize) {
     pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules.zig").Rules) ![]const @import("rules.zig").Violation {
         return @import("rules.zig").check(g, gpa, rules);
     }
-    pub fn coalesce(a: std.mem.Allocator, input_edges: []t.Edge) ![]const t.Edge {
-        return store.coalesce(a, input_edges);
-    }
 };

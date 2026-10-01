@@ -248,3 +248,22 @@ test "graph membership preserves normalized nodes after moving the owner" {
     defer root.deinit();
     try expect(root.contains("."));
 }
+
+test "graph construction owns edge normalization" {
+    try expect(!@hasDecl(g.Graph, "coalesce"));
+    var edges = [_]g.Edge{
+        .{ .from = "./b", .to = "a" },
+        .{ .from = "a", .to = "./b", .count = 2 },
+        .{ .from = "./a", .to = "b", .count = 3 },
+    };
+    const original = edges;
+    var graph = try g.Graph.fromEdges(a, &.{ "b", "./a" }, &edges);
+    defer graph.deinit();
+    try std.testing.expectEqualDeep(original, edges);
+    try std.testing.expectEqualDeep(&[_]g.Edge{
+        .{ .from = "a", .to = "b", .count = 5 },
+        .{ .from = "b", .to = "a" },
+    }, graph.edges());
+    edges[0].count = 99;
+    try f.edge(&graph, "b", "a", .import, 1);
+}
