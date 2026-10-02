@@ -31,7 +31,7 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []
         if (try @import("lang/rust.zig").testFile(s, text)) try marked.put(a, from, {});
         var resolver = ctx;
         resolver.allocator = s;
-        for (try @import("lang/rust.zig").imports(s, text)) |spec| {
+        for ((try @import("lang/rust.zig").recover(s, text)).specs) |spec| {
             if (spec.form != .rust_mod) continue;
             for (try resolver.targets(from, .rust, spec)) |to| try declarations.append(a, .{ .from = from, .to = ctx.files.getKey(to).?, .kind = spec.kind });
         }

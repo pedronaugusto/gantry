@@ -9,6 +9,7 @@ paths: []const []const u8 = &.{},
 edges: []const t.Edge = &.{},
 dependencies: []const t.Dependency = &.{},
 references: []const t.Reference = &.{},
+unsupported: []const t.UnsupportedReference = &.{},
 /// Selected files for which the caller returned null; never silently omitted.
 unread: []const []const u8 = &.{},
 go_files: []const @import("go_build.zig").File = &.{},
@@ -58,6 +59,7 @@ pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []con
 }
 /// Directory nodes at depth (0 is the root, 1 the first component).
 /// The returned graph is independent of this one, with no manifest references.
+/// Unsupported imports retain their original source paths and byte offsets.
 /// Directory self edges are retained: they describe coupling within a directory.
 pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) !*Graph {
     var scratch: std.heap.ArenaAllocator = .init(gpa);
@@ -85,6 +87,12 @@ pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) !*Graph 
         dest.from = try ra.dupe(u8, edge.from);
         dest.to = try ra.dupe(u8, edge.to);
     }
+    const unsupported = try ra.alloc(t.UnsupportedReference, g.unsupported.len);
+    for (g.unsupported, unsupported) |record, *dest| {
+        dest.* = record;
+        if (record.from) |from| dest.from = try ra.dupe(u8, from);
+    }
+    result.unsupported = unsupported;
     result.edges = try coalesce(copied);
     return result;
 }

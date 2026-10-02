@@ -1,14 +1,20 @@
 const std = @import("std");
 const l = @import("../lexer.zig");
-const Spec = @import("../types.zig").Spec;
-pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
+const types = @import("../types.zig");
+const Spec = types.Spec;
+pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     const ts = try l.compact(a, try l.lex(.javascript, a, source));
     var out: std.ArrayList(Spec) = .empty;
+    var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     for (ts, 0..) |t, i| {
         if (i > 0 and (ts[i - 1].is(".") or ts[i - 1].is("?"))) continue;
         if (t.is("require") or t.is("import")) {
             if (i + 3 < ts.len and ts[i + 1].is("(") and ts[i + 2].kind == .string and (ts[i + 3].is(")") or ts[i + 3].is(","))) {
                 try out.append(a, .{ .name = try l.decodeJS(a, ts[i + 2].text), .offset = t.offset });
+                continue;
+            }
+            if (i + 1 < ts.len and ts[i + 1].is("(")) {
+                try unsupported.append(a, .{ .offset = t.offset, .expression = if (t.is("require")) .javascript_require else .javascript_import });
                 continue;
             }
             if (t.is("require")) continue;
@@ -26,7 +32,7 @@ pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
             if (ts[j].is("import") or ts[j].is("export")) break;
         }
     }
-    return out.toOwnedSlice(a);
+    return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
 
 const p = @import("../path.zig");

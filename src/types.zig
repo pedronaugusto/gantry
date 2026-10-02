@@ -6,6 +6,29 @@ pub const Form = enum { literal, python, rust_mod, rust_use };
 /// Raw references borrow the source or the allocator passed to the lexer.
 pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false };
 pub const Reference = struct { from: []const u8, name: []const u8, offset: usize, member: ?[]const u8 = null, resolved: bool = false, kind: Kind = .import };
+/// The lexical construct that recovery could not turn into a reference.
+pub const ImportExpression = enum {
+    zig_import,
+    c_include,
+    javascript_import,
+    javascript_require,
+    python_importlib,
+    python_import,
+    rust_include,
+    rust_path,
+};
+/// Owned by Imports or Graph, with a byte offset at the construct's start.
+pub const UnsupportedReference = struct {
+    /// Null for anonymous source bytes passed to `imports`.
+    from: ?[]const u8 = null,
+    offset: usize,
+    expression: ImportExpression,
+};
+/// Internal extraction result; all slices borrow source or extraction storage.
+pub const Recovery = struct {
+    specs: []const Spec = &.{},
+    unsupported: []const UnsupportedReference = &.{},
+};
 pub const Dependency = struct { manifest: []const u8, name: []const u8, requirement: []const u8 = "", source: []const u8 = "", group: []const u8 = "dependencies" };
 pub const Layer = struct { path: []const u8, depth: usize };
 pub const Cycle = struct { members: []const []const u8, path: []const []const u8 };

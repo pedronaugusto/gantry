@@ -14,6 +14,7 @@ test "empty graph owns its result" {
 
 test {
     _ = @import("test_lexers.zig");
+    _ = @import("test_unsupported.zig");
     _ = @import("test_resolution.zig");
     _ = @import("test_configs.zig");
     _ = @import("test_scan_diagnostic.zig");

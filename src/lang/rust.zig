@@ -1,22 +1,31 @@
 const std = @import("std");
 const l = @import("../lexer.zig");
-const Spec = @import("../types.zig").Spec;
-pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
+const types = @import("../types.zig");
+const Spec = types.Spec;
+pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     const ts = try l.compact(a, try l.lex(.rust, a, source));
     var out: std.ArrayList(Spec) = .empty;
+    var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     const Frame = struct { test_item: bool, scope: []const u8 };
     var frames: std.ArrayList(Frame) = .empty;
     var current: Frame = .{ .test_item = false, .scope = "" };
     var pending_test = false;
+    var pending_path = false;
     var pending_scope: ?[]const u8 = null;
     var i: usize = 0;
     while (i < ts.len) : (i += 1) {
         const t = ts[i];
+        if (t.is("include") and i + 2 < ts.len and ts[i + 1].is("!") and (ts[i + 2].is("(") or ts[i + 2].is("{") or ts[i + 2].is("[")))
+            try unsupported.append(a, .{ .offset = t.offset, .expression = .rust_include });
         if (t.is("#") and i + 1 < ts.len and (ts[i + 1].is("[") or ts[i + 1].is("!"))) {
             const inner = ts[i + 1].is("!");
             var j = i + 1;
             while (j < ts.len and !ts[j].is("]")) : (j += 1) {}
             const begin = i + (if (inner) @as(usize, 3) else 2);
+            if (begin < j and ts[begin].is("path")) {
+                try unsupported.append(a, .{ .offset = t.offset, .expression = .rust_path });
+                pending_path = true;
+            }
             // Only an explicit cfg(test) is proof; cfg(not(test)) and cfg_attr
             // remain ordinary lexical items, without guessed evaluation.
             if (begin + 3 < j and ts[begin].is("cfg") and ts[begin + 1].is("(") and ts[begin + 2].is("test") and ts[begin + 3].is(")")) {
@@ -27,7 +36,7 @@ pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
         }
         if (t.is("mod") and i + 2 < ts.len and ts[i + 1].kind == .word) {
             if (ts[i + 1].is("tests")) pending_test = true;
-            if (ts[i + 2].is(";")) try out.append(a, .{ .name = ts[i + 1].text, .offset = t.offset, .form = .rust_mod, .kind = if (current.test_item or pending_test) .@"test" else .import, .scope = current.scope });
+            if (ts[i + 2].is(";") and !pending_path) try out.append(a, .{ .name = ts[i + 1].text, .offset = t.offset, .form = .rust_mod, .kind = if (current.test_item or pending_test) .@"test" else .import, .scope = current.scope });
             if (ts[i + 2].is("{")) pending_scope = try std.mem.join(a, "/", if (current.scope.len == 0) &.{ts[i + 1].text} else &.{ current.scope, ts[i + 1].text });
         } else if (t.is("use") and i + 1 < ts.len) {
             var j = i + 1;
@@ -42,17 +51,20 @@ pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
             try frames.append(a, current);
             current = .{ .test_item = current.test_item or pending_test, .scope = pending_scope orelse current.scope };
             pending_test = false;
+            pending_path = false;
             pending_scope = null;
         } else if (t.is("}")) {
             if (frames.pop()) |frame| current = frame;
             pending_test = false;
+            pending_path = false;
             pending_scope = null;
         } else if (t.is(";")) {
             pending_test = false;
+            pending_path = false;
             pending_scope = null;
         }
     }
-    return out.toOwnedSlice(a);
+    return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
 // Nested use trees are walked on an explicit stack: source nesting never
 // consumes the machine's call stack.

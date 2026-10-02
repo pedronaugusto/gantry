@@ -1,20 +1,32 @@
 const std = @import("std");
 const l = @import("../lexer.zig");
-const Spec = @import("../types.zig").Spec;
-pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
+const types = @import("../types.zig");
+const Spec = types.Spec;
+pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     const ts = try l.lex(.c, a, source);
     var out: std.ArrayList(Spec) = .empty;
-    for (ts, 0..) |t, i| {
-        if (!t.is("#") or (i != 0 and ts[i - 1].kind != .newline) or i + 2 >= ts.len or !ts[i + 1].is("include")) continue;
-        if (ts[i + 2].kind == .string) {
-            try out.append(a, .{ .name = ts[i + 2].text, .offset = t.offset });
-        } else if (ts[i + 2].is("<")) {
-            var end = i + 3;
+    var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
+    for (ts, 0..) |token, i| {
+        if (!token.is("#") or (i != 0 and ts[i - 1].kind != .newline) or i + 1 >= ts.len or !ts[i + 1].is("include")) continue;
+        var name: ?[]const u8 = null;
+        var end = i + 2;
+        if (end < ts.len and ts[end].kind == .string) {
+            name = ts[end].text;
+            end += 1;
+        } else if (end < ts.len and ts[end].is("<")) {
+            const begin = ts[end].end;
+            end += 1;
             while (end < ts.len and !ts[end].is(">") and ts[end].kind != .newline) : (end += 1) {}
-            if (end < ts.len and ts[end].is(">")) try out.append(a, .{ .name = source[ts[i + 2].end..ts[end].offset], .offset = t.offset });
+            if (end < ts.len and ts[end].is(">")) {
+                name = source[begin..ts[end].offset];
+                end += 1;
+            }
         }
+        if (name != null and (end == ts.len or ts[end].kind == .newline)) {
+            try out.append(a, .{ .name = name.?, .offset = token.offset });
+        } else try unsupported.append(a, .{ .offset = token.offset, .expression = .c_include });
     }
-    return out.toOwnedSlice(a);
+    return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
 
 const p = @import("../path.zig");

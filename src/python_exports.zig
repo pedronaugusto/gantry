@@ -9,7 +9,7 @@ fn top(text: []const u8, offset: usize) bool {
 }
 fn targets(a: std.mem.Allocator, source: []const u8, from: []const u8, ctx: anytype) ![]const []const u8 {
     const ts = try l.lex(.python, a, source);
-    const specs = try python.imports(a, source);
+    const specs = (try python.recover(a, source)).specs;
     var names: std.ArrayList([]const u8) = .empty;
     var exports: std.ArrayList(Export) = .empty;
     var literal = false;

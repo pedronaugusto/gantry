@@ -7,6 +7,7 @@ fn failed(diagnostic: *const g.ScanDiagnostic, path: ?[]const u8, phase: g.ScanD
     const failure = diagnostic.failure orelse return error.TestExpectedDiagnostic;
     try std.testing.expectEqual(phase, failure.phase);
     try std.testing.expectEqual(cause, failure.cause);
+    try std.testing.expectEqual(null, failure.offset);
     if (path) |p| try std.testing.expectEqualStrings(p, failure.path.?) else try std.testing.expectEqual(null, failure.path);
 }
 

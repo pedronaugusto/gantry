@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Preserve JS template boundaries so interpolation strings cannot become literal import operands.
+- Omit guessed default Rust module edges when a path attribute controls the source file.
+
 - Return `InvalidConfig` for malformed JS/TS config roots and resolution field types instead of silently ignoring them.
 - Keep absolute reference and config paths unresolved through one repository-relative resolution join instead of interpreting them beside the source or config.
 - Parse JSONC configs with JSON-specific comment and comma handling, rejecting source syntax and unterminated comments instead of dropping them.
@@ -26,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release resolution configs and indexes when a scan returns, keeping construction workspaces out of the graph's owned storage.
 
 ### Added
+
+- Record detectable unsupported imports in `Imports` and `Graph`, and reject them with `Options.strict_imports` and a diagnostic byte offset.
 
 - Add `scanWithDiagnostic` and caller-owned `ScanDiagnostic` output with the failed file, phase and original cause while keeping graph results atomic.
 

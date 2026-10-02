@@ -10,6 +10,8 @@ pub const Language = t.Language;
 pub const Kind = t.Kind;
 pub const Edge = t.Edge;
 pub const Reference = t.Reference;
+pub const UnsupportedReference = t.UnsupportedReference;
+pub const ImportExpression = t.ImportExpression;
 pub const Dependency = t.Dependency;
 pub const Layer = t.Layer;
 pub const Cycle = t.Cycle;
@@ -25,6 +27,9 @@ const languages = @import("languages.zig");
 pub const Options = struct {
     kinds: []const Kind = &.{ .import, .@"test" },
     manifests: bool = true,
+    /// Reject detectable unsupported imports in participating source files.
+    /// This also extracts code when import and test edges are disabled.
+    strict_imports: bool = false,
     named_modules: []const NamedModule = &.{},
     include_roots: []const []const u8 = &.{},
     python_roots: []const []const u8 = &.{""},
@@ -39,7 +44,7 @@ pub fn languageOf(p: []const u8) ?Language {
     }
     return null;
 }
-/// Raw lexical references, owning source bytes and every slice until deinit.
+/// Raw lexical recovery, owning source bytes and every slice until deinit.
 pub const Imports = @import("scan.zig").Imports;
 pub const imports = @import("scan.zig").imports;
 /// read(context, path, scratch_allocator) returns !?[]const u8. Bytes need
@@ -47,7 +52,8 @@ pub const imports = @import("scan.zig").imports;
 /// an error aborts without a partial graph. Scratch is released per file.
 /// The returned graph borrows neither input paths and options nor file bytes.
 pub const scan = @import("scan.zig").scan;
-/// The same atomic scan, with a caller-owned file, phase and cause on failure.
+/// The same atomic scan, with a caller-owned file, phase, optional byte offset
+/// and cause on failure.
 pub const scanWithDiagnostic = @import("scan.zig").scanWithDiagnostic;
 pub const ScanDiagnostic = @import("scan_diagnostic.zig").ScanDiagnostic;
 /// Reader over an already-open directory; directory ownership stays with caller.

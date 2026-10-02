@@ -1,7 +1,10 @@
 const std = @import("std");
 const l = @import("../lexer.zig");
-const Spec = @import("../types.zig").Spec;
-pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
+const types = @import("../types.zig");
+const Spec = types.Spec;
+// Go import declarations require string literals. There is no computed
+// import expression to detect without adding a syntax-validation contract.
+pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     const ts = try l.compact(a, try l.lex(.go, a, source));
     var out: std.ArrayList(Spec) = .empty;
     for (ts, 0..) |t, i| {
@@ -17,7 +20,7 @@ pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
             } else if (!block and ts[j].kind != .word and !ts[j].is(".")) break;
         }
     }
-    return out.toOwnedSlice(a);
+    return .{ .specs = try out.toOwnedSlice(a) };
 }
 
 const p = @import("../path.zig");

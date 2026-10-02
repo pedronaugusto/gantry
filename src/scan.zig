@@ -13,26 +13,25 @@ const languageOf = api.languageOf;
 const Options = api.Options;
 const Language = t.Language;
 const Kind = t.Kind;
-const Spec = t.Spec;
 const Edge = t.Edge;
 const Reference = t.Reference;
 const Dependency = t.Dependency;
 const GoFile = api.GoFile;
-const ImportStore = @import("owned_slice.zig").Store(Spec);
+const ImportStore = @import("import_store.zig");
 const PathStore = @import("owned_slice.zig").Store([]const u8);
-pub const Imports = ImportStore.Owner;
+pub const Imports = @import("Imports.zig").Imports;
 pub const Paths = PathStore.Owner;
 
 pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) !Imports {
     const result = try ImportStore.create(gpa);
     errdefer result.deinit();
     const a = result.arena.allocator();
-    result.items = try extract(a, language, try a.dupe(u8, source));
+    result.recovery = try extract(a, language, try a.dupe(u8, source));
     return ImportStore.owner(result);
 }
-fn extract(a: std.mem.Allocator, language: Language, source: []const u8) ![]const Spec {
+fn extract(a: std.mem.Allocator, language: Language, source: []const u8) !t.Recovery {
     return switch (language) {
-        inline else => |lang| @field(languages, @tagName(lang)).imports(a, source),
+        inline else => |lang| @field(languages, @tagName(lang)).recover(a, source),
     };
 }
 fn enabled(options: Options, kind: Kind) bool {
@@ -48,7 +47,7 @@ pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype,
     return scanWithDiagnostic(gpa, paths, context, read, options, null);
 }
 /// Clears the caller's diagnostic on entry. On failure it owns the failed
-/// path, phase and original cause after all scan storage has been released.
+/// path, phase, optional byte offset and original cause after scan cleanup.
 /// A null diagnostic has the same behavior as `scan`. Reporting never changes
 /// the returned error; if its path copy runs out of memory, the path is null.
 pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, diagnostic: ?*diagnostics.ScanDiagnostic) !@import("Graph.zig").Graph {
@@ -127,10 +126,11 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
+    var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     for (g.paths) |p| {
         if (inactive.contains(p)) continue;
         const language = languageOf(p);
-        const code = (enabled(options, .import) or enabled(options, .@"test")) and language != null;
+        const code = (options.strict_imports or enabled(options, .import) or enabled(options, .@"test")) and language != null;
         const links = enabled(options, .link) and std.mem.endsWith(u8, p, ".md");
         const assets = enabled(options, .asset) and recover.assetText(p);
         if (!code and !links and !assets) continue;
@@ -145,7 +145,17 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
             progress.at(.imports, p);
-            const specs = try extract(s, language.?, text);
+            const recovery = try extract(s, language.?, text);
+            if (options.strict_imports and recovery.unsupported.len > 0) {
+                progress.offset = recovery.unsupported[0].offset;
+                return error.UnsupportedImport;
+            }
+            for (recovery.unsupported) |record| try unsupported.append(a, .{
+                .from = p,
+                .offset = record.offset,
+                .expression = record.expression,
+            });
+            const specs = recovery.specs;
             for (specs) |spec| {
                 progress.at(.resolution, p);
                 const kind: Kind = if (spec.kind == .@"test" or test_files.contains(p) or @import("code_kind.zig").file(language.?, p)) .@"test" else .import;
@@ -210,6 +220,8 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
             return std.mem.order(u8, x.source, y.source) == .lt;
         }
     }.less);
+    // Selected paths and each extractor are already in source order.
+    g.unsupported = try unsupported.toOwnedSlice(a);
     g.references = try refs.toOwnedSlice(a);
     g.dependencies = try deps.toOwnedSlice(a);
     g.unread = try reader.unreadPaths(a, &g.files);

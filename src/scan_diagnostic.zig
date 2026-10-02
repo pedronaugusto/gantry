@@ -41,6 +41,8 @@ pub const ScanDiagnostic = struct {
         /// Null for work without a file or if copying the path ran out of memory.
         path: ?[]const u8,
         phase: Phase,
+        /// Start of an unsupported import expression; null for other failures.
+        offset: ?usize = null,
         /// The original error returned by the scan, including reader errors.
         cause: anyerror,
     };
@@ -68,15 +70,17 @@ pub const Progress = struct {
     diagnostic: ?*ScanDiagnostic,
     phase: ScanDiagnostic.Phase = .paths,
     path: ?[]const u8 = null,
+    offset: ?usize = null,
 
     pub fn at(progress: *Progress, phase: ScanDiagnostic.Phase, path: ?[]const u8) void {
         progress.phase = phase;
         progress.path = path;
+        progress.offset = null;
     }
     pub fn fail(progress: *const Progress, cause: anyerror) void {
         const d = progress.diagnostic orelse return;
         // Reporting must preserve the original cause even if its allocator fails.
         const owned = if (progress.path) |path| d.gpa.dupe(u8, path) catch null else null;
-        d.failure = .{ .path = owned, .phase = progress.phase, .cause = cause };
+        d.failure = .{ .path = owned, .phase = progress.phase, .cause = cause, .offset = progress.offset };
     }
 };

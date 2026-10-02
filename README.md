@@ -61,14 +61,14 @@ exe.root_module.addImport("gantry", dep.module("gantry"));
 |---|---|
 | `scan(gpa, paths, context, read, options)` | Reads the selected files and returns an owned `Graph`. |
 | `scanWithDiagnostic(gpa, paths, context, read, options, diagnostic)` | The same atomic scan, with a caller-owned failure report; null omits the report. |
-| `ScanDiagnostic.init(gpa)` | An owned failure path, phase and cause; release with `deinit`. |
+| `ScanDiagnostic.init(gpa)` | An owned failure path, phase, optional byte offset and cause; release with `deinit`. |
 | `Graph.init(gpa, paths)` | An edgeless graph with these nodes. |
 | `Graph.fromEdges(gpa, paths, edges)` | Copies, validates, sorts and coalesces caller edges. |
 | `graph.aggregate(gpa, depth)` | An independent graph of directories, including isolated ones. |
 | `graph.analyze(gpa)` | An independent `Analysis`: `layers()`, `components()`, `cycles()`. |
 | `Analysis.init(gpa, paths, edges)` | An independent analysis using `Graph.fromEdges` validation and ordering. |
 | `graph.check(gpa, rules)` | Every violation, with its rule name and edge, reference or missing path. Free the returned slice with `gpa.free`. |
-| `imports(gpa, language, bytes)` | An owned `Imports` with raw `items()`, including Zig member references. No resolution. |
+| `imports(gpa, language, bytes)` | An owned `Imports` with raw `items()` and `unsupported()` constructs. No resolution. |
 | `DirReader{ .io, .dir, .limit }.read` | The reader over a caller-owned directory, with a caller-chosen byte limit. |
 | `walk(gpa, io, dir, context, keep)` | An owned `Paths`; `keep(context, path, kind)` can prune directories. Symlinks and other special entries are skipped. |
 | `languageOf(path)` | The language selected by the file extension, or null. |
@@ -78,8 +78,9 @@ exe.root_module.addImport("gantry", dep.module("gantry"));
 `Graph`, `Analysis`, `Imports` and `Paths` are opaque value handles that own
 their storage and allocator. Constructors are the only way to create them.
 Call their `deinit` once. Read results through `Graph.paths()`, `edges()`,
-`dependencies()`, `references()`, `unread()` and `goFiles()`, `Analysis.layers()`,
-`components()` and `cycles()`, and `Imports.items()` or `Paths.items()`.
+`dependencies()`, `references()`, `unsupported()`, `unread()` and `goFiles()`,
+`Analysis.layers()`, `components()` and `cycles()`, and `Imports.items()`,
+`Imports.unsupported()` or `Paths.items()`.
 `Graph.contains(path)` tests exact normalized node membership without exposing
 the index. Their slices and strings belong to them until then. An
 analysis or aggregation survives the original graph. Rule findings borrow
@@ -124,9 +125,10 @@ makes no claim about recovered dependencies.
 
 Use `scanWithDiagnostic` when a caller needs to say what failed. Initialize
 one `ScanDiagnostic` for each concurrent scan and pass its address. Its
-`failure` is null on success; on error it contains `path`, `phase` and
-`cause`. Each call clears the previous failure. The diagnostic owns its
-copy of the path until its next call or `deinit`, independently of the
+`failure` is null on success; on error it contains `path`, `phase`,
+`offset` and `cause`. `offset` is the byte offset of an unsupported import,
+and is null for other failures. Each call clears the previous failure. The
+diagnostic owns its copy of the path until its next call or `deinit`, independently of the
 graph allocator, input paths and reader bytes. Its allocator can be
 different from the scan's. Move this owner; do not deinitialize copies.
 
@@ -197,7 +199,9 @@ external packages.
 
 Aggregation depth 0 puts every file in `.`; depth 1 uses the first directory
 component; larger depths keep up to that many components. Root files stay in
-`.`. Self edges are retained, including the edges within a directory. Analyzing
+`.`. Unsupported-import records retain their original source paths and byte
+offsets.
+Self edges are retained, including the edges within a directory. Analyzing
 an aggregated graph therefore treats a directory self edge as a cycle.
 
 An analysis uses iterative strongly connected components. Every SCC becomes
@@ -207,8 +211,8 @@ edges. All members of a cycle share a depth. Isolated files have depth 0.
 Each cycle has sorted `members` and one actual closed `path` through its
 edges, including self imports. This is not an enumeration of every loop.
 
-Nodes, edges, references and declarations are sorted independently of input
-order. Components and cycles are ordered by their first member; witnesses
+Nodes, edges, references, unsupported imports and declarations are sorted
+independently of input order. Components and cycles are ordered by their first member; witnesses
 start there and choose the first outgoing edge within the component, then
 a breadth-first return path. Graph algorithms use heap stacks, so a long
 chain does not consume the machine's call stack.
@@ -233,6 +237,45 @@ keywords. Resolution is against the selected path set.
 | Python | Absolute and relative `import`/`from`, aliases, lists, parentheses and continued lines. Searches `Options.python_roots` (repository root by default); relative dots stay inside the source root. Initializer edges and literal star reexports are selectable policies. | No interpreter, `sys.path` changes, `importlib`, implicit legacy sibling search or runtime imports. A selected child module may still be an attribute at runtime. Dynamic export lists and symbol reassignment are not evaluated. |
 | Go | Single/grouped imports, aliases, dot/blank imports, ordinary/raw strings. Selected `go.mod` identities, local replacements and `go.work` use/replace routing. Imports expand to selected package files; nested modules are boundaries. Constraints and package names are retained. | No vendoring, module download, transitive version solving, cgo processing or compiler invocation. Version-specific replacements use selected requirements. Local paths must be relative and remain inside the repository. No module suffix guessing. |
 | Rust | External `mod name;`, `use crate::`, `super::`, `self::`, aliases and nested use trees. File modules use `name.rs` or `name/mod.rs`; child modules of `foo.rs` live under `foo/`. Uses resolve the longest selected module prefix, including lexical inline-module scope. Explicit test guards and test modules carry a test kind. | No macro expansion, general `cfg` evaluation, `#[path]`, semantic definitions, reexports or type resolution. The nearest `src` directory is the crate root; nonstandard roots need caller edges. External crate uses are not file edges. |
+
+Lexical recovery never evaluates constants, calls, aliases or arbitrary source
+expressions. By default, `Imports.unsupported()` and `graph.unsupported()`
+report detectable import constructs that recovery could not read. Each
+`UnsupportedReference` has `from`, `offset` and `expression`. Graph records
+own their normalized source paths; `from` is null in `Imports` because
+`imports` receives anonymous bytes, without a file path. The offset is a
+zero-based byte offset at the start of the construct, and `expression` is an
+`ImportExpression` tag from the table below. Records appear in source order;
+graph records are ordered by path, then offset. Repeated constructs stay
+separate. They carry no invented dependency name or edge.
+
+| Language | Unsupported constructs reported |
+|---|---|
+| Zig | Every `@import` other than `(`, one ordinary string literal and `)`: named constants, concatenation, calls, conditionals, parentheses, multiline strings and malformed operands. Tag: `zig_import`. |
+| C/C++ | Line-start `#include` without one quoted or angle-delimited header: macro operands, incomplete delimiters and extra operand tokens. Tag: `c_include`. |
+| JS/TS | Bare `import(...)` and `require(...)` without one quoted first argument followed by `)` or `,`. Computed operands and all template operands are unsupported; imports inside template interpolations are still visited. Tags: `javascript_import`, `javascript_require`. |
+| Python | Exact `importlib.import_module(...)` and bare `__import__(...)` calls, including literal arguments: these runtime loaders have no resolver here. Tags: `python_importlib`, `python_import`. |
+| Go | None: valid import declarations require string literals; Go has no computed import expression. |
+| Rust | `include!` with any macro delimiter and direct `#[path ...]` attributes, including literal operands: these forms have no resolver here. A module with a path attribute contributes no guessed default file edge. Tags: `rust_include`, `rust_path`. |
+
+Set `Options.strict_imports = true` for an import boundary check. Both scan
+entry points return `UnsupportedImport` at the first detectable unsupported
+construct before returning any graph. `scanWithDiagnostic` reports its file,
+byte offset and `imports` phase. Reporting retains the offset and cause even
+if copying the diagnostic path runs out of memory. Strict mode inspects code
+even when `Options.kinds` disables import and test edges. Inactive Go files
+remain outside recovery when a target is supplied. Tolerant scans recover
+code when import or test kinds are enabled; kind filters still select edges,
+not unsupported records within that code.
+
+Strict mode enforces these lexical forms, not language validity or a complete
+compiler dependency graph. Reassigned loader names, aliases, indirect calls,
+macro expansion, `cfg_attr` paths, preprocessing, generated imports and
+runtime binding semantics remain outside detection. Comments and quoted text
+do not contribute constructs. A supported literal with no selected target is
+an unresolved reference, not an unsupported construct. Malformed literal
+escapes retain their existing parsing errors in either mode. Use compiler
+information or caller-supplied edges when these lexical limits are too narrow.
 
 JS/TS configs accept JSONC comments and trailing commas. Other syntax and
 unterminated comments are errors. The root and `compilerOptions` must be

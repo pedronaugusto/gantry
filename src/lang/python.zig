@@ -1,6 +1,5 @@
 const std = @import("std");
 const l = @import("../lexer.zig");
-const Spec = @import("../types.zig").Spec;
 fn module(a: std.mem.Allocator, ts: []const l.Token, pos: *usize) ![]const u8 {
     var name: std.ArrayList(u8) = .empty;
     while (pos.* < ts.len and (ts[pos.*].kind == .word or ts[pos.*].is("."))) : (pos.* += 1) {
@@ -9,9 +8,21 @@ fn module(a: std.mem.Allocator, ts: []const l.Token, pos: *usize) ![]const u8 {
     }
     return name.toOwnedSlice(a);
 }
-pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
+const types = @import("../types.zig");
+const Spec = types.Spec;
+pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     const ts = try l.lex(.python, a, source);
     var out: std.ArrayList(Spec) = .empty;
+    var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
+    const loaders = try l.compact(a, ts);
+    for (loaders, 0..) |token, i| {
+        // Recognize exact loader spellings, without resolving bindings or aliases.
+        if (i > 0 and loaders[i - 1].is(".")) continue;
+        if (token.is("importlib") and i + 3 < loaders.len and loaders[i + 1].is(".") and loaders[i + 2].is("import_module") and loaders[i + 3].is("("))
+            try unsupported.append(a, .{ .offset = token.offset, .expression = .python_importlib });
+        if (token.is("__import__") and i + 1 < loaders.len and loaders[i + 1].is("("))
+            try unsupported.append(a, .{ .offset = token.offset, .expression = .python_import });
+    }
     var i: usize = 0;
     while (i < ts.len) : (i += 1) {
         const t = ts[i];
@@ -67,7 +78,7 @@ pub fn imports(a: std.mem.Allocator, source: []const u8) ![]const Spec {
         }
         i = j -| 1;
     }
-    return out.toOwnedSlice(a);
+    return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
 
 const p = @import("../path.zig");

@@ -30,6 +30,11 @@ pub const Graph = enum(usize) {
     pub fn references(g: *const Graph) []const t.Reference {
         return store.get(g.*).references;
     }
+    /// Detectable import constructs omitted by lexical recovery, ordered by
+    /// source path and byte offset. These slices belong to this graph.
+    pub fn unsupported(g: *const Graph) []const t.UnsupportedReference {
+        return store.get(g.*).unsupported;
+    }
     /// Selected files for which the caller returned null, each listed once.
     pub fn unread(g: *const Graph) []const []const u8 {
         return store.get(g.*).unread;
@@ -43,6 +48,7 @@ pub const Graph = enum(usize) {
     }
     /// Directory nodes at depth (0 is the root, 1 the first component).
     /// The result is independent of this graph, with no manifest references.
+    /// Unsupported imports retain their original source paths and byte offsets.
     /// Directory self edges are retained as coupling within a directory.
     pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) !Graph {
         return store.owner(try store.get(g.*).aggregate(gpa, depth));
