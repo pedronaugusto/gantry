@@ -2,7 +2,7 @@
 
 Keep the `bench` worktree in the workspace’s `.bench/gantry`, outside `.zig-cache`; `bench/quiet.sh` resolves its files from its own directory.
 
-Pinned current main: `70fec2b48206b224b8f37b80a9ba4509fbceb9c4`.
+Pinned current main: `2f7672b22ec2e48d3d8f1fc8035d840be14e1387`.
 **No main commit exists before the requested cutoff.** The initial main commit,
 `24cc1cec108edf15a60a932ce79a864e811fec35`, is a clearly labelled substitute
 baseline. This pass cannot establish a before/after result for a pre-cutoff
@@ -83,3 +83,7 @@ old smoke instrumentation values are removed.
 Planning estimate: **15–35 minutes** for the full pass with dependencies ready;
 allow another **15–30 minutes** for initial corpus/tool setup. These are
 estimates, not measurements taken during preparation.
+
+Standalone `zig build -Doptimize=Debug` compiles the pinned after harness
+without running it. Snapshot builds pass `-Dsnapshot=true` to compile the
+archived local revision instead; quiet runs retain ReleaseFast.
