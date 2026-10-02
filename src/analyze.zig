@@ -2,7 +2,6 @@
 const std = @import("std");
 const t = @import("types.zig");
 const Graph = @import("graph_store.zig");
-const Analysis = @import("Analysis.zig").Analysis;
 const Adjacency = struct {
     offsets: []usize,
     targets: []usize,
@@ -26,7 +25,7 @@ const Adjacency = struct {
 };
 const Frame = struct { node: usize, next: usize };
 /// The graph supplies unique sorted paths and validated, coalesced edges.
-pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!Analysis {
+pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*@import("analysis_store.zig") {
     const paths = g.paths;
     const edges = g.edges;
     const self = try @import("analysis_store.zig").init(gpa);
@@ -187,5 +186,5 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
     self.layers = layers;
     self.components = components;
     self.cycles = try cycles.toOwnedSlice(a);
-    return @import("analysis_store.zig").owner(self);
+    return self;
 }

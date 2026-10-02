@@ -2,7 +2,6 @@
 const std = @import("std");
 const t = @import("types.zig");
 const Graph = @This();
-const PublicGraph = @import("Graph.zig").Graph;
 allocator: std.mem.Allocator,
 arena: std.heap.ArenaAllocator,
 paths: []const []const u8 = &.{},
@@ -97,9 +96,6 @@ pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) !*Graph 
     return result;
 }
 /// Analysis owns its results independently of the graph.
-pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import("Analysis.zig").Analysis {
-    return @import("analyze.zig").analyze(g, gpa);
-}
 pub fn coalesce(edges: []t.Edge) ![]const t.Edge {
     std.mem.sort(t.Edge, edges, {}, t.edgesLess);
     var n: usize = 0;
@@ -114,9 +110,9 @@ pub fn coalesce(edges: []t.Edge) ![]const t.Edge {
     return edges[0..n];
 }
 
-pub fn owner(state: *Graph) PublicGraph {
+pub fn owner(comptime Owner: type, state: *Graph) Owner {
     return @enumFromInt(@intFromPtr(state)); // safe: the owning handle preserves the allocated state's address.
 }
-pub fn get(g: PublicGraph) *Graph {
+pub fn get(g: anytype) *Graph {
     return @ptrFromInt(@intFromEnum(g));
 }
