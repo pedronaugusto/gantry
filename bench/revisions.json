@@ -1,0 +1,6 @@
+{
+  "before": "24cc1cec108edf15a60a932ce79a864e811fec35",
+  "after": "70fec2b48206b224b8f37b80a9ba4509fbceb9c4",
+  "cutoff": "2026-09-30T00:00:00+01:00",
+  "baseline_note": "No main commit predates the cutoff. The initial main commit is a substitute baseline, not a pre-pass revision."
+}

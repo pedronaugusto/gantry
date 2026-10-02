@@ -1,0 +1,7 @@
+build/
+zig-out/
+.zig-cache/
+
+results/
+zig-pkg/
+__pycache__/

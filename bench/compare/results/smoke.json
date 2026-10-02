@@ -88,12 +88,12 @@
       ],
       "commands": {
         "gantry": [
-          "/private/tmp/gantry-compare/gantry/bin/compare-scan",
-          "/private/tmp/gantry-compare/repos/python",
-          "/private/tmp/gantry-compare/published-smoke/python/paths.txt"
+          "<scratch>/gantry/bin/compare-scan",
+          "<scratch>/repos/python",
+          "<scratch>/published-smoke/python/paths.txt"
         ],
         "pydeps": [
-          "/private/tmp/gantry-compare/venv/bin/pydeps",
+          "<scratch>/venv/bin/pydeps",
           "django",
           "--no-config",
           "--show-deps",
@@ -102,9 +102,9 @@
           "--max-bacon=0"
         ],
         "grimp": [
-          "/private/tmp/gantry-compare/venv/bin/python",
-          "/Users/gusto/work/tycho/.bench/gantry/bench/compare/python_graph.py",
-          "/private/tmp/gantry-compare/repos/python"
+          "<scratch>/venv/bin/python",
+          "<harness>/python_graph.py",
+          "<scratch>/repos/python"
         ]
       },
       "agreement": {
@@ -230,27 +230,9 @@
         }
       },
       "measurements": {
-        "gantry": [
-          {
-            "run": 1,
-            "wall_seconds": 0.009969708975404501,
-            "peak_rss_bytes": 2228224
-          }
-        ],
-        "pydeps": [
-          {
-            "run": 1,
-            "wall_seconds": 3.894412708003074,
-            "peak_rss_bytes": 84639744
-          }
-        ],
-        "grimp": [
-          {
-            "run": 1,
-            "wall_seconds": 0.1731418753042817,
-            "peak_rss_bytes": 38813696
-          }
-        ]
+        "gantry": [],
+        "pydeps": [],
+        "grimp": []
       }
     }
   },

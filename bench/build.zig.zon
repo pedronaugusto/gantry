@@ -1,0 +1,1 @@
+.{ .name = .gantry_benchmark, .version = "0.0.0", .minimum_zig_version = "0.16.0", .fingerprint = 0xbac99e9f0600d768, .dependencies = .{ .gantry = .{ .path = ".." } }, .paths = .{ "build.zig", "build.zig.zon", "scan.zig", "api.zig", "compare" } }

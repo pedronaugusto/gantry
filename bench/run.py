@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
-"""Generate 30,002 files in a temporary directory, then time actual reads.
-
-Usage: zig build bench -Doptimize=ReleaseFast
-       python3 bench/run.py
-
-No threads, subprocesses, or file selection are used inside the timed scan.
-The corpus is generated before running the executable. Five rounds expose
-warm-cache variation. All temporary files are removed on exit.
-"""
-import pathlib
+"""Deterministic six-language corpus; generation happens outside measurements."""
+from pathlib import Path
 import subprocess
 import tempfile
+import sys
 
-with tempfile.TemporaryDirectory(prefix="gantry-bench-") as scratch:
-    root = pathlib.Path(scratch)
+def generate(root, count=5000):
+    root = Path(root)
     total = 0
     for lang in ("zig", "c", "js", "py", "go", "rust"):
-        for i in range(5000):
+        for i in range(count):
             group, member = divmod(i, 10)
             prev = max(0, member - 1)
             if lang == "zig":
@@ -50,5 +43,12 @@ with tempfile.TemporaryDirectory(prefix="gantry-bench-") as scratch:
             total += len(data)
     (root / "go/go.mod").write_text("module example.com/bench\nrequire example.com/external v1.0.0\n")
     (root / "package.json").write_text('{"dependencies":{"external":"1"}}\n')
-    print(f"source bytes {total:,}; six languages, 5,000 files each", flush=True)
-    subprocess.run(["zig-out/bin/scan", str(root)], check=True)
+    return total
+
+if __name__ == '__main__':
+    with tempfile.TemporaryDirectory(prefix='gantry-bench-') as scratch:
+        smoke = '--smoke' in sys.argv
+        generate(scratch, 10 if smoke else 5000)
+        subprocess.run(['zig-out/bin/scan',scratch,'1' if smoke else '5'],check=True,
+                       stdout=subprocess.DEVNULL if smoke else None,stderr=subprocess.DEVNULL if smoke else None)
+        if smoke: print('Smoke passed; no timings recorded.')

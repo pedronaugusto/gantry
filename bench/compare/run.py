@@ -127,14 +127,16 @@ def make_case(language, scratch, out, env, binary, smoke):
     actual = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     if actual != pin["commit"] or subprocess.check_output(["git", "-C", str(repo), "diff", "HEAD", "--name-only"]):
         raise ValueError(f"corpus differs from pinned commit: {repo}")
-    scope = "django/utils" if smoke else pin["scope"]
+    scope = ({"typescript":"src/vs/base/common", "python":"django/utils", "go":"pkg/util/slice", "rust":pin["scope"], "zig":"lib/std/Random"}[language]) if smoke else pin["scope"]
     suffix = {"typescript": (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"), "python": (".py",), "go": (".go",), "rust": (".rs",), "zig": (".zig",)}[language]
     files = {p for p in tracked(repo) if p.startswith(scope + "/") and p.endswith(suffix)}
     go_packages = None
     commands = {}
+    if smoke and language == "rust":
+        files = {p for p in files if Path(p).name in ("lib.rs", "file_structure.rs", "runnables.rs", "hover.rs")}
     if language == "go":
         env["GOWORK"] = str(repo / "go.work")
-        argv = ["go", "list", "-mod=vendor", "-deps", "-json", "./pkg/..."]
+        argv = ["go", "list", "-mod=vendor", "-deps", "-json", "./pkg/util/slice" if smoke else "./pkg/..."]
         discovery = out / "go-discovery.json"
         command(argv, repo, env, discovery)
         packages = list(json_stream(discovery.read_text()))
@@ -245,6 +247,14 @@ def classify(language, direction, edge, repo, folder, graphs, scope):
     return "review: unexplained difference", evidence
 
 
+def portable(value, scratch, source):
+    if isinstance(value, dict): return {k:portable(v,scratch,source) for k,v in value.items()}
+    if isinstance(value, list): return [portable(v,scratch,source) for v in value]
+    if isinstance(value, str):
+        return value.replace(str(source),"<source>").replace(str(HERE),"<harness>").replace(str(scratch),"<scratch>").replace(str(Path.home()),"<home>")
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scratch", type=Path, default=Path(tempfile.gettempdir()) / "gantry-compare")
@@ -252,14 +262,15 @@ def main():
     parser.add_argument("--languages", nargs="+", choices=list(PINS["repositories"]), default=list(PINS["repositories"]))
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--agreement-only", action="store_true", help="run each graph once, record no measurements")
-    parser.add_argument("--smoke", action="store_true", help="Django utils subset, one interleaved run; numbers are not benchmark results")
+    parser.add_argument("--smoke", action="store_true", help="Tiny selections in every language; record no timings")
     parser.add_argument("--skip-setup", action="store_true")
     parser.add_argument("--gantry-source", type=Path, default=HERE.parent.parent)
     args = parser.parse_args()
     if args.runs < 1:
         parser.error("--runs must be positive")
     if args.smoke:
-        args.languages, args.runs = ["python"], 1
+        args.runs = 1
+        args.agreement_only = True
     scratch = args.scratch.resolve()
     out = (args.output or scratch / ("smoke" if args.smoke else "agreement" if args.agreement_only else "results")).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -316,7 +327,7 @@ def main():
             result["agreement"][rival]["reasons"] = dict(Counter(d["reason"] for d in differences))
             result["agreement"][rival]["review_required"] = sum(d["reason"].startswith("review:") for d in differences)
         summary["languages"][language] = result
-        (out / "report.json").write_text(json.dumps(summary, indent=2) + "\n")
+        (out / "report.json").write_text(json.dumps(portable(summary, scratch, source), indent=2) + "\n")
         witnesses.cache_clear()
     markdown(summary, out)
     print(f"Report: {out / 'report.md'}", flush=True)

@@ -1,10 +1,14 @@
+Use `../quiet.sh` for the complete pinned before/after pass. `run.sh` is the
+lower-level current-checkout comparison helper. The quiet wrapper uses the
+same adapters and pins, and records no elapsed values in smoke mode.
+
 # Real repository comparison
 
 ```
 bench/compare/run.sh
 ```
 
-The default run installs pinned rivals, checks out pinned repositories, builds
+The default run installs pinned comparison tools, checks out pinned repositories, builds
 gantry with Zig 0.16.0 in ReleaseFast, collects agreement, then measures five
 warm runs. Use a quiet machine. Setup, compilation, normalization and reporting
 are outside the measured commands. Each tool runs once before measurements;
@@ -24,10 +28,9 @@ an installation; corpus hashes and tracked content are still checked. Setup
 never checks out a moving branch or runs a corpus's install scripts.
 
 `--agreement-only` invokes each graph command once and records **no timings**.
-`--smoke` selects only Django's `django/utils` (46 files) and one measured run.
-The Python rivals still discover Django's package; normalization limits their
-output to the utils subset. Smoke samples test instrumentation and stable
-graphs, and are deliberately omitted from the Markdown timing table.
+`--smoke` selects small subsets in all five languages and runs each graph once, without timing.
+Python and compiler-backed tools still discover their packages; normalization limits their
+output to the selected universe. Smoke checks graph adapters and records no timing values.
 
 Prerequisites: git, Zig 0.16.0, Python with venv, Node 22, Cargo/Rust >=1.91,
 and Go compatible with Kubernetes' checked-in workspace. `PYTHON=/path/to/python`
@@ -40,7 +43,7 @@ already on PATH. No toolchain is installed globally by this harness.
 
 ## Pins and isolation
 
-| Rival | Version | Pin |
+| Tool | Version | Pin |
 |---|---|---|
 | madge | 8.0.0 | `pins.json:npm`, complete `npm-lock.json` |
 | dependency-cruiser | 16.10.4 | `pins.json:npm`, complete `npm-lock.json` |
@@ -53,7 +56,7 @@ already on PATH. No toolchain is installed globally by this harness.
 `setup.py` installs npm with a local prefix at `<scratch>/npm`, Python into
 `<scratch>/venv`, and cargo-modules with `cargo install --root <scratch>/cargo`.
 `GOPATH`, Go module/build caches, Cargo home/target, npm/pip caches and Zig's
-global cache point inside scratch. There is no Go rival binary to install:
+global cache point inside scratch. There is no Go comparison tool binary to install:
 the selected Go comparison uses `go list -deps -json`, which also underlies
 goda. npm user/global config and pip config are disabled; Go's personal env
 file is disabled. Installed Rust toolchain binaries are used directly so
@@ -91,7 +94,7 @@ Module/package self edges are removed on both sides; file self edges remain.
 No transitive closure is added. Normalization admits an edge only when both
 endpoints are in the same selected repository universe.
 
-VS Code rivals use a scratch-local tsconfig with `baseUrl=<repo>/src`, type
+VS Code comparison tools use a scratch-local tsconfig with `baseUrl=<repo>/src`, type
 imports enabled, and no installed external dependencies. Madge's warnings
 and dependency-cruiser's unresolved records remain in raw output. Grimp is
 the actual graph engine used by import-linter; persistent graph caching is
@@ -99,7 +102,7 @@ disabled. pydeps uses bytecode/modulefinder, `--no-config`, and no diagram rende
 cargo-modules uses default features, without `cfg(test)` or external/sysroot
 nodes. Its resolved re-exports and type dependencies go beyond lexical imports.
 
-`report.md` gives agreed, gantry-only and rival-only counts, samples, and
+`report.md` gives agreed, gantry-only and comparison tool-only counts, samples, and
 counts by reason. `report.json` carries commands, pins, source revision/tree,
 environment, every measurement and the same agreement summary. Each
 `<language>/<tool>.raw` and `.stderr` preserves the original output. Sorted
@@ -119,7 +122,7 @@ Known differences in the checked-in agreement report:
   versus gantry's documented lexical module resolution.
 
 Agreed edges have identical normalized endpoints within these scopes. Zig
-has no rival: its graph and sample are reported, with no agreement score.
+has no comparison tool: its graph and sample are reported, with no agreement score.
 These comparisons do not validate manifests, layers or cycle algorithms.
 
 ## What the speed numbers mean
@@ -129,7 +132,7 @@ parsing/resolution and graph serialization to a file. Gantry reads its
 prepared selection policy then walks the selected directories itself. Go
 package-discovery metadata is prepared once, outside timing, to select the
 same repository package universe for gantry. Compiler/cargo workspace work
-performed by the rival remains part of its graph command. Gantry has manifest
+performed by the comparison tool remains part of its graph command. Gantry has manifest
 declarations disabled, although Go module identities are read for resolution.
 Analysis, visualization, contracts and rule checking are excluded.
 
@@ -154,8 +157,7 @@ with gzip.open("bench/compare/results/edges.json.gz", "rt") as stream:
 agreement's source commit records the harness before these artifacts were
 added; its `src` tree is also recorded. Raw tool output remains in the chosen
 scratch directory. No real benchmark timings were collected on the busy host.
-No gantry bugs were confirmed in these scopes, so there are no `edges`
-fix commits. Scope differences are not evidence that either graph is universally
+Those historical reports describe the earlier source revision; rerun agreement against the pinned current main before interpreting differences. Scope differences are not evidence that either graph is universally
 correct; the full diff remains available for review.
 
 Adapter checks: `python3 bench/compare/test_adapters.py`. These cover edge

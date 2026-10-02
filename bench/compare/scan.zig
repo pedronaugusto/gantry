@@ -1,5 +1,6 @@
 const std = @import("std");
 const gantry = @import("gantry");
+const api = @import("api.zig");
 
 // The caller supplies one newline-separated file universe, shared with rivals.
 pub fn main(init: std.process.Init) !void {
@@ -20,14 +21,14 @@ pub fn main(init: std.process.Init) !void {
     }
     var paths = try gantry.walk(init.gpa, io, dir, Selection{ .files = &selected, .directories = &directories }, Selection.keep);
     defer paths.deinit();
-    if (paths.items.len != selected.count()) return error.MissingSelectedFile;
-    var graph = try gantry.scan(init.gpa, paths.items, gantry.DirReader{ .io = io, .dir = dir }, gantry.DirReader.read, .{ .manifests = false });
+    if (api.items(&paths).len != selected.count()) return error.MissingSelectedFile;
+    var graph = try gantry.scan(init.gpa, api.items(&paths), gantry.DirReader{ .io = io, .dir = dir }, gantry.DirReader.read, .{ .manifests = false });
     defer graph.deinit();
-    if (graph.unread.len != 0) return error.UnreadFiles;
+    if (api.unread(&graph).len != 0) return error.UnreadFiles;
     var buffer: [65536]u8 = undefined;
     var writer = std.Io.File.stdout().writerStreaming(io, &buffer);
-    for (graph.edges) |edge| try writer.interface.print("E\t{s}\t{s}\n", .{ edge.from, edge.to });
-    for (graph.references) |ref| try writer.interface.print("R\t{s}\t{d}\t{d}\t{s}\n", .{ ref.from, ref.offset, @intFromBool(ref.resolved), ref.name });
+    for (api.edges(&graph)) |edge| try writer.interface.print("E\t{s}\t{s}\n", .{ edge.from, edge.to });
+    for (api.references(&graph)) |ref| try writer.interface.print("R\t{s}\t{d}\t{d}\t{s}\n", .{ ref.from, ref.offset, @intFromBool(ref.resolved), ref.name });
     try writer.interface.flush();
 }
 
