@@ -3,12 +3,12 @@
 const std = @import("std");
 const Language = @import("types.zig").Language;
 pub const Token = struct {
-    kind: enum { word, string, punctuation, newline },
+    kind: enum { word, string, template, punctuation, newline },
     text: []const u8,
     offset: usize,
     end: usize,
     pub fn is(t: Token, s: []const u8) bool {
-        return t.kind != .string and std.mem.eql(u8, t.text, s);
+        return (t.kind == .word or t.kind == .punctuation) and std.mem.eql(u8, t.text, s);
     }
 };
 pub fn lex(comptime lang: Language, a: std.mem.Allocator, text: []const u8) ![]const Token {
@@ -26,6 +26,9 @@ pub fn lex(comptime lang: Language, a: std.mem.Allocator, text: []const u8) ![]c
             continue;
         }
         if (lang == .javascript and (c == '`' or (c == '}' and templates.items.len > 0 and templates.items[templates.items.len - 1] == 0))) {
+            // Retain an opaque boundary so a string inside an interpolation
+            // cannot become the literal operand of an enclosing import call.
+            try out.append(a, .{ .kind = .template, .text = text[start .. start + 1], .offset = start, .end = start + 1 });
             if (c == '}') _ = templates.pop();
             i += 1;
             while (i < text.len) {

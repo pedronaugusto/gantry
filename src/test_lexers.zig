@@ -7,7 +7,7 @@ fn check(language: g.Language, source: []const u8, want: []const []const u8) !vo
     defer arena.deinit();
     var parsed = try g.imports(std.testing.allocator, language, source);
     defer parsed.deinit();
-    const specs = parsed.items;
+    const specs = parsed.items();
     try std.testing.expectEqual(want.len, specs.len);
     for (specs, want) |spec, name| try eq(name, spec.name);
 }
@@ -39,7 +39,7 @@ test "Zig member references direct bound typed and multiline with no comments or
         \\const y = other.p.mirror;
     );
     defer parsed.deinit();
-    const specs = parsed.items;
+    const specs = parsed.items();
     var members: usize = 0;
     for (specs) |s| if (s.member) |m| {
         try eq("mirror", m);
@@ -184,7 +184,7 @@ test "owned raw imports outlive the source and clean up on allocation failure" {
     var parsed = try g.imports(std.testing.allocator, .zig, source);
     defer parsed.deinit();
     std.testing.allocator.free(source);
-    try eq("proto", parsed.items[0].name);
+    try eq("proto", parsed.items()[0].name);
     const S = struct {
         fn run(a: std.mem.Allocator) !void {
             var result = try g.imports(a, .zig, "const p = @import(\"proto\"); const m = p.mirror;");

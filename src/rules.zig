@@ -1,13 +1,13 @@
 //! Rules are caller data. All matching restrictions report, in rule order.
 const std = @import("std");
 const t = @import("types.zig");
-const Graph = @import("Graph.zig");
+const Graph = @import("Graph.zig").Graph;
 pub const Layer = struct { name: []const u8, patterns: []const []const u8 };
 pub const OrderedLayers = struct { name: []const u8, layers: []const Layer, default_layer: usize = 0 };
 pub const EdgeRule = struct { name: []const u8, from: []const u8 = "**", to: []const u8 = "**", kind: ?t.Kind = null };
 /// An allowance exempts an edge from just the named rule. It cannot waive
 /// cycles or required paths. A layer name here means OrderedLayers.name.
-pub const Allow = struct { rule: []const u8, from: []const u8 = "**", to: []const u8 = "**" };
+pub const Allow = struct { rule: []const u8, from: []const u8 = "**", to: []const u8 = "**", kind: ?t.Kind = null };
 pub const ReferenceRule = struct {
     name: []const u8,
     from: []const u8 = "**",
@@ -19,6 +19,7 @@ pub const ReferenceRule = struct {
     relative: bool = false,
     /// false covers every import, true just those not resolved to files.
     unresolved_only: bool = false,
+    kind: ?t.Kind = null,
     except_targets: []const []const u8 = &.{},
     except_from: []const []const u8 = &.{},
 };
@@ -42,27 +43,30 @@ pub const Violation = struct {
     path: ?[]const u8 = null,
 };
 fn allowed(rules: Rules, name: []const u8, e: t.Edge) bool {
-    for (rules.allowed) |r| if (std.mem.eql(u8, r.rule, name) and matches(r.from, e.from) and matches(r.to, e.to)) return true;
+    for (rules.allowed) |r| if (std.mem.eql(u8, r.rule, name) and matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind)) return true;
     return false;
 }
 fn layer(r: OrderedLayers, path: []const u8) usize {
     for (r.layers, 0..) |item, i| for (item.patterns) |pattern| if (matches(pattern, path)) return i;
     return r.default_layer;
 }
+/// Findings borrow graph storage, rule names and required-path strings.
+/// Keep the graph and those caller strings alive until findings are freed.
+/// Free only the returned slice with a.free.
 pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Violation {
     var out: std.ArrayList(Violation) = .empty;
     errdefer out.deinit(a);
-    for (rules.ordered) |r| for (g.edges) |e| {
+    for (rules.ordered) |r| for (g.edges()) |e| {
         if (layer(r, e.to) > layer(r, e.from) and !allowed(rules, r.name, e)) try out.append(a, .{ .rule = r.name, .reason = .upward, .edge = e });
     };
-    for (rules.forbidden) |r| for (g.edges) |e| {
+    for (rules.forbidden) |r| for (g.edges()) |e| {
         if (matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.append(a, .{ .rule = r.name, .reason = .forbidden, .edge = e });
     };
-    for (rules.nothing_imports) |r| for (g.edges) |e| {
+    for (rules.nothing_imports) |r| for (g.edges()) |e| {
         if (matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.append(a, .{ .rule = r.name, .reason = .entry, .edge = e });
     };
-    for (rules.references) |r| for (g.references) |ref| {
-        if (!matches(r.from, ref.from) or (r.unresolved_only and ref.resolved)) continue;
+    for (rules.references) |r| for (g.references()) |ref| {
+        if (!matches(r.from, ref.from) or (r.unresolved_only and ref.resolved) or (r.kind != null and r.kind.? != ref.kind)) continue;
         if (r.suffix) |suffix| if (!std.mem.endsWith(u8, ref.name, suffix)) continue;
         var normalized: ?[]const u8 = null;
         defer if (normalized) |path| a.free(path);
@@ -89,22 +93,22 @@ pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Viola
         };
         if (!except) try out.append(a, .{ .rule = r.name, .reason = .reference, .reference = ref });
     };
-    for (rules.required) |r| for (r.paths) |path| if (!g.files.contains(path)) {
+    for (rules.required) |r| for (r.paths) |path| if (!g.contains(path)) {
         try out.append(a, .{ .rule = r.name, .reason = .missing, .path = path });
     };
     if (rules.no_cycles) |name| {
         var analysis = try g.analyze(a);
         defer analysis.deinit();
-        for (analysis.cycles) |cycle| {
+        for (analysis.cycles()) |cycle| {
             // Return the first witness edge; its paths borrow the graph, not analysis.
             var low: usize = 0;
-            var high = g.edges.len;
+            var high = g.edges().len;
             const key: t.Edge = .{ .from = cycle.path[0], .to = cycle.path[1] };
             while (low < high) {
                 const mid = low + (high - low) / 2;
-                if (t.edgesLess({}, g.edges[mid], key)) low = mid + 1 else high = mid;
+                if (t.edgesLess({}, g.edges()[mid], key)) low = mid + 1 else high = mid;
             }
-            try out.append(a, .{ .rule = name, .reason = .cycle, .edge = g.edges[low] });
+            try out.append(a, .{ .rule = name, .reason = .cycle, .edge = g.edges()[low] });
         }
     }
     return out.toOwnedSlice(a);

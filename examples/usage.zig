@@ -8,12 +8,12 @@ pub fn main() !void {
     var graph = try gantry.scan(gpa, paths, {}, read, .{});
     defer graph.deinit();
 
-    for (graph.edges) |edge| {
+    for (graph.edges()) |edge| {
         std.debug.print("{s} -> {s} ({d})\n", .{ edge.from, edge.to, edge.count });
     }
     var analysis = try graph.analyze(gpa);
     defer analysis.deinit();
-    for (analysis.layers) |layer| {
+    for (analysis.layers()) |layer| {
         std.debug.print("{s}: depth {d}\n", .{ layer.path, layer.depth });
     }
 
@@ -24,6 +24,25 @@ pub fn main() !void {
     defer gpa.free(findings);
     for (findings) |finding| std.debug.print("{s}: {s}\n", .{ finding.rule, @tagName(finding.reason) });
     // --- README:usage ---
+    var diagnosed = try scanDiagnosed(gpa, paths);
+    defer diagnosed.deinit();
+}
+
+fn scanDiagnosed(gpa: std.mem.Allocator, paths: []const []const u8) !gantry.Graph {
+    // --- README:diagnostic ---
+    var diagnostic = gantry.ScanDiagnostic.init(gpa);
+    defer diagnostic.deinit();
+    return gantry.scanWithDiagnostic(gpa, paths, {}, read, .{}, &diagnostic) catch |cause| {
+        if (diagnostic.failure) |failure| {
+            std.debug.print("{s}: {s}: {s}\n", .{
+                failure.path orelse "<scan>",
+                @tagName(failure.phase),
+                @errorName(failure.cause),
+            });
+        }
+        return cause;
+    };
+    // --- README:diagnostic ---
 }
 
 // Replace this with bytes from your own file store. The supplied allocator

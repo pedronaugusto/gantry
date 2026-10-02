@@ -22,7 +22,7 @@ test "generated graphs agree with transitive reachability and longest condensati
         var analysis = try graph.analyze(a);
         defer analysis.deinit();
         var component: [n]usize = undefined;
-        for (analysis.components, 0..) |group, id| for (group) |path| {
+        for (analysis.components(), 0..) |group, id| for (group) |path| {
             component[path[0] - '0'] = id;
         };
         for (0..n) |v| for (0..n) |w| {
@@ -34,9 +34,9 @@ test "generated graphs agree with transitive reachability and longest condensati
         for (0..n) |_| for (0..n) |v| for (0..n) |w| if (direct[v][w] and component[v] != component[w]) {
             depth[component[w]] = @max(depth[component[w]], depth[component[v]] + 1);
         };
-        for (analysis.layers, 0..) |layer, v| try std.testing.expectEqual(depth[component[v]], layer.depth);
+        for (analysis.layers(), 0..) |layer, v| try std.testing.expectEqual(depth[component[v]], layer.depth);
         var cyclic: [n]bool = @splat(false);
-        for (analysis.cycles) |cycle| {
+        for (analysis.cycles()) |cycle| {
             for (cycle.members) |path| cyclic[path[0] - '0'] = true;
             for (cycle.path[0 .. cycle.path.len - 1], cycle.path[1..]) |from, to| try std.testing.expect(direct[from[0] - '0'][to[0] - '0']);
         }
