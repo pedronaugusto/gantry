@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Bound local Zig build caches before builds, retaining downloaded packages and tools.
+
 ### Changed
 
 - Breaking: remove `Graph.coalesce`; use `Graph.fromEdges` to validate, sort and coalesce caller edges.

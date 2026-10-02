@@ -131,6 +131,8 @@ rule order. These rules operate on the recovered graph.
 
 ## Testing
 
+Local build scripts clear `.zig-cache/{o,h,z,tmp}` above the measured cap in `ci/cache.sh`; run `sh ci/cache.sh` before direct Zig builds (only a rebuild is lost).
+
 `zig build test` runs the suite and usage example in Debug by default. Fixtures cover
 lexical exclusions, resolvers, manifests, diagnostics, strict imports and rules.
 Generated graphs are checked against independent reachability and depth calculations;
