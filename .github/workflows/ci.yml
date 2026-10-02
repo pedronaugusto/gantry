@@ -69,6 +69,8 @@ jobs:
         run: python3 ci/casts.py
       - name: Source import boundaries
         run: zig build check-imports
+      - name: Import gate regression checks
+        run: python3 ci/test_imports.py
 
   # Compile the supported targets the native jobs cannot execute.
   cross-compile:

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Reject undeclared dependencies, duplicate layer membership and imports of source executables.
+
 - Keep owner conversions, graph analysis, rule evaluation and scan inputs below their public facades, and assemble tests above them.
 
 - Check named source layers, cycles, entry files and dependency owners during source CI.
