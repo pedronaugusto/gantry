@@ -80,9 +80,7 @@ The standalone bench build consumes each package revision directly. Existing
 published agreement artifacts have personal/scratch paths redacted, and their
 old smoke instrumentation values are removed.
 
-Planning estimate: **15–35 minutes** for the full pass with dependencies ready;
-allow another **15–30 minutes** for initial corpus/tool setup. These are
-estimates, not measurements taken during preparation.
+Quiet-only planning estimate: **4–15 minutes**. See [QUIET-PREP.md](QUIET-PREP.md) for preparation, counts, sizes and assumptions.
 
 Standalone `zig build -Doptimize=Debug` compiles the pinned after harness
 without running it. Snapshot builds pass `-Dsnapshot=true` to compile the

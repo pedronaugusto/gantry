@@ -12,6 +12,7 @@ PINS = json.loads((HERE / "pins.json").read_text())
 
 def environment(scratch):
     env = os.environ.copy()
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1')
     for key in ("PYTHONPATH", "PYTHONHOME", "NODE_OPTIONS", "NODE_PATH", "GOFLAGS", "GOOS", "GOARCH", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER", "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "FORCE_COLOR"):
         env.pop(key, None)
     for key, sub in {"CARGO_HOME": "cargo-home", "CARGO_TARGET_DIR": "cargo-target", "GOPATH": "gopath", "GOCACHE": "go-cache", "GOMODCACHE": "gopath/pkg/mod", "npm_config_cache": "npm-cache", "XDG_CACHE_HOME": "cache", "UV_CACHE_DIR": "uv-cache", "PIP_CACHE_DIR": "pip-cache", "ZIG_GLOBAL_CACHE_DIR": "zig-cache"}.items():
@@ -20,7 +21,7 @@ def environment(scratch):
                PYTHONDONTWRITEBYTECODE="1", npm_config_userconfig=str(scratch / "npm-user.conf"), npm_config_globalconfig=str(scratch / "npm-global.conf"))
     scratch.mkdir(parents=True, exist_ok=True)
     for name in ("npm-user.conf", "npm-global.conf"):
-        (scratch / name).write_text("")
+        if not (scratch / name).exists(): (scratch / name).write_text("")
     (scratch / "tmp").mkdir(exist_ok=True)
     env.update(TMPDIR=str(scratch / "tmp"), TMP=str(scratch / "tmp"), TEMP=str(scratch / "tmp"))
     # Use installed toolchain binaries directly, avoiding rustup overrides in the corpus.

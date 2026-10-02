@@ -1,3 +1,4 @@
+const smoke = @import("bench_options").smoke;
 const std = @import("std");
 const gantry = @import("gantry");
 const api = @import("api.zig");
@@ -10,24 +11,24 @@ pub fn main(init: std.process.Init) !void {
     var dir = try std.Io.Dir.cwd().openDir(io, args[1], .{ .iterate = true });
     defer dir.close(io);
     const rounds: usize = if (args.len == 3) try std.fmt.parseInt(usize, args[2], 10) else 5;
-    const listing = std.Io.Clock.awake.now(io);
+    const listing = benchmarkNow(io);
     var paths = try gantry.walk(a, io, dir, {}, keep);
     defer paths.deinit();
-    const listed = std.Io.Clock.awake.now(io);
+    const listed = benchmarkNow(io);
     std.debug.print("files {d}, listing {d:.3} ms\n", .{ api.items(&paths).len, ms(listing, listed) });
     // Five complete scans. Data generation and path listing are outside
     // the scan measurement; file opens and reads are inside it.
     for (0..rounds) |round| {
-        const start = std.Io.Clock.awake.now(io);
+        const start = benchmarkNow(io);
         var graph = try gantry.scan(a, api.items(&paths), gantry.DirReader{ .io = io, .dir = dir }, gantry.DirReader.read, .{ .python_roots = &.{"py"} });
         defer graph.deinit();
-        const scanned = std.Io.Clock.awake.now(io);
+        const scanned = benchmarkNow(io);
         var analysis = try graph.analyze(a);
         defer analysis.deinit();
-        const analyzed = std.Io.Clock.awake.now(io);
+        const analyzed = benchmarkNow(io);
         var dirs = try graph.aggregate(a, 2);
         defer dirs.deinit();
-        const aggregated = std.Io.Clock.awake.now(io);
+        const aggregated = benchmarkNow(io);
         std.debug.print("round {d}: scan {d:.3} ms, analyze {d:.3} ms, aggregate {d:.3} ms; edges {d}, references {d}, dependencies {d}, SCCs {d}, cycles {d}\n", .{
             round, ms(start, scanned), ms(scanned, analyzed), ms(analyzed, aggregated), api.edges(&graph).len, api.references(&graph).len, api.dependencies(&graph).len, api.components(&analysis).len, api.cycles(&analysis).len,
         });
@@ -38,10 +39,10 @@ pub fn main(init: std.process.Init) !void {
     var store: std.StringHashMapUnmanaged([]const u8) = .empty;
     for (api.items(&paths)) |p| try store.put(ma, p, try dir.readFileAlloc(io, p, ma, .unlimited));
     for (0..rounds) |round| {
-        const start = std.Io.Clock.awake.now(io);
+        const start = benchmarkNow(io);
         var graph = try gantry.scan(a, api.items(&paths), &store, memoryRead, .{ .python_roots = &.{"py"} });
         defer graph.deinit();
-        const end = std.Io.Clock.awake.now(io);
+        const end = benchmarkNow(io);
         std.debug.print("memory round {d}: scan {d:.3} ms; edges {d}\n", .{ round, ms(start, end), api.edges(&graph).len });
     }
 }
@@ -54,4 +55,11 @@ fn ms(start: std.Io.Timestamp, end: std.Io.Timestamp) f64 {
 
 fn memoryRead(store: *const std.StringHashMapUnmanaged([]const u8), p: []const u8, _: std.mem.Allocator) !?[]const u8 {
     return store.get(p);
+}
+
+// Smoke exercises correctness without sampling a benchmark clock.
+var smoke_ticks = std.atomic.Value(i64).init(0);
+fn benchmarkNow(io: std.Io) std.Io.Timestamp {
+    if (@import("bench_options").smoke) return .{ .nanoseconds = smoke_ticks.fetchAdd(1, .monotonic) };
+    return std.Io.Clock.awake.now(io);
 }

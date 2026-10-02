@@ -19,7 +19,12 @@ def main():
         synthetic=importlib.util.module_from_spec(spec);spec.loader.exec_module(synthetic)
         corpus=p.build/'corpus';corpus.mkdir(exist_ok=True)
         count=10 if p.smoke else 5000
-        total=synthetic.generate(corpus,count)
+        if p.preparing:
+            total=synthetic.generate(corpus,count)
+            (p.build/'corpus-bytes.json').write_text(json.dumps(total))
+        else:total=json.loads((p.build/'corpus-bytes.json').read_text())
+        p.prepared.require(corpus)
+        p.prepared.require(p.build/'corpus-bytes.json')
         def check_scan(out):
             counts=re.findall(r'edges (\d+), references (\d+), dependencies (\d+)',out)
             if len(counts)!=1:raise ValueError('missing scan counts')
@@ -31,14 +36,39 @@ def main():
         from setup import PINS, environment, prepare, verify_tools
         scratch=(p.args.comparison_scratch or p.here/'build/comparison').resolve()
         languages=list(PINS['repositories'])
-        env=environment(scratch) if p.args.skip_setup else prepare(scratch,languages)
+        env=prepare(scratch,languages) if p.preparing and not p.args.skip_setup else environment(scratch)
+        for asset in ('cargo/bin/cargo-modules','venv/bin/python','npm/node_modules/madge/package.json','npm/node_modules/dependency-cruiser/package.json'):
+            p.prepared.require(scratch/asset)
         p.machine['comparison_tools']=verify_tools(scratch,languages,env)
         p.machine['comparison_toolchains']={name:p.run(argv,env=env).strip() for name,argv in {'node':['node','--version'],'go':['go','version'],'rust':['rustc','--version']}.items()}
         result={'mode':'smoke' if p.smoke else 'benchmark','pins':PINS,'revisions':p.revisions,'languages':{}}
         for language in languages:
             env['GOWORK']='off'
             folder=p.build/'graphs'/language
-            repo,scope,files,commands,go_packages=compare.make_case(language,scratch,folder,env,binary['after']/'compare-scan',p.smoke)
+            case=folder/'case.json'
+            if p.preparing:
+                repo,scope,files,commands,go_packages=compare.make_case(language,scratch,folder,env,binary['after']/'compare-scan',p.smoke)
+                case.write_text(json.dumps({'repo':str(repo),'scope':scope,'files':sorted(files),
+                    'commands':{k:list(map(str,v)) for k,v in commands.items()},'go_packages':go_packages}))
+            else:
+                saved=json.loads(case.read_text())
+                repo,scope,files,commands,go_packages=Path(saved['repo']),saved['scope'],set(saved['files']),saved['commands'],saved['go_packages']
+                if repo != scratch/'repos'/language:
+                    raise RuntimeError('Comparison scratch differs from preparation; run bench/quiet.sh --smoke')
+                pin=PINS['repositories'][language]
+                if p.run(['git','-C',repo,'rev-parse','HEAD'],env=env).strip()!=pin['commit'] or p.run(['git','-C',repo,'diff','HEAD','--name-only'],env=env).strip():
+                    raise ValueError(f'corpus differs from pinned commit: {repo}')
+            if 'pydeps' in commands:
+                commands['pydeps']=[scratch/'venv/bin/python',p.here/'compare/quiet-launch.py',*commands['pydeps'][1:]]
+            if language=='go':env['GOWORK']=str(repo/'go.work')
+            p.prepared.require(case)
+            p.prepared.require(folder/'paths.txt')
+            if p.plan_only:
+                # Prime compiler-backed rivals untimed so the quiet pass performs no compilation.
+                for tool,argv in commands.items():
+                    if p.args.prepare_only and tool in ('go-list','cargo-modules'):
+                        compare.command(argv,repo,env,folder/(tool+'.prepared.raw'))
+                continue
             commands={'before':[binary['before']/'compare-scan',repo,folder/'paths.txt'],
                       'after':commands.pop('gantry'),**commands}
             graphs={}
@@ -72,6 +102,12 @@ def main():
                 entry['agreement'][tool]['differences']=differences
             result['languages'][language]=entry
             compare.witnesses.cache_clear()
+        if p.plan_only:
+            # Compiler-backed rivals must retain their primed outputs and dependency sources.
+            p.prepared.require(scratch/'cargo-target')
+            p.prepared.require(scratch/'cargo-home')
+            p.finish()
+            return
         name='smoke-agreement' if p.smoke else 'agreement'
         (p.out/(name+'.json')).write_text(json.dumps(p.clean(result),indent=2)+'\n')
         lines=['# Graph agreement','', 'No timings recorded.' if p.smoke else 'See report.json for interleaved wall/RSS samples.','', '| Language / tool | Agreed | After only | Tool only |','|---|---:|---:|---:|']
