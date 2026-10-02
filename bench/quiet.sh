@@ -1,4 +1,5 @@
 #!/bin/sh
+# Keep this bench worktree beside the others in .bench/gantry, outside Zig caches.
 set -eu
 export PYTHONDONTWRITEBYTECODE=1
 if [ -z "${PYTHON:-}" ]; then

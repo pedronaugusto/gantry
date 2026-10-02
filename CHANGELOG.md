@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Keep the quiet benchmark worktree outside Zig’s disposable cache.
+
 ### Changed
 
 - Breaking: remove `Graph.coalesce`; use `Graph.fromEdges` to validate, sort and coalesce caller edges.
