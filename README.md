@@ -1,22 +1,20 @@
 # gantry
 
-[![CI](https://github.com/pedronaugusto/gantry/actions/workflows/ci.yml/badge.svg)](https://github.com/pedronaugusto/gantry/actions/workflows/ci.yml)
+gantry recovers file dependencies from caller-selected source files, Markdown links and
+asset paths in Zig. It returns a graph with directory aggregation, layers, cycle
+witnesses and checks against caller-defined boundaries.
 
-gantry reads a codebase's files and says what depends on what. It recovers
-imports in Zig, C/C++, JavaScript/TypeScript, Python, Go and Rust, Markdown
-links, and asset paths. One graph records the file edges, directory edges,
-manifest dependencies, layers and cycles. Rules check the boundaries a
-caller gives it.
+## Install
 
-The files are the caller's choice. Pass paths and a reader, or use an
-already-open `std.Io.Dir`. There is no git, ignore policy, subprocess or
-background thread, and no dependency beyond `std`.
+Requires Zig 0.16.0. Fetch with `zig fetch --save
+git+https://github.com/pedronaugusto/gantry`, then obtain the `gantry` module through
+`b.dependency` and add it to your executable's imports. Forward your target and optimize
+settings.
 
 ## Usage
 
-The block below comes from [`examples/usage.zig`](examples/usage.zig), which
-`zig build examples` builds and runs. `read` in that example stands in for
-the caller's file store; its signature is described below.
+[examples/usage.zig](examples/usage.zig) supplies `read` from an in-memory file store.
+Its reader callback is `read(context, path, scratch_allocator) !?[]const u8`.
 
 <!-- BEGIN GENERATED ci/readme_usage.sh -->
 ```zig
@@ -44,96 +42,26 @@ for (findings) |finding| std.debug.print("{s}: {s}\n", .{ finding.rule, @tagName
 ```
 <!-- END GENERATED -->
 
-## Install
+## Design
 
-```
-zig fetch --save git+https://github.com/pedronaugusto/gantry
-```
+The library uses only `std`. Scan scratch storage is released between files; reader
+bytes need to survive processing until the next read. Graph, analysis, import and path
+results retain their allocator and own their storage. Move these handles and call
+`deinit` once; their slices last until release. Analysis and aggregation results are
+independent of the original graph. Rule findings borrow the graph, rule names and
+required-path strings; keep those alive and free only the returned findings slice.
 
-```zig
-const dep = b.dependency("gantry", .{ .target = target, .optimize = optimize });
-exe.root_module.addImport("gantry", dep.module("gantry"));
-```
+Paths are relative to one logical root and use `/` on every host. Normalization resolves
+`.` and `..` within that root, merges duplicate paths and refuses absolute paths,
+drives, backslashes, NUL and traversal above the root. Comparisons are byte and case
+exact. The reader receives normalized paths; it should return stable contents throughout
+a scan because resolution can read a file more than once.
 
-## The API
-
-| Declaration | What it does |
-|---|---|
-| `scan(gpa, paths, context, read, options)` | Reads the selected files and returns an owned `Graph`. |
-| `scanWithDiagnostic(gpa, paths, context, read, options, diagnostic)` | The same atomic scan, with a caller-owned failure report; null omits the report. |
-| `ScanDiagnostic.init(gpa)` | An owned failure path, phase, optional byte offset and cause; release with `deinit`. |
-| `Graph.init(gpa, paths)` | An edgeless graph with these nodes. |
-| `Graph.fromEdges(gpa, paths, edges)` | Copies, validates, sorts and coalesces caller edges. |
-| `graph.aggregate(gpa, depth)` | An independent graph of directories, including isolated ones. |
-| `graph.analyze(gpa)` | An independent `Analysis`: `layers()`, `components()`, `cycles()`. |
-| `Analysis.init(gpa, paths, edges)` | An independent analysis using `Graph.fromEdges` validation and ordering. |
-| `graph.check(gpa, rules)` | Every violation, with its rule name and edge, reference or missing path. Free the returned slice with `gpa.free`. |
-| `imports(gpa, language, bytes)` | An owned `Imports` with raw `items()` and `unsupported()` constructs. No resolution. |
-| `DirReader{ .io, .dir, .limit }.read` | The reader over a caller-owned directory, with a caller-chosen byte limit. |
-| `walk(gpa, io, dir, context, keep)` | An owned `Paths`; `keep(context, path, kind)` can prune directories. Symlinks and other special entries are skipped. |
-| `languageOf(path)` | The language selected by the file extension, or null. |
-| `manifests.parse(arena, path, bytes)` | Low-level extraction of declarations in one supported manifest. Uses an arena; slices borrow bytes or that arena. |
-| `rules.matches(pattern, path)` | The same path glob matching used by rules. |
-
-`Graph`, `Analysis`, `Imports` and `Paths` are opaque value handles that own
-their storage and allocator. Constructors are the only way to create them.
-Call their `deinit` once. Read results through `Graph.paths()`, `edges()`,
-`dependencies()`, `references()`, `unsupported()`, `unread()` and `goFiles()`,
-`Analysis.layers()`, `components()` and `cycles()`, and `Imports.items()`,
-`Imports.unsupported()` or `Paths.items()`.
-`Graph.contains(path)` tests exact normalized node membership without exposing
-the index. Their slices and strings belong to them until then. An
-analysis or aggregation survives the original graph. Rule findings borrow
-graph storage and the caller's rule names and required-path strings
-(`rules.required[].paths[]`). Keep the graph and those strings alive until
-the findings are freed. Free only the returned slice.
-Managed values may be moved but must not be copied and deinitialized twice.
-Sorting and coalescing belong to graph construction. Use `Graph.fromEdges`
-for caller-supplied edges; it leaves the input unchanged.
-
-The reader is a function
-`read(context, path, scratch_allocator) !?[]const u8`. The bytes need only
-survive processing that file, until the next read. Allocate them on the
-scratch allocator or borrow from your file store. Scratch storage is reset
-between files. Null records the path once in `graph.unread()`, across all scan
-phases and kind selections; an error aborts
-without returning a partial graph. Unsupported files are graph nodes but
-are not read, except selected resolution configs. Manifests and configs are
-read before code; Go constraints, Rust test modules and Python reexports may
-require another read of a source file. Readers should return stable content
-for the duration of a scan.
-
-Paths are relative to one logical repository root and use `/` on every
-platform. `.` and `..` are normalized; absolute paths, drives, backslashes,
-NUL and traversal above the root are refused. Duplicate normalized paths
-become one node. Comparison is byte and case exact. The reader receives the
-normalized spelling. Resolver roots and named-module paths use this same
-convention. An absolute reference cannot resolve beside its source file;
-joining it to a source or config directory does not make it relative.
-
-`Options.kinds` defaults to `&.{ .import, .@"test" }`; pass `&.{.import}`
-for production edges, or include `.link` and `.asset` explicitly. Kind filters
-select edges; raw references retain their source kind. Manifest declarations
-are read by default. Turning them off still reads selected `go.mod`, `go.work`
-and JS/TS configs for resolution. Select configs and their local `extends`
-files along with code. Gantry never adds files the caller did not select.
-Invalid or cyclic resolution configs abort the scan. A caller that needs a
-structural view after an error can use `Graph.init(gpa, paths)`; that graph
-makes no claim about recovered dependencies.
-
-## Scan failures
-
-Use `scanWithDiagnostic` when a caller needs to say what failed. Initialize
-one `ScanDiagnostic` for each concurrent scan and pass its address. Its
-`failure` is null on success; on error it contains `path`, `phase`,
-`offset` and `cause`. `offset` is the byte offset of an unsupported import,
-and is null for other failures. Each call clears the previous failure. The
-diagnostic owns its copy of the path until its next call or `deinit`, independently of the
-graph allocator, input paths and reader bytes. Its allocator can be
-different from the scan's. Move this owner; do not deinitialize copies.
-
-The snippet below is the body of the example's diagnostic wrapper. It
-reports the failure and returns the original error to its caller.
+A null reader result records the path in `graph.unread()`. Reader, manifest and
+configuration errors abort without a partial graph. `scanWithDiagnostic` additionally
+retains the failed path, phase, optional byte offset and original cause in a
+caller-owned `ScanDiagnostic`. Reporting preserves the cause even if copying the path
+fails.
 
 <!-- BEGIN GENERATED ci/readme_usage.sh diagnostic -->
 ```zig
@@ -154,280 +82,72 @@ return gantry.scanWithDiagnostic(gpa, paths, {}, read, .{}, &diagnostic) catch |
 ```
 <!-- END GENERATED -->
 
-`phase` is one of `paths`, `read`, `go_constraints`, `manifests`, `configs`,
-`rust_tests`, `python_exports`, `imports`, `resolution`, `links`, `assets`
-or `graph`. Reader errors use `read`; later phases identify processing of
-the file. Extended-config errors name the extended file; a config cycle
-names a file in the cycle. Path-validation failures retain the raw input;
-other file paths use the normalized spelling given to the reader.
+## Recovery
 
-Work without a particular file has a null path. If the diagnostic's path
-copy runs out of memory, the path is also null: the phase and original
-cause still survive, and reporting never replaces the returned error.
-A null reader result is an unread path in a successful graph, without a
-failure diagnostic. Neither entry point returns a partial graph.
+Import recovery uses byte lexers for Zig, C/C++, JavaScript/TypeScript, Python, Go and
+Rust. Resolution stays within selected files. Zig named modules and C include roots are
+caller inputs; JS/TS aliases come from selected local configs; Python initializer and
+literal star-reexport handling are selectable; Go uses selected module/workspace routing
+and optional target constraints. Rust resolves file modules and crate-relative use paths
+without macro expansion.
 
-## The graph
+`graph.references()` keeps import spellings, offsets, kinds and resolution status.
+Detectable unsupported constructs appear in `graph.unsupported()` without guessed edges.
+`strict_imports` refuses the first such construct with `UnsupportedImport`, even when
+import edges are disabled. An unresolved supported literal is a reference, not an
+unsupported construct. Loader aliases, generated imports and other runtime semantics can
+remain undetected.
 
-An `Edge` has `from`, `to`, `kind` and `count`. Direction is from the file
-that names a dependency to the file it names. Counts are reference
-occurrences: repeated imports count again, while a single Python statement
-reaching an initializer by several paths counts it once. Member accesses do
-not add a second import edge. Kinds stay separate during aggregation.
+Import and test edges are enabled by default; links and assets require explicit kind
+selection. Markdown recovery handles inline relative links and wiki links while
+excluding fenced code and comments. Asset recovery matches path tokens in supported text
+files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
+`go.mod` and `pyproject.toml` remain separate from file edges. The TOML and Go
+declaration readers do not validate their entire formats.
 
-`graph.references()` retains literal imports, their byte offsets, whether they
-resolved, their source kind, and Zig member access. An unresolved reference may name an external
-package, a missing file, or syntax whose resolution gantry does not implement.
-It is not automatically a declared external dependency.
+## Graphs and rules
 
-`graph.goFiles()` records each readable Go source's `path`, `package`, optional
-`constraint` expression, optional suffix `os` and `arch`, and `selected` flag.
-With no `Options.go_target`, every selected file participates and constraints
-remain data. A supplied `GoTarget{ .os, .arch, .tags }` evaluates `!`, `&&`,
-`||` and parentheses, OS aliases and `unix`, together with filename suffixes.
-Inactive files stay in `graph.paths()` and metadata but contribute no references
-or edges and are excluded from package expansion. Compiler, cgo, release and
-custom tags must be supplied explicitly; gantry does not inspect the host.
-Legacy `// +build`, implicit cgo file selection and architecture feature levels
-are not inferred. Malformed evaluated constraints are errors.
+Edges point from an importer to its dependency and count reference occurrences.
+Construction sorts and coalesces them; caller edges go through `Graph.fromEdges`.
+Aggregation keeps self edges within directories. Analysis collapses strongly connected
+components for layer calculation; depth is the longest path from a root, and each cycle
+has one closed witness path. An isolated file has depth zero.
 
-`graph.dependencies()` contains manifest declarations, separately: manifest,
-name, requirement, source, group. A declaration in two groups stays as two
-records. Registry versions remain requirements; URLs and local paths remain
-sources. There is no installation, version solving, or transitive closure of
-external packages.
-
-Aggregation depth 0 puts every file in `.`; depth 1 uses the first directory
-component; larger depths keep up to that many components. Root files stay in
-`.`. Unsupported-import records retain their original source paths and byte
-offsets.
-Self edges are retained, including the edges within a directory. Analyzing
-an aggregated graph therefore treats a directory self edge as a cycle.
-
-An analysis uses iterative strongly connected components. Every SCC becomes
-one node for layer calculation. A root component has depth 0; every other
-component has the **longest** path depth from a root, following dependency
-edges. All members of a cycle share a depth. Isolated files have depth 0.
-Each cycle has sorted `members` and one actual closed `path` through its
-edges, including self imports. This is not an enumeration of every loop.
-
-Nodes, edges, references, unsupported imports and declarations are sorted
-independently of input order. Components and cycles are ordered by their first member; witnesses
-start there and choose the first outgoing edge within the component, then
-a breadth-first return path. Graph algorithms use heap stacks, so a long
-chain does not consume the machine's call stack.
-
-`Analysis.init` builds directly from caller paths and edges. It uses
-`Graph.fromEdges` to normalize paths, merge duplicates, sort and coalesce
-edges. Invalid or empty node paths return `InvalidPath`; absent endpoints
-return `UnknownPath`; zero counts return `InvalidCount`; merged counts above
-`usize` return `CountOverflow`. Both analysis entry points own their results.
-
-## Imports
-
-Each language has its own module under `src/lang/`, using hand-written byte
-lexing. Comments, quoted text and character literals do not contribute import
-keywords. Resolution is against the selected path set.
-
-| Language | Recovered syntax and resolution | Limits |
-|---|---|---|
-| Zig | Literal `@import`, with whitespace, comments and decoded escapes. Relative `.zig` paths; named imports through `Options.named_modules`, optionally scoped by `from` glob. Direct `@import("pkg").member` and `const`/`var` bindings followed by `.member` are retained for rules. | No build graph evaluation, computed strings, binding scope or chains of aliases. Without a named-module mapping a package stays unresolved. |
-| C/C++ | Line-start `#include "..."` and `<...>`, with comments removed. The importing directory, then `Options.include_roots` in order. | No preprocessing, conditional evaluation, macro includes, compiler search path or C++ module imports. Both include forms use the stated search order. Splicing within an identifier is unsupported. |
-| JS/TS | ESM side effects, `import ... from`, type imports, reexports, literal `require()` and dynamic `import()`, including template expressions. Relative files, declarations, directory indexes, and selected `tsconfig.json`/`jsconfig.json` aliases. | No AMD, package exports/index metadata, installed-package resolution, binding scope or computed specifiers. Regex/division uses lexical context; JSX text and ambiguous regex contexts remain limits. Template text does not count. |
-| Python | Absolute and relative `import`/`from`, aliases, lists, parentheses and continued lines. Searches `Options.python_roots` (repository root by default); relative dots stay inside the source root. Initializer edges and literal star reexports are selectable policies. | No interpreter, `sys.path` changes, `importlib`, implicit legacy sibling search or runtime imports. A selected child module may still be an attribute at runtime. Dynamic export lists and symbol reassignment are not evaluated. |
-| Go | Single/grouped imports, aliases, dot/blank imports, ordinary/raw strings. Selected `go.mod` identities, local replacements and `go.work` use/replace routing. Imports expand to selected package files; nested modules are boundaries. Constraints and package names are retained. | No vendoring, module download, transitive version solving, cgo processing or compiler invocation. Version-specific replacements use selected requirements. Local paths must be relative and remain inside the repository. No module suffix guessing. |
-| Rust | External `mod name;`, `use crate::`, `super::`, `self::`, aliases and nested use trees. File modules use `name.rs` or `name/mod.rs`; child modules of `foo.rs` live under `foo/`. Uses resolve the longest selected module prefix, including lexical inline-module scope. Explicit test guards and test modules carry a test kind. | No macro expansion, general `cfg` evaluation, `#[path]`, semantic definitions, reexports or type resolution. The nearest `src` directory is the crate root; nonstandard roots need caller edges. External crate uses are not file edges. |
-
-Lexical recovery never evaluates constants, calls, aliases or arbitrary source
-expressions. By default, `Imports.unsupported()` and `graph.unsupported()`
-report detectable import constructs that recovery could not read. Each
-`UnsupportedReference` has `from`, `offset` and `expression`. Graph records
-own their normalized source paths; `from` is null in `Imports` because
-`imports` receives anonymous bytes, without a file path. The offset is a
-zero-based byte offset at the start of the construct, and `expression` is an
-`ImportExpression` tag from the table below. Records appear in source order;
-graph records are ordered by path, then offset. Repeated constructs stay
-separate. They carry no invented dependency name or edge.
-
-| Language | Unsupported constructs reported |
-|---|---|
-| Zig | Every `@import` other than `(`, one ordinary string literal and `)`: named constants, concatenation, calls, conditionals, parentheses, multiline strings and malformed operands. Tag: `zig_import`. |
-| C/C++ | Line-start `#include` without one quoted or angle-delimited header: macro operands, incomplete delimiters and extra operand tokens. Tag: `c_include`. |
-| JS/TS | Bare `import(...)` and `require(...)` without one quoted first argument followed by `)` or `,`. Computed operands and all template operands are unsupported; imports inside template interpolations are still visited. Tags: `javascript_import`, `javascript_require`. |
-| Python | Exact `importlib.import_module(...)` and bare `__import__(...)` calls, including literal arguments: these runtime loaders have no resolver here. Tags: `python_importlib`, `python_import`. |
-| Go | None: valid import declarations require string literals; Go has no computed import expression. |
-| Rust | `include!` with any macro delimiter and direct `#[path ...]` attributes, including literal operands: these forms have no resolver here. A module with a path attribute contributes no guessed default file edge. Tags: `rust_include`, `rust_path`. |
-
-Set `Options.strict_imports = true` for an import boundary check. Both scan
-entry points return `UnsupportedImport` at the first detectable unsupported
-construct before returning any graph. `scanWithDiagnostic` reports its file,
-byte offset and `imports` phase. Reporting retains the offset and cause even
-if copying the diagnostic path runs out of memory. Strict mode inspects code
-even when `Options.kinds` disables import and test edges. Inactive Go files
-remain outside recovery when a target is supplied. Tolerant scans recover
-code when import or test kinds are enabled; kind filters still select edges,
-not unsupported records within that code.
-
-Strict mode enforces these lexical forms, not language validity or a complete
-compiler dependency graph. Reassigned loader names, aliases, indirect calls,
-macro expansion, `cfg_attr` paths, preprocessing, generated imports and
-runtime binding semantics remain outside detection. Comments and quoted text
-do not contribute constructs. A supported literal with no selected target is
-an unresolved reference, not an unsupported construct. Malformed literal
-escapes retain their existing parsing errors in either mode. Use compiler
-information or caller-supplied edges when these lexical limits are too narrow.
-
-JS/TS configs accept JSONC comments and trailing commas. Other syntax and
-unterminated comments are errors. The root and `compilerOptions` must be
-objects; `extends` must be a string or an array of strings, `baseUrl` a string,
-and `paths` an object of string arrays. Wrong types return `InvalidConfig`.
-The nearest selected
-`tsconfig.json` (preferred over `jsconfig.json` in the same directory) supplies
-`compilerOptions.baseUrl` and `paths`. Relative local `extends` chains and
-arrays inherit options; child `paths` replace the inherited map. Cycles are
-errors. Paths without `baseUrl` are relative to the config that declared them.
-Exact patterns precede wildcard patterns; the longest wildcard prefix wins,
-and targets are tried in order before the `baseUrl` fallback. Unselected,
-external and package-based `extends` stay outside the selected universe.
-Project include/exclude/files selection, rootDirs and project references are
-caller policy, rather than compiler project discovery.
-
-Resolution follows [TypeScript extension substitution](https://www.typescriptlang.org/docs/handbook/modules/reference#file-extension-substitution):
-`.js`/`.jsx` tries `.ts`, `.tsx`, `.d.ts`, `.js`, `.jsx`; `.mjs` tries `.mts`,
-`.d.mts`, `.mjs`; `.cjs` tries `.cts`, `.d.cts`, `.cjs`. Extensionless names
-try exact spelling, those source/declaration extensions, then `index.ts`,
-`index.tsx`, `index.d.ts`, `index.js`, `index.jsx`. Config inheritance follows
-[TSConfig relative-path rules](https://www.typescriptlang.org/tsconfig/extends.html).
-C/C++ also recognizes Objective-C extensions `.m` and `.mm`.
-
-Test edges participate by default. Go `_test.go` files retain their declared
-package, including external `package_test` names; an import expanded into a
-test file also carries `test`. Rust `#[cfg(test)]` items, `#![cfg(test)]` files
-and `mod tests` modules carry `test`, inherited by nested file modules and
-inline bodies. Other cfg expressions are retained lexically without guessed
-evaluation. Python recognizes `test_*.py` and `*_test.py`; JS/TS recognizes
-`*.test.*`, `*.spec.*` and files below `__tests__`. Other test layouts need
-caller classification through `Graph.fromEdges`. Ambiguous directory names
-such as Python `tests` alone do not classify a helper file as test code.
-
-`Options.python_initializers` selects the package-initializer policy:
-
-| Policy | Edges |
-|---|---|
-| `.ancestors` (default) | Literal modules and selected initializer ancestors below the import search root. |
-| `.explicit` | Direct modules only. A `from package import child` statement uses selected child modules; it retains the package when an imported name has no selected child module. |
-| `.modulefinder` | Ancestors, plus the package ancestry that modulefinder visits for `from . import name`. |
-
-`Options.python_star_reexports` defaults to true. For `from x import *`, gantry
-always records `x`; it additionally follows named top-level imports exported
-by a literal `__all__` list or tuple in the selected source of `x`. Aliases
-are honored. Set the option to false for a graph of literal modules
-only. Computed/augmented export lists, conditional exports, star chains,
-runtime reassignment, `__getattr__` and exports without literal `__all__` are
-not evaluated. There is no speculative enumeration of package submodules.
-
-## Links and assets
-
-Markdown recovery reads `.md` files. It recognizes `[[wiki]]`, headings and
-aliases, and inline relative Markdown links and images, with optional titles,
-angle-delimited destinations and escaped parentheses. It skips fenced code,
-inline code, HTML comments and escaped openings. Relative links resolve beside
-the page; wiki links try beside the page, then the root, then a unique basename
-without `.md`. An ambiguous basename stays unresolved. Self links and URLs are
-ignored. Reference-style links, HTML anchors, percent-decoding, indented code
-blocks and the full CommonMark grammar are not implemented.
-
-Asset recovery reads common text/data extensions and matches complete path
-tokens, first from the root and then beside the file. Tokens contain letters,
-digits, non-ASCII bytes and `./_-@`. A path embedded in a longer token does not
-match. Self references are ignored. This is a path recoverer, not an HTML,
-CSS or JSON parser: it reads comments too and does not decode escapes, spaces
-in filenames or URLs. It uses indexed lookups rather than searching every
-source byte for every repository path.
-
-## Manifests
-
-All selected manifests are read, including those below the repository root.
-
-| Manifest | Declarations |
-|---|---|
-| `build.zig.zon` | Whole-document ZON validation and the root struct's `.dependencies`; quoted field names, URLs, paths, hashes and multiline strings. |
-| `package.json` | Dependencies, dev, peer and optional dependencies, with their string requirements. Uses `std.json`. |
-| `Cargo.toml` | Normal, dev, build, workspace and target dependency tables, inline dependency tables and separate per-dependency tables; versions, git, path and `workspace = true`. |
-| `go.mod` | `require` lines and blocks; full module paths, versions and sources. |
-| `pyproject.toml` | PEP 621 project and optional requirements, string dependency groups, and Poetry dependency groups; extras, markers and direct URLs remain in the requirement. |
-
-The ZON reader uses Zig's standard parser to validate the whole document
-before extracting the root struct's dependencies. Nested dependency blocks
-are ignored. Invalid syntax, duplicate fields, a non-struct root or dependency
-map, non-struct dependency entries, non-string URL/path/hash fields, conflicting
-URL/path fields and non-boolean lazy fields return `InvalidManifest`. Unknown
-fields still undergo ZON validation. This reads declarations; it does not
-validate the compiler's package schema, fingerprints or hash contents.
-The TOML and Go readers extract declarations; they are not full format
-validators. JSON and malformed dependency shapes are errors. General TOML
-multiline strings, dotted dependency keys, dependency-group inclusion,
-workspace inheritance resolution and lockfiles are outside scope. Go
-replacement/workspace routing is separate from dependency declarations. Partial declarations are not returned after an extraction error.
-
-## Rules
-
-`rules.Rules` is data. `ordered` contains named sets of layers, lowest first.
-Each layer has path patterns; the first match wins, and an unspecified file
-defaults to layer 0. An edge to a higher layer is a violation. Computed graph
-depths and caller-declared rule layers are separate things.
-
-`forbidden` matches source and target patterns, optionally an edge kind.
-`nothing_imports` matches a target; it can keep entry files imported by nobody.
-`allowed` names the restriction it exempts, plus source/target patterns and
-an optional `kind`. For example, `.allowed = &.{.{ .rule = "layers", .kind =
-.@"test" }}` lets tests import any layer while keeping the named layer rule
-for production edges. Reference rules also accept a source `kind` filter.
-
-`references` restricts raw import names, optionally just unresolved ones or a
-particular Zig member. Raw names match the whole name, including package path
-components. A suffix filter and relative-path normalization can restrict
-imports of missing files too, such as allowing only `proto/*.zig` as proto
-siblings. Exceptions can name permitted targets or importers.
-This expresses package ownership and an API member forbidden to one tree.
-`required` names exact paths that must exist, for layer tables with named
-modules. `no_cycles` names the rule that rejects every cyclic SCC.
-
-Patterns use `*` and `?` within a path component, and `**` as a complete
-component across zero or more directories. A pattern without `/` matches the
-basename. Matching is case exact. Findings are returned in rule order, then
-graph order; every matching restriction reports, even when another also
-forbids the edge. Cycles report one witness edge per component, and missing
-paths report the path, with no invented edge.
+Rules restrict ordered layers, source/target patterns, raw references, required paths
+and cycles. Exceptions apply to a named restriction. Path patterns use `*` and `?`
+within a component and `**` across components. Every matching restriction reports in
+rule order. These rules operate on the recovered graph.
 
 ## Scope
 
-- Selected source references and declared direct dependencies, not symbol,
-  runtime, call or transitive external dependency graphs.
-- No repository discovery policy, git access, compiler, package manager,
-  regex engine, rendering, command-line linter or background work.
-- Syntax outside the language rules above can remain unresolved or be missed.
-  Rules validate the recovered graph, not the entirety of a compiled program.
+- It does not discover a repository, apply gitignore rules or select files for the caller.
+- It does not invoke a compiler, preprocess source or evaluate build scripts and macros.
+- It does not construct symbol, call or runtime dependency graphs.
+- It does not install packages or solve transitive external versions.
+- It does not implement complete language, CommonMark, TOML or asset-format grammars.
+- It does not render a graph or provide a command-line linter.
+
+<!-- performance: quiet pass -->
 
 ## Testing
 
-`zig build test` runs the suite and the usage example. It covers lexical
-exclusions, each resolver, the reference fixtures, manifests, rules,
-ordering and ownership. Config inheritance, local Go routing, test kinds,
-target selection and Python policies have regression fixtures. Generated graphs are checked against transitive
-reachability and an independent depth calculation. A 20,000-node chain
-checks iterative traversal; allocation failures check cleanup. Filesystem
-tests use temporary directories under `std.testing`; no personal configuration
-is read or written.
+Local build scripts clear `.zig-cache/{o,h,z,tmp}` above the measured cap in `ci/cache.sh`; run `sh ci/cache.sh` before direct Zig builds (only a rebuild is lost).
 
-CI runs Linux, macOS and Windows in Debug, ReleaseSafe, ReleaseFast and
-ReleaseSmall, checks formatting, casts and this generated usage block, and
-compiles Linux, Windows, macOS and BSD targets. Select tests with
-`zig build test -Dtest-filter=fixture:`. `zig build check` compiles without running.
+`zig build test` runs the suite and usage example in Debug by default. Fixtures cover
+lexical exclusions, resolvers, manifests, diagnostics, strict imports and rules.
+Generated graphs are checked against independent reachability and depth calculations;
+allocation-failure tests check cleanup. `zig build examples` runs the example
+separately; `zig build check` compiles the tests only. CI also runs `ci/check-docs.sh`.
 
-## Requirements
+[CI](.github/workflows/ci.yml) runs tests and the example in Debug and ReleaseSafe on
+`ubuntu-latest`, `macos-latest` and `windows-latest`, plus ReleaseFast on Ubuntu.
+ReleaseSmall compiles the tests, example and library without running them on Ubuntu.
+Source checks run formatting and cast checks on Ubuntu. There is no ThreadSanitizer job.
 
-Zig 0.16.0.
+Compile-only jobs use the default `zig build` for `x86_64-linux-gnu`,
+`aarch64-linux-gnu`, `x86_64-linux-musl`, `x86_64-windows-gnu`, `x86_64-windows-msvc`,
+`aarch64-windows-gnu`, `x86_64-macos`, `aarch64-macos`, `x86_64-freebsd` and
+`x86_64-netbsd`.
 
 ## Licence
 

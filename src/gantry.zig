@@ -23,27 +23,8 @@ pub const NamedModule = resolver.NamedModule;
 pub const rules = @import("rules.zig");
 pub const manifests = @import("manifests.zig");
 pub const path = @import("path.zig");
-const languages = @import("languages.zig");
-pub const Options = struct {
-    kinds: []const Kind = &.{ .import, .@"test" },
-    manifests: bool = true,
-    /// Reject detectable unsupported imports in participating source files.
-    /// This also extracts code when import and test edges are disabled.
-    strict_imports: bool = false,
-    named_modules: []const NamedModule = &.{},
-    include_roots: []const []const u8 = &.{},
-    python_roots: []const []const u8 = &.{""},
-    go_target: ?GoTarget = null,
-    python_initializers: PythonInitializers = .ancestors,
-    python_star_reexports: bool = true,
-};
-pub fn languageOf(p: []const u8) ?Language {
-    const ext = std.fs.path.extension(p);
-    inline for (comptime std.meta.tags(Language)) |lang| {
-        for (@field(languages, @tagName(lang)).extensions) |e| if (std.mem.eql(u8, ext, e)) return lang;
-    }
-    return null;
-}
+pub const Options = @import("scan_options.zig").Options;
+pub const languageOf = @import("scan_options.zig").languageOf;
 /// Raw lexical recovery, owning source bytes and every slice until deinit.
 pub const Imports = @import("scan.zig").Imports;
 pub const imports = @import("scan.zig").imports;
@@ -70,7 +51,3 @@ pub const DirReader = struct {
 /// directory; no ignore policy is imposed. Paths own their allocator.
 pub const Paths = @import("scan.zig").Paths;
 pub const walk = @import("scan.zig").walk;
-
-test {
-    _ = @import("tests.zig");
-}

@@ -28,7 +28,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     const a = c.allocator;
     const name = spec.name;
-    var owner: ?@import("../resolve.zig").GoModule = null;
+    var owner: ?@import("../go_config.zig").Module = null;
     for (c.go_modules) |m| if (p.within(m.root, from) and (owner == null or m.root.len > owner.?.root.len)) {
         owner = m;
     };

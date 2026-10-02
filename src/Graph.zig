@@ -8,11 +8,11 @@ pub const Graph = enum(usize) {
     _,
 
     pub fn init(gpa: std.mem.Allocator, node_paths: []const []const u8) !Graph {
-        return store.owner(try store.init(gpa, node_paths));
+        return store.owner(Graph, try store.init(gpa, node_paths));
     }
     /// Copies, validates, sorts and coalesces caller edges. Endpoints must be among paths.
     pub fn fromEdges(gpa: std.mem.Allocator, node_paths: []const []const u8, input_edges: []const t.Edge) !Graph {
-        return store.owner(try store.fromEdges(gpa, node_paths, input_edges));
+        return store.owner(Graph, try store.fromEdges(gpa, node_paths, input_edges));
     }
     pub fn deinit(g: *Graph) void {
         store.get(g.*).deinit();
@@ -51,16 +51,16 @@ pub const Graph = enum(usize) {
     /// Unsupported imports retain their original source paths and byte offsets.
     /// Directory self edges are retained as coupling within a directory.
     pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) !Graph {
-        return store.owner(try store.get(g.*).aggregate(gpa, depth));
+        return store.owner(Graph, try store.get(g.*).aggregate(gpa, depth));
     }
     /// Analysis owns its results independently of the graph.
     pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import("Analysis.zig").Analysis {
-        return store.get(g.*).analyze(gpa);
+        return @enumFromInt(@intFromPtr(try @import("analyze.zig").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
     /// Findings borrow graph storage, rule names and required-path strings.
     /// Keep the graph and those caller strings alive until findings are freed.
     /// Free only the returned slice with gpa.free.
-    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules.zig").Rules) ![]const @import("rules.zig").Violation {
-        return @import("rules.zig").check(g, gpa, rules);
+    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules_check.zig").Rules) ![]const @import("rules_check.zig").Violation {
+        return @import("rules_check.zig").check(g, gpa, rules);
     }
 };

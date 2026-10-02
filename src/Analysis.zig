@@ -26,8 +26,8 @@ pub const Analysis = enum(usize) {
     /// endpoints, InvalidCount for zero counts, and CountOverflow when counts merge
     /// past usize. Results are sorted independently of input order and borrow nothing.
     pub fn init(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) (std.mem.Allocator.Error || error{ InvalidPath, UnknownPath, InvalidCount, CountOverflow })!Analysis {
-        var graph = try @import("Graph.zig").Graph.fromEdges(gpa, paths, edges);
+        const graph = try @import("graph_store.zig").fromEdges(gpa, paths, edges);
         defer graph.deinit();
-        return graph.analyze(gpa);
+        return @enumFromInt(@intFromPtr(try @import("analyze.zig").analyze(graph, gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
 };

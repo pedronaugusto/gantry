@@ -1,7 +1,6 @@
 //! Construction storage for the public analysis owner.
 const std = @import("std");
 const t = @import("types.zig");
-const Analysis = @import("Analysis.zig").Analysis;
 const State = @This();
 allocator: std.mem.Allocator,
 arena: std.heap.ArenaAllocator,
@@ -19,9 +18,9 @@ pub fn deinit(self: *State) void {
     self.arena.deinit();
     gpa.destroy(self);
 }
-pub fn owner(self: *State) Analysis {
+pub fn owner(comptime Owner: type, self: *State) Owner {
     return @enumFromInt(@intFromPtr(self)); // safe: the owning handle preserves the allocated state's address.
 }
-pub fn get(self: Analysis) *State {
+pub fn get(self: anytype) *State {
     return @ptrFromInt(@intFromEnum(self));
 }

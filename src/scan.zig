@@ -8,7 +8,7 @@ const diagnostics = @import("scan_diagnostic.zig");
 const manifests = @import("manifests.zig");
 const path = @import("path.zig");
 const languages = @import("languages.zig");
-const api = @import("gantry.zig");
+const api = @import("scan_options.zig");
 const languageOf = api.languageOf;
 const Options = api.Options;
 const Language = t.Language;
@@ -27,7 +27,7 @@ pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) !
     errdefer result.deinit();
     const a = result.arena.allocator();
     result.recovery = try extract(a, language, try a.dupe(u8, source));
-    return ImportStore.owner(result);
+    return ImportStore.owner(Imports, result);
 }
 fn extract(a: std.mem.Allocator, language: Language, source: []const u8) !t.Recovery {
     return switch (language) {
@@ -225,7 +225,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     g.references = try refs.toOwnedSlice(a);
     g.dependencies = try deps.toOwnedSlice(a);
     g.unread = try reader.unreadPaths(a, &g.files);
-    return @import("graph_store.zig").owner(g);
+    return @import("graph_store.zig").owner(@import("Graph.zig").Graph, g);
 }
 pub fn walk(gpa: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, context: anytype, comptime keep: anytype) !Paths {
     const result = try PathStore.create(gpa);
