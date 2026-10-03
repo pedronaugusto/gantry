@@ -71,6 +71,7 @@ pub const layers: []const gantry.rules.Layer = &.{
     .{ .name = "scenarios", .patterns = &.{
         "src/test_configs.zig",
         "src/test_constraints.zig",
+        "src/test_fuzz.zig",
         "src/test_go_modules.zig",
         "src/test_graph.zig",
         "src/test_java.zig",

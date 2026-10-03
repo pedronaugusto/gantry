@@ -9,7 +9,15 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{
         .name = "gantry-tests",
         .filters = if (b.option([]const u8, "test-filter", "Select tests by name")) |filter| &.{filter} else &.{},
-        .root_module = b.createModule(.{ .root_source_file = b.path("src/tests.zig"), .target = target, .optimize = optimize }),
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+            // Off so that `zig build test --fuzz` compiles: Zig 0.16.0's fuzz
+            // runner hands `@errorReturnTrace()` to a function taking the other
+            // `StackTrace` type. The failing input is the report there.
+            .error_tracing = false,
+        }),
     });
     const test_step = b.step("test", "Run the tests and example");
     test_step.dependOn(&b.addRunArtifact(tests).step);
