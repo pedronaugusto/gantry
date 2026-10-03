@@ -108,10 +108,18 @@ test "TypeScript type-only imports and dynamic imports are edges of their own ki
         \\import('./later').then((m) => m);
         \\import './side';
         },
-        .{ .path = "model.ts" },     .{ .path = "types.ts" },    .{ .path = "mixed.ts" },
-        .{ .path = "named.ts" },     .{ .path = "named2.ts" },   .{ .path = "reexport.ts" },
-        .{ .path = "reexport2.ts" }, .{ .path = "legacy.ts" },   .{ .path = "lazy.ts" },
-        .{ .path = "shape.ts" },     .{ .path = "types2.ts" },   .{ .path = "later.ts" },
+        .{ .path = "model.ts" },
+        .{ .path = "types.ts" },
+        .{ .path = "mixed.ts" },
+        .{ .path = "named.ts" },
+        .{ .path = "named2.ts" },
+        .{ .path = "reexport.ts" },
+        .{ .path = "reexport2.ts" },
+        .{ .path = "legacy.ts" },
+        .{ .path = "lazy.ts" },
+        .{ .path = "shape.ts" },
+        .{ .path = "types2.ts" },
+        .{ .path = "later.ts" },
         .{ .path = "side.ts" },
     } };
     var graph = try fixture.scan(a, .{});

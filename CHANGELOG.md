@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Rust paths rooted at a crate's name (`use serde::X`, `extern crate`, `serde_json::f()`) are unresolved references; `go.mod` requirements marked `// indirect` are in group `indirect`.
+
 - Reachable rules: files that no chain from the caller's entry files reaches, orphans included.
 
 - Transitive forbidden rules and ordered layers: a file that reaches a forbidden one through any chain reports the shortest chain as its witness; `rules.free` frees findings with their chains.

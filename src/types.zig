@@ -20,7 +20,17 @@ pub const Kind = enum {
     dynamic,
 };
 pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: usize = 1 };
-pub const Form = enum { literal, python, rust_mod, rust_use, java_static };
+pub const Form = enum {
+    literal,
+    python,
+    rust_mod,
+    rust_use,
+    java_static,
+    /// A Rust path rooted at a crate's name rather than at `crate`,
+    /// `self`, `super` or a module of this file: a `use` path, an
+    /// `extern crate`, or the first segment of a path in code.
+    rust_crate,
+};
 /// Raw references borrow the source or the allocator passed to the lexer.
 pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false };
 pub const Reference = struct { from: []const u8, name: []const u8, offset: usize, member: ?[]const u8 = null, resolved: bool = false, kind: Kind = .import };

@@ -93,7 +93,9 @@ Rust, Nim and Java. Resolution stays within selected files. Zig named modules an
 caller inputs; JS/TS aliases come from selected local configs; Python initializer and
 literal star-reexport handling are selectable; Go uses selected module/workspace routing
 and optional target constraints. Rust resolves file modules and crate-relative use paths
-without macro expansion.
+without macro expansion; a path rooted at a crate's name (`use serde::X`, `extern crate
+libc`, `serde_json::to_string` in code or an attribute) is an unresolved reference, once
+per file, unless a `use`, module or alias of the file brought the name in.
 
 Rust test classification propagates through file modules; owned recovered operands let it share each available source read with import resolution.
 
@@ -137,7 +139,8 @@ project coordinates, and an `<optional>` dependency is optional unless its scope
 cannot read, such as a Gradle version catalog entry, an interpolated coordinate or a
 `requires` with a computed argument, declares nothing and appears in `graph.unsupported()`.
 A declaration's `scope()` is runtime, development, optional or build, read from its
-manifest's own groups. Its `origin` is registry, local, remote or workspace, taken from
+manifest's own groups; a `go.mod` requirement marked `// indirect` is in group
+`indirect`. Its `origin` is registry, local, remote or workspace, taken from
 the key or form that named its `source` (a ZON `.path` is local however it is written),
 and `revision()` is a pin the remote source spells in its own text. The TOML and Go
 declaration readers do not validate their entire formats.

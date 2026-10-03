@@ -212,7 +212,7 @@ test "Rust mod use trees nested comments raw strings and lifetimes" {
         \\use crate::{alpha, beta::{one, two}, gamma};
         \\mod inline { }
         \\use external::Thing;
-    , &.{ "net", "crate::util::Thing", "super::shared", "self::local", "crate::alpha", "crate::beta::one", "crate::beta::two", "crate::gamma" });
+    , &.{ "net", "crate::util::Thing", "super::shared", "self::local", "crate::alpha", "crate::beta::one", "crate::beta::two", "crate::gamma", "external::Thing" });
 }
 test "unterminated strings and comments do not invent imports" {
     for ([_]g.Language{ .zig, .c, .javascript, .python, .go, .rust }) |language| {

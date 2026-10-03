@@ -140,7 +140,11 @@ fn goMod(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arr
             continue;
         }
         const version = words.next() orelse return error.InvalidManifest;
-        try out.append(a, .{ .manifest = path, .name = std.mem.trim(u8, name, "\"`"), .source = std.mem.trim(u8, name, "\"`"), .requirement = version, .group = "require", .origin = .remote });
+        // `// indirect` marks a module only other modules import, as Go
+        // reads the comment: the word alone or before a `;`.
+        const comment = if (std.mem.indexOf(u8, line, "//")) |at| std.mem.trim(u8, line[at + 2 ..], " \t\r") else "";
+        const indirect = std.mem.eql(u8, comment, "indirect") or std.mem.startsWith(u8, comment, "indirect;");
+        try out.append(a, .{ .manifest = path, .name = std.mem.trim(u8, name, "\"`"), .source = std.mem.trim(u8, name, "\"`"), .requirement = version, .group = if (indirect) "indirect" else "require", .origin = .remote });
     }
     if (block) return error.InvalidManifest;
 }
