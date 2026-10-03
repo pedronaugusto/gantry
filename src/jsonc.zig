@@ -35,7 +35,11 @@ pub fn parse(a: std.mem.Allocator, scratch: std.mem.Allocator, text: []const u8)
         }
         i += 1;
     }
-    return std.json.parseFromSliceLeaky(std.json.Value, a, clean, .{ .allocate = .alloc_always });
+    // Every way the bytes fail to be JSON is one syntax error.
+    return std.json.parseFromSliceLeaky(std.json.Value, a, clean, .{ .allocate = .alloc_always }) catch |err| switch (err) {
+        error.OutOfMemory => error.OutOfMemory,
+        else => error.SyntaxError,
+    };
 }
 
 fn stringEnd(text: []const u8, start: usize) usize {

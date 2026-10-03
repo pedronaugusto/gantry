@@ -156,3 +156,16 @@ test "TS path aliases reach type-only imports and import types in declaration fi
     try f.edge(&graph, "src/vs/webview/webviewMessages.d.ts", "src/vs/base/browser/mouseEvent.ts", .import, 1);
     try std.testing.expectEqual(3, graph.edges().len);
 }
+
+test "an empty or truncated config is a syntax error like any other" {
+    // Found by the config fuzz property: the JSON reader's own errors
+    // escaped the scan for input that ends early.
+    for ([_][]const u8{ "", "{\"compilerOptions\": ", "{\"a\": \"x", "[" }) |text| {
+        const result = (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = text }} }).scan(a, .{ .manifests = false });
+        if (result) |value| {
+            var graph = value;
+            defer graph.deinit();
+            return error.TestExpectedError;
+        } else |err| try std.testing.expectEqual(error.SyntaxError, err);
+    }
+}
