@@ -17,9 +17,11 @@ pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     return recoverTokens(a, source, try lex(a, source, null));
 }
-pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !types.Recovery {
+pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
+    // Most files never spell it: their blocks are not looked for.
+    const checking = if (std.mem.indexOf(u8, source, "TYPE_CHECKING") != null) try typeChecking(a, source, ts) else &.{};
     // Loader calls are read across line breaks, as if the stream had none.
     var previous: ?l.Token = null;
     for (ts, 0..) |token, i| {
@@ -29,17 +31,22 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         if (previous != null and previous.?.is(".")) continue;
         const importlib = token.is("importlib");
         if (!importlib and !token.is("__import__")) continue;
-        var ahead: [3]l.Token = undefined;
+        // Enough for `.import_module(".x", package="p")`.
+        var ahead: [10]l.Token = undefined;
         var n: usize = 0;
         for (ts[i + 1 ..]) |next| if (next.kind != .newline) {
             ahead[n] = next;
             n += 1;
             if (n == ahead.len) break;
         };
-        if (importlib and n == 3 and ahead[0].is(".") and ahead[1].is("import_module") and ahead[2].is("("))
-            try unsupported.append(a, .{ .offset = token.offset, .expression = .python_importlib });
-        if (!importlib and n >= 1 and ahead[0].is("("))
-            try unsupported.append(a, .{ .offset = token.offset, .expression = .python_import });
+        const call = if (importlib and n >= 3 and ahead[0].is(".") and ahead[1].is("import_module") and ahead[2].is("("))
+            ahead[3..n]
+        else if (!importlib and n >= 1 and ahead[0].is("("))
+            ahead[1..n]
+        else
+            continue;
+        _ = call;
+        try unsupported.append(a, .{ .offset = token.offset, .expression = if (importlib) .python_importlib else .python_import });
     }
     var i: usize = 0;
     while (i < ts.len) : (i += 1) {
@@ -52,7 +59,8 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
             const base = try module(a, ts, &j);
             if (j >= ts.len or !ts[j].is("import")) continue;
             const base_index = out.items.len;
-            if (base.len > 0) try out.append(a, .{ .name = base, .offset = t.offset, .form = .python, .python_base = true });
+            const kind: types.Kind = if (inside(checking, t.offset)) .type_only else .import;
+            if (base.len > 0) try out.append(a, .{ .name = base, .offset = t.offset, .form = .python, .python_base = true, .kind = kind });
             j += 1;
             if (j < ts.len and ts[j].is("*") and base.len > 0) out.items[base_index].star = true;
             var parens: usize = 0;
@@ -79,7 +87,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
                 if (ts[j].kind != .word) break;
                 const child = ts[j].text;
                 const separator = if (base.len == 0 or std.mem.endsWith(u8, base, ".")) "" else ".";
-                try out.append(a, .{ .name = try std.fmt.allocPrint(a, "{s}{s}{s}", .{ base, separator, child }), .offset = t.offset, .form = .python });
+                try out.append(a, .{ .name = try std.fmt.allocPrint(a, "{s}{s}{s}", .{ base, separator, child }), .offset = t.offset, .form = .python, .kind = kind });
                 j += 1;
                 if (j < ts.len and ts[j].is("as")) j = @min(j + 2, ts.len);
                 if (j < ts.len and !ts[j].is(",") and !ts[j].is(")") and !ts[j].is("\\") and ts[j].kind != .newline) break;
@@ -88,7 +96,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
             while (j < ts.len) {
                 const name = try module(a, ts, &j);
                 if (name.len == 0) break;
-                try out.append(a, .{ .name = name, .offset = t.offset, .form = .python });
+                try out.append(a, .{ .name = name, .offset = t.offset, .form = .python, .kind = if (inside(checking, t.offset)) .type_only else .import });
                 if (j < ts.len and ts[j].is("as")) j = @min(j + 2, ts.len);
                 if (j >= ts.len or !ts[j].is(",")) break;
                 j += 1;
@@ -97,6 +105,49 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         i = j -| 1;
     }
     return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
+}
+
+/// Byte ranges of `if TYPE_CHECKING:` bodies, `typing.TYPE_CHECKING` or any
+/// `name.TYPE_CHECKING` included, as import-linter's
+/// `exclude_type_checking_imports` reads them: from the `if` to the first
+/// later line indented no deeper, which ends it (an `else` or `elif` too).
+/// Nested blocks stay inside.
+const Range = struct { start: usize, end: usize };
+fn typeChecking(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) ![]const Range {
+    var ranges: std.ArrayList(Range) = .empty;
+    var open: ?struct { start: usize, indent: usize } = null;
+    var depth: usize = 0;
+    var line_start = true;
+    for (ts, 0..) |t, i| {
+        if (t.kind == .newline) {
+            // A logical line ends outside brackets and without a `\`.
+            if (depth == 0 and !(i > 0 and ts[i - 1].is("\\"))) line_start = true;
+            continue;
+        }
+        if (line_start) {
+            line_start = false;
+            const begin = if (std.mem.lastIndexOfScalar(u8, source[0..t.offset], '\n')) |nl| nl + 1 else 0;
+            const indent = t.offset - begin;
+            if (open) |block| if (indent <= block.indent) {
+                try ranges.append(a, .{ .start = block.start, .end = t.offset });
+                open = null;
+            };
+            if (open == null and t.is("if") and checkingTest(ts[i + 1 ..])) open = .{ .start = t.offset, .indent = indent };
+        }
+        if (t.is("(") or t.is("[") or t.is("{")) depth += 1;
+        if ((t.is(")") or t.is("]") or t.is("}")) and depth > 0) depth -= 1;
+    }
+    if (open) |block| try ranges.append(a, .{ .start = block.start, .end = source.len });
+    return ranges.toOwnedSlice(a);
+}
+/// `TYPE_CHECKING:` or `name.TYPE_CHECKING:` after `if`.
+fn checkingTest(rest: []const l.Token) bool {
+    if (rest.len >= 2 and rest[0].is("TYPE_CHECKING") and rest[1].is(":")) return true;
+    return rest.len >= 4 and rest[0].kind == .word and rest[1].is(".") and rest[2].is("TYPE_CHECKING") and rest[3].is(":");
+}
+fn inside(ranges: []const Range, offset: usize) bool {
+    for (ranges) |range| if (offset >= range.start and offset < range.end) return true;
+    return false;
 }
 
 const p = @import("../path.zig");

@@ -51,3 +51,41 @@ test "Python reexports and imports share one source read" {
     try f.edge(&graph, "pkg/__init__.py", "pkg/impl.py", .import, 1);
     try std.testing.expectEqual(3, reader.calls);
 }
+
+test "imports in TYPE_CHECKING blocks are type-only, nested blocks included and else branches not" {
+    const source =
+        \\from typing import TYPE_CHECKING
+        \\import typing
+        \\import a
+        \\if TYPE_CHECKING:
+        \\    import b
+        \\    from c import (X,
+        \\        Y)
+        \\    if sys.version_info >= (3, 8):
+        \\        import d
+        \\    else:
+        \\        import e
+        \\else:
+        \\    import f
+        \\if typing.TYPE_CHECKING: import g
+        \\import h
+        \\def fn():
+        \\    if TYPE_CHECKING:
+        \\        import i
+        \\    import j
+        \\
+    ;
+    var items: std.ArrayList(f.Item) = .empty;
+    defer items.deinit(a);
+    try items.append(a, .{ .path = "m.py", .text = source });
+    const names = [_][]const u8{ "a.py", "b.py", "c.py", "d.py", "e.py", "f.py", "g.py", "h.py", "i.py", "j.py", "k.py" };
+    for (names) |name| try items.append(a, .{ .path = name });
+    var graph = try (f.Fixture{ .items = items.items }).scan(a, .{});
+    defer graph.deinit();
+    for ([_][]const u8{ "b.py", "c.py", "d.py", "e.py", "g.py", "i.py" }) |to| try f.edge(&graph, "m.py", to, .type_only, 1);
+    for ([_][]const u8{ "a.py", "f.py", "h.py", "j.py" }) |to| try f.edge(&graph, "m.py", to, .import, 1);
+    // import-linter's exclude_type_checking_imports: the static graph alone.
+    var static = try (f.Fixture{ .items = items.items }).scan(a, .{ .kinds = &.{.import} });
+    defer static.deinit();
+    try std.testing.expectEqual(4, static.edges().len);
+}

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Python imports under `if TYPE_CHECKING:` are `type_only` edges, nested blocks included and `else` branches not.
+
 - A finding's `edge`, `reference` and `token` point into the graph's records instead of copying them: a finding is 104 bytes, down from 240, and field access reads the same.
 
 - Dependency rules: unresolved imports joined to the governing npm, Python, Cargo, Go, Zig, Nim, Maven and Gradle manifests report undeclared packages and unused declarations, with the import or the declaration as evidence.

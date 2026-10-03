@@ -12,9 +12,9 @@ pub const Kind = enum {
     asset,
     /// An import in or of a test file.
     @"test",
-    /// A TypeScript import or re-export that brings in types alone:
-    /// `import type`, `export type`, braces whose every name is marked
-    /// `type`, and `typeof import("x")` or `import("x").T` in a type.
+    /// An import for types alone: a TypeScript `import type`, `export
+    /// type`, braces whose every name is marked `type`, `typeof import("x")`
+    /// or `import("x").T` in a type; a Python import under `if TYPE_CHECKING:`.
     type_only,
     /// A JavaScript `import("x")` call, which loads the module when it runs.
     dynamic,

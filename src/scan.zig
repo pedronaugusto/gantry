@@ -46,7 +46,7 @@ fn extract(a: std.mem.Allocator, language: Language, source: []const u8, recorde
 }
 /// The reference kinds `scan` reads from `file`, by its name alone:
 /// `import` and `test` from source in a supported language (`languageOf`),
-/// and `type_only` and `dynamic` too from JavaScript and TypeScript, `link`
+/// and `type_only` and `dynamic` too from JavaScript, TypeScript and Python, `link`
 /// from Markdown, `asset` from text that can name other files. Which of
 /// them a scan collects is still `Options.kinds`.
 pub fn kindsOf(file: []const u8) std.EnumSet(Kind) {
@@ -54,7 +54,7 @@ pub fn kindsOf(file: []const u8) std.EnumSet(Kind) {
     if (languageOf(file)) |language| {
         kinds.insert(.import);
         kinds.insert(.@"test");
-        if (language == .javascript) {
+        if (language == .javascript or language == .python) {
             kinds.insert(.type_only);
             kinds.insert(.dynamic);
         }
