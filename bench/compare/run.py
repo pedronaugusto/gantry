@@ -128,7 +128,7 @@ def normalise(tool, output, repo, files, scope, go_packages):
         if go_packages is not None:
             return {(Path(a).parent.as_posix(), Path(b).parent.as_posix()) for a, b in edges
                     if a.startswith(scope + "/") and Path(a).parent != Path(b).parent}
-        return edges
+        return {(a, b) for a, b in edges if a in files and b in files}
     if tool == "cargo-modules":
         return rust_dot(text, files, scope)
     if tool == "gendepend":
@@ -159,6 +159,26 @@ def normalise(tool, output, repo, files, scope, go_packages):
                 return None
         return path.as_posix().removeprefix("./")
     return {(a, b) for source, target in pairs if (a := relative(source)) in files and (b := relative(target)) in files}
+
+
+def typescript_configs(repo, paths, scope):
+    """The repository's own tsconfig/jsconfig files that apply to the scope:
+    in it or above it, with the local files they extend. Gantry reads only
+    selected paths, so its aliases come from these; rivals get their own."""
+    tracked = set(paths)
+    pending = sorted(p for p in tracked if posixpath.basename(p) in ("tsconfig.json", "jsconfig.json")
+                     and (p.startswith(scope + "/") or (scope + "/").startswith(posixpath.dirname(p) + "/" if posixpath.dirname(p) else "")))
+    selected = set()
+    while pending:
+        config = pending.pop()
+        if config in selected:
+            continue
+        selected.add(config)
+        text = (repo / config).read_text()
+        for base in re.findall(r'"extends"\s*:\s*"(\.[^"]*)"', text):
+            path = posixpath.normpath(posixpath.join(posixpath.dirname(config), base))
+            pending += [p for p in (path, path + ".json") if p in tracked][:1]
+    return sorted(selected)
 
 
 def make_case(language, scratch, out, env, binary, smoke):
@@ -214,7 +234,9 @@ def make_case(language, scratch, out, env, binary, smoke):
         commands = {"jdeps": [sys.executable, HERE / "java_graph.py", jdk_home(scratch), classes, pin["scope"]]}
     listing = out / "paths.txt"
     listing.parent.mkdir(parents=True, exist_ok=True)
-    listing.write_text("\n".join(sorted(files)) + "\n")
+    # Configs are read by gantry but stay outside the normalized source universe.
+    configs = typescript_configs(repo, tracked(repo), scope) if language == "typescript" else []
+    listing.write_text("\n".join(sorted(files | set(configs))) + "\n")
     commands = {"gantry": [binary, repo, listing], **commands}
     return repo, scope, files, commands, go_packages
 
@@ -298,9 +320,6 @@ def classify(language, direction, edge, repo, folder, graphs, scope):
             candidate = posixpath.normpath(posixpath.join(posixpath.dirname(a), ref))
             if direction == "rival_only" and b.endswith(".d.ts") and ref.startswith(".") and b in (candidate + ".d.ts", candidate.removesuffix(".js") + ".d.ts"):
                 return "scope: declaration-file resolution is outside gantry's documented suffix order", [ref]
-            candidate = "src/" + ref
-            if direction == "rival_only" and ref.startswith("vs/") and b in (candidate, candidate + ".ts", candidate.removesuffix(".js") + ".ts"):
-                return "scope: tsconfig baseUrl aliases are not resolved by gantry", [ref]
         return "review: relative import extraction or rival omission", refs
     if language == "python":
         if direction == "gantry_only" and b.endswith("/__init__.py"):

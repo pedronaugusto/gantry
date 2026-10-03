@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from run import java_classes, json_stream, nim_dot, nim_statement, nim_target, normalise, rust_dot
+from run import java_classes, json_stream, nim_dot, nim_statement, nim_target, normalise, rust_dot, typescript_configs
 
 
 class Adapters(unittest.TestCase):
@@ -41,6 +41,27 @@ class Adapters(unittest.TestCase):
             output.write_text(json.dumps({"modules": [{"source": "src/a.ts", "dependencies": [
                 {"resolved": str(repo / "src/b.ts")}, {"resolved": "src/c.ts", "couldNotResolve": True}, {"resolved": "/outside/x.ts"}]}]}))
             self.assertEqual(normalise("dependency-cruiser", output, repo, {"src/a.ts", "src/b.ts", "src/c.ts"}, "src", None), {("src/a.ts", "src/b.ts")})
+
+    def test_typescript_configs_that_apply_to_the_scope_and_their_local_bases(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            for name, text in {"src/tsconfig.json": '{ // own\n "extends": "./tsconfig.base.json"}',
+                               "src/tsconfig.base.json": '{"extends": "../shared/base"}',
+                               "shared/base.json": "{}",
+                               "src/vs/jsconfig.json": "{}",
+                               "src/tsconfig.monaco.json": "{}",
+                               "extensions/tsconfig.json": "{}",
+                               "src/vs/a.ts": ""}.items():
+                (repo / name).parent.mkdir(parents=True, exist_ok=True)
+                (repo / name).write_text(text)
+            tracked = [p.relative_to(repo).as_posix() for p in repo.rglob("*") if p.is_file()]
+            self.assertEqual(typescript_configs(repo, tracked, "src"), ["shared/base.json", "src/tsconfig.base.json", "src/tsconfig.json", "src/vs/jsconfig.json"])
+
+    def test_gantry_config_nodes_stay_outside_the_source_universe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "gantry.raw"
+            output.write_text("E\tsrc/a.ts\tsrc/b.ts\nE\tsrc/tsconfig.json\tsrc/tsconfig.base.json\n")
+            self.assertEqual(normalise("gantry", output, Path(directory), {"src/a.ts", "src/b.ts"}, "src", None), {("src/a.ts", "src/b.ts")})
 
     def test_nim_modules_from_the_project_folder_and_outside_lib(self):
         dot = '\n'.join(['digraph nim {', '"nim" -> "ast";', '"ast" -> "std/os";', '"ic/ic" -> "../dist/x/y";', '"ic/ic" -> "ast";', '"ast" -> "ast";', '}'])

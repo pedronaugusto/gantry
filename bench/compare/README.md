@@ -69,7 +69,7 @@ Repository URLs and **full commit hashes** are in `pins.json:repositories`.
 
 | Language | Repository revision | Selected source |
 |---|---|---|
-| TypeScript / JavaScript | VS Code 1.96.4 | all supported JS/TS extensions in `src` |
+| TypeScript / JavaScript | VS Code 1.96.4 | all supported JS/TS extensions in `src`, and for gantry the repository's own configs |
 | Python | Django 5.1.5 | `django`, including package initializers and migrations |
 | Go | Kubernetes 1.32.1 | `pkg/...` sources and repository packages in their compiler dependency closure |
 | Rust | rust-analyzer 2025-02-17 | the `ide` library, `crates/ide/src` |
@@ -113,7 +113,11 @@ its class file names (`SourceFile`), nested and non-public classes included.
 File self edges are removed on both sides for Nim and Java.
 
 VS Code comparison tools use a scratch-local tsconfig with `baseUrl=<repo>/src`, type
-imports enabled, and no installed external dependencies. Madge's warnings
+imports enabled, and no installed external dependencies. Gantry reads only the
+paths it is given, so its selection adds the repository's own `tsconfig.json`
+and `jsconfig.json` files in or above the scope, with the local files they
+extend: `src/tsconfig.json` and `src/tsconfig.base.json`, whose `vs/*` alias
+the rivals' `baseUrl` also reaches. Configs are inputs, never graph nodes. Madge's warnings
 and dependency-cruiser's unresolved records remain in raw output. Grimp is
 the actual graph engine used by import-linter; persistent graph caching is
 disabled. pydeps uses bytecode/modulefinder, `--no-config`, and no diagram rendering.
