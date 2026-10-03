@@ -1,6 +1,7 @@
 //! Zig's own parser for what gantry recovers from Zig: `std.zig.Ast` parses
 //! a whole file, and `@import` calls are counted from its nodes; for
-//! `build.zig.zon` it parses ZON and counts the root `.dependencies` fields.
+//! `build.zig.zon` it parses ZON, checks it with `std.zig.ZonGen` as
+//! `std.zon` does, and counts the root `.dependencies` fields.
 //! Same output rows as bench/ops.
 const std = @import("std");
 const Ast = std.zig.Ast;
@@ -27,6 +28,12 @@ pub fn main(init: std.process.Init) !void {
             var tree = try Ast.parse(c.gpa, c.source, if (c.zon) .zon else .zig);
             defer tree.deinit(c.gpa);
             if (tree.errors.len != 0) return error.ParseError;
+            if (c.zon) {
+                // std.zon's reader checks ZON semantics after the parse, as gantry does.
+                var zoir = try std.zig.ZonGen.generate(c.gpa, tree, .{});
+                defer zoir.deinit(c.gpa);
+                if (zoir.hasCompileErrors()) return error.ParseError;
+            }
             c.count = if (c.zon) try dependencies(&tree) else imports(&tree);
         }
     };

@@ -113,7 +113,7 @@ corpus, 5,000 Markdown pages, or a 5,501-file Python package.
 | `imports` (Rust) | `imports/rust/<size>` | syn 3.0.6 |
 | `imports` (Nim) | `imports/nim/<size>`, after only | unavailable: Nim's parser ships only inside the compiler |
 | `imports` (Java) | `imports/java/<size>`, after only | javac parse via `JavacTask` (Temurin 21.0.12.1+1) |
-| `manifests.parse` | `manifests/<file>/<size>` for `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `build.zig.zon`; `pom.xml`, `build.gradle`, `.nimble` after only | Python `json`, `tomllib`, `tomllib`, `golang.org/x/mod/modfile` v0.41.0, `std.zig.Ast` ZON, Python `ElementTree`; Gradle and nimble unavailable (both only evaluate their scripts) |
+| `manifests.parse` | `manifests/<file>/<size>` for `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `build.zig.zon`; `pom.xml`, `build.gradle`, `.nimble` after only | Python `json`, `tomllib`, `tomllib`, `golang.org/x/mod/modfile` v0.41.0, `std.zig.Ast` and `std.zig.ZonGen` ZON (as `std.zon` reads it), Python `ElementTree`; Gradle and nimble unavailable (both only evaluate their scripts) |
 | `scan` (caller-held bytes) | `scan/memory/<size>` | unavailable in process; whole-tree scans are the `<language>/graph` comparisons |
 | `scanWithDiagnostic` | `scan/diagnostic/<size>`, after only | as `scan` |
 | `scan` with `Options.tokens` | `scan/tokens/<size>`, after only | end to end in `process/tokens` |
@@ -151,12 +151,16 @@ publishes.
 | imports/rust vs syn | 8–9x | (c) | syn builds a typed tree of every item, expression and literal; gantry lexes and records `use`/`mod` paths. |
 | imports/java vs javac | 9–49x | (c) | Each parse needs a fresh `JavacTask` (compiler context) and builds a full tree; the JVM is not fully compiled within 200 ms. |
 | manifests/go.mod vs x/mod modfile | 10–12x | (b) | modfile keeps a full syntax tree with comments and checks every module path and version; gantry's go.mod reader does not validate the format (documented in its README). |
+| manifests/build.zig.zon vs `std.zig.Ast` | 0.7–0.9x | (a) | The comparison parsed only; it now also runs `std.zig.ZonGen`, which checks ZON semantics as `std.zon` and gantry do (ZonGen was about 60% of gantry's time). Parsing alone was 3.5–4.5x faster than gantry. The rest is the fresh arena the harness gives each parse. |
+| imports/go vs go/parser ImportsOnly | 0.9–1.2x | (b) | ImportsOnly stops after the import declarations; gantry lexes the whole file, because it reports an `import` wherever one is spelled and token rules read the same stream. Go's scanner alone over the whole file takes 2.8–3.8x gantry's time. |
+| process/walk vs ripgrep `--files` | 0.7x | (b) | ripgrep walks on a thread per core (0.26 CPU-s against gantry's 0.07); gantry starts no thread. With `-j1` ripgrep is 1.5x slower. |
+| process/tokens vs ripgrep | 0.5x | (b) | ripgrep searches on a thread per core (3.8 CPU-s against 0.65) and only matches words; gantry also scans every import. With `-j1` ripgrep is 1.2x slower. Both spend most of the time opening files. |
 
-Rows where gantry is not faster (diagnostic): `imports/go` (go/parser
-ImportsOnly stops after the import block, about 2.5x faster), `imports/zig`
-(`std.zig.Ast` about 1.5x faster), `manifests/build.zig.zon` (`std.zig.Ast`
-ZON about 3.5x faster), `process/walk` (ripgrep), `process/tokens` (ripgrep
-matches words in bytes and needs no import scan).
+Rows where gantry is not faster (diagnostic, gantry `fast` branch): `imports/go`
+(about even with go/parser ImportsOnly, which stops after the import block),
+`manifests/build.zig.zon` (`std.zig.Ast` with `ZonGen` about 1.1–1.4x faster),
+`process/walk` and `process/tokens` (ripgrep's threads; single-threaded ripgrep is
+slower). See the audit rows above.
 
 Standalone `zig build -Doptimize=Debug` compiles the pinned after harness
 without running it. Snapshot builds pass `-Dsnapshot=true` to compile the
