@@ -1,4 +1,4 @@
-"""Synthetic scans and all existing graph comparisons, on both revisions."""
+"""Synthetic scans, every public operation and all graph comparisons, on both revisions."""
 import importlib.util
 import json
 from pathlib import Path
@@ -25,7 +25,7 @@ def main():
         else:total=json.loads((p.build/'corpus-bytes.json').read_text())
         p.prepared.require(corpus)
         p.prepared.require(p.build/'corpus-bytes.json')
-        def check_scan(out):
+        def check_scan(out, side=None):
             counts=re.findall(r'edges (\d+), references (\d+), dependencies (\d+)',out)
             if len(counts)!=1:raise ValueError('missing scan counts')
             if tuple(map(int,counts[0])) != (15*count,7*count,2):raise ValueError('unexpected synthetic graph')
@@ -33,7 +33,8 @@ def main():
         p.interleave('synthetic/list-scan-memory-analysis-aggregate',[(s,[binary[s]/'scan',corpus,'1']) for s in source],check=check_scan)
         sys.path.insert(0,str(p.here/'compare'))
         import run as compare
-        from setup import PINS, environment, prepare, verify_tools
+        from setup import PINS, environment, jdk_home, prepare, prepare_alternatives, verify_alternatives, verify_tools
+        import operations
         scratch=(p.args.comparison_scratch or p.here/'build/comparison').resolve()
         # Agreement-only corpora (`"timed": false`) stay out of the timing pass.
         languages=[name for name,pin in PINS['repositories'].items() if pin.get('timed',True)]
@@ -42,6 +43,12 @@ def main():
             p.prepared.require(scratch/asset)
         p.machine['comparison_tools']=verify_tools(scratch,languages,env)
         p.machine['comparison_toolchains']={name:p.run(argv,env=env).strip() for name,argv in {'node':['node','--version'],'go':['go','version'],'rust':['rustc','--version']}.items()}
+        if p.preparing and not p.args.skip_setup: prepare_alternatives(scratch,env)
+        p.machine['operation_alternatives']=verify_alternatives(scratch,env)
+        p.machine['comparison_toolchains']['java']=PINS['jdk']['version']
+        operations.run(p,binary,scratch,env,jdk_home(scratch))
+        # Comparison tools report boot, import, analysis and output apart on stderr.
+        if not p.smoke: env['BENCH_PHASES']='1'
         result={'mode':'smoke' if p.smoke else 'benchmark','pins':PINS,'revisions':p.revisions,'languages':{}}
         for language in languages:
             env['GOWORK']='off'
@@ -87,8 +94,14 @@ def main():
                     if side in graphs and graphs[side]!=graph:raise ValueError(f'unstable graph: {language}/{side}')
                     graphs[side]=graph
                     row={'workload':language+'/graph','side':side,'round':round+1,'status':'passed','correctness':{'selected_files':len(files),'edges':len(graph)}}
-                    if measured:row['measurements']=measured
+                    if measured:
+                        row['measurements']=measured
+                        if found:=operations.phases(output.with_suffix(output.suffix+'.stderr')):row['phases']=found
                     p.rows.append(row);p.save()
+            if language=='rust':
+                # cargo-modules starts with this workspace discovery; time it alone.
+                p.interleave('rust/workspace-discovery',[('cargo-metadata',['cargo','metadata','--format-version','1'])],
+                             cwd=repo,env=env,check=operations.cargo_metadata,wall=True)
             (folder/'before.edges.json').write_text(json.dumps(sorted(graphs['before']))+'\n')
             (folder/'after.edges.json').write_text(json.dumps(sorted(graphs['after']))+'\n')
             entry={'scope':scope,'selected_files':len(files),'before_edges':len(graphs['before']),'after_edges':len(graphs['after']),'agreement':{}}

@@ -11,6 +11,7 @@
   "npm": {"madge": "8.0.0", "dependency-cruiser": "16.10.4", "typescript": "5.7.3"},
   "python": {"pydeps": "3.0.8", "grimp": "3.17", "import-linter": "2.15"},
   "cargo": {"cargo-modules": "0.26.0"},
+  "alternatives": {"syn": "3.0.6", "golang.org/x/mod": "v0.41.0", "ripgrep": "15.2.0", "markdown-it-py": "4.2.0"},
   "toolchains": {"zig": "0.16.0", "go": "go1.27.1", "rust": "1.93.0", "node": "v22.23.2", "python": "3.13.2", "nim": "2.2.10"},
   "jdk": {"version": "21.0.12.1+1", "vendor": "Eclipse Temurin", "archives": {"darwin-arm64": {"url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz", "sha256": "3623232f33a9c3baadf304480b2535f9a3cba8a58d42ecbb438ba267315d9998"}, "linux-x86_64": {"url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz", "sha256": "ce79869e1307ed8ee1e2baa86a412b1eb5b75d10a01006d788a6f968bcfaee94"}}}
 }

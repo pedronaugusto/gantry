@@ -1,0 +1,14 @@
+[package]
+name = "alt-rust"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# syn is the Rust parser the ecosystem's tools use outside the compiler.
+[dependencies]
+syn = { version = "=3.0.6", default-features = false, features = ["full", "parsing"] }
+
+[profile.release]
+debug = false
+
+[workspace]

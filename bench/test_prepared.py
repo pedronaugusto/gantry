@@ -42,6 +42,6 @@ class PreparedTests(unittest.TestCase):
                 run.save()
             self.assertEqual((out/'report.json').read_text(), 'real pass')
             self.assertEqual((out/'report.md').read_text(), 'real pass')
-            self.assertTrue((out/'prepared.json').exists())
+            self.assertEqual(sorted(p.name for p in out.iterdir()), ['report.json', 'report.md'])
 
 if __name__ == '__main__': unittest.main()

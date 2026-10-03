@@ -21,3 +21,9 @@ pub fn components(a: *const gantry.Analysis) []const []const []const u8 {
 pub fn cycles(a: *const gantry.Analysis) []const gantry.Cycle {
     return if (@hasDecl(gantry.Analysis, "cycles")) a.cycles() else a.cycles;
 }
+pub fn nodes(g: *const gantry.Graph) []const []const u8 {
+    return if (@hasDecl(gantry.Graph, "paths")) g.paths() else g.paths;
+}
+pub fn specs(i: *const gantry.Imports) []const gantry.Spec {
+    return if (@hasDecl(gantry.Imports, "items")) i.items() else i.items;
+}

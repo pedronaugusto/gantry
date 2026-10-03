@@ -2,8 +2,7 @@
 
 Keep the `bench` worktree in the workspace’s `.bench/gantry`, outside `.zig-cache`; `bench/quiet.sh` resolves its files from its own directory.
 
-Pinned after: `2a0464cd218f4752fb75aa45d3670600e582947b`, the `mem` branch head (final main
-`277ee0c` with the scan memory fixes).
+Pinned after: `546bc06ca92caf8df21a63d9a1d95b162b1796da`, main's head (`revisions.json`).
 **No main commit exists before the requested cutoff.** The initial main commit,
 `24cc1cec108edf15a60a932ce79a864e811fec35`, is a clearly labelled substitute
 baseline. This pass cannot establish a before/after result for a pre-cutoff
@@ -15,7 +14,7 @@ values. Smoke is a correctness check, and never evidence for speed. Both
 modes write plain Markdown and JSON to `bench/results/<local-date>/`; generated
 results and build products are ignored. Smoke writes `smoke.md` / `smoke.json`;
 the quiet pass writes `report.md` / `report.json`; preparation and
-`--check-prepared` write `prepared.md` / `prepared.json`. None of them can
+`--check-prepared` measure nothing and write nothing to results, so neither can
 overwrite a real pass. Use `--output <directory>` for a separate run on the same day.
 
 The full pass warms each workload, then repeats A (before), B (after), and the
@@ -51,7 +50,7 @@ Same-job tools retained on pinned repositories: madge 8.0.0 and
 dependency-cruiser 16.10.4 on VS Code; pydeps 3.0.8 and Grimp 3.17 on Django;
 Go `go list` on Kubernetes; cargo-modules 0.26.0 on rust-analyzer. Zig's standard
 library has no same-job tool, and is scanned without an agreement score.
-The timing pass adds no tool. Agreement-only cases outside it: `nim genDepend`
+Go `go list` asks only for the fields the graph reads (see the equivalence audit below). Agreement-only cases outside it: `nim genDepend`
 on the Nim 2.2.10 compiler and `jdeps` on Apache Commons Lang 3.17.0. See
 [comparison methodology](compare/README.md) and
 `compare/pins.json` for full repository and dependency pins.
@@ -84,7 +83,80 @@ The standalone bench build consumes each package revision directly. Existing
 published agreement artifacts have personal/scratch paths redacted, and their
 old smoke instrumentation values are removed.
 
-Quiet-only planning estimate: **4–15 minutes**. See [QUIET-PREP.md](QUIET-PREP.md) for preparation, counts, sizes and assumptions.
+Quiet-only planning estimate: **12–30 minutes**. See [QUIET-PREP.md](QUIET-PREP.md) for preparation, counts, sizes and assumptions.
+
+## Every public operation
+
+`ops.zig` runs each public operation in process on one revision; `ops --list`
+names the ones that revision has, and an operation the before pin lacks gets one
+`unavailable` row for `before`. Fixtures (`fixtures.py`, and an in-memory tree
+inside `ops.zig`) are built during preparation. Per-file and in-memory workloads
+repeat the operation for 200 ms after one untimed warm-up and report the mean
+(`ns_per_op`); every side of a workload, the comparison tools included, must
+report the same counts and the same source bytes, or the pass fails. Whole-tree
+workloads (`process/*`) are timed from outside as processes, with wall time and
+peak RSS, and each side reports its phases (start, imports, analysis) so tool
+start-up stays apart from the work.
+
+Sizes: imports per file 20 / 200 / 5,000; manifest declarations 10 / 100 / 1,000;
+in-memory trees 100 / 5,000 / 50,000 files (groups of ten, each a ten-file cycle,
+with cross-group edges); whole-tree workloads use the 30,002-file synthetic
+corpus, 5,000 Markdown pages, or a 5,501-file Python package.
+
+| Operation | Workload | Comparison (pin) |
+|---|---|---|
+| `imports` (Zig) | `imports/zig/<size>` | `std.zig.Ast` (Zig 0.16.0) |
+| `imports` (C/C++) | `imports/c/<size>` | unavailable: no include lister short of a preprocessor; `cc -M` and libclang evaluate conditionals and need every header |
+| `imports` (JS/TS) | `imports/javascript/<size>` | TypeScript `preProcessFile` (5.7.3) |
+| `imports` (Python) | `imports/python/<size>` | CPython `ast` (3.13) |
+| `imports` (Go) | `imports/go/<size>` | `go/parser` ImportsOnly (go1.27.1) |
+| `imports` (Rust) | `imports/rust/<size>` | syn 3.0.6 |
+| `imports` (Nim) | `imports/nim/<size>`, after only | unavailable: Nim's parser ships only inside the compiler |
+| `imports` (Java) | `imports/java/<size>`, after only | javac parse via `JavacTask` (Temurin 21.0.12.1+1) |
+| `manifests.parse` | `manifests/<file>/<size>` for `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `build.zig.zon`; `pom.xml`, `build.gradle`, `.nimble` after only | Python `json`, `tomllib`, `tomllib`, `golang.org/x/mod/modfile` v0.41.0, `std.zig.Ast` ZON, Python `ElementTree`; Gradle and nimble unavailable (both only evaluate their scripts) |
+| `scan` (caller-held bytes) | `scan/memory/<size>` | unavailable in process; whole-tree scans are the `<language>/graph` comparisons |
+| `scanWithDiagnostic` | `scan/diagnostic/<size>`, after only | as `scan` |
+| `scan` with `Options.tokens` | `scan/tokens/<size>`, after only | end to end in `process/tokens` |
+| `scan`, Markdown links | `scan/links/<size>`; `process/links` | markdown-it-py 4.2.0 (CommonMark) |
+| `scan`, asset paths | `scan/assets/<size>` | unavailable: no pinned tool recovers asset paths from text |
+| `walk` | `process/walk`, and the synthetic listing | BSD `find -type f`, ripgrep 15.2.0 `--files` |
+| `Graph.check`, each rule family | `rules/{ordered,forbidden,allowed,nothing-imports,references,required,cycles}/<size>`; `rules/tokens/<size>` after only | in process unavailable (the rule tools check only graphs they build); end to end: dependency-cruiser 16.10.4 in `process/check-js`, import-linter 2.15 in `process/check-python`, ripgrep `-w --count-matches` in `process/tokens` |
+| `Graph.fromEdges`, `Analysis.init`, `Graph.analyze`, `Graph.aggregate` | `graph/{from-edges,analysis-init,analyze,aggregate}/<size>` | unavailable: no pinned tool takes a caller edge list |
+| `path.normalize` | `path/normalize/<size>` | unavailable: `posixpath.normpath` and `std.fs.path.resolve` keep `..` above the root and accept absolute paths |
+| `rules.matches`, `rules.matchesToken` | `match/path/<size>`; `match/token/<size>` after only | unavailable: the pinned tools match globs only inside interpreters |
+| whole-tree `scan` + graph | `<language>/graph` (existing) | madge, dependency-cruiser, pydeps, Grimp, `go list`, cargo-modules |
+
+Skipped as value helpers with no measurable cost: `languageOf`, `kindsOf`,
+`manifests.supported`, `manifests.modulePath`, `path.dir/base/within/directory`,
+`Dependency.scope/revision/shortName`, and the slice accessors of `Graph`,
+`Analysis`, `Imports` and `Paths` (`Graph.contains` included).
+
+## Equivalence audit
+
+A comparison counts only when both sides do the same work on the same input.
+Verdicts: (a) the harness was changed so they do; (b) the lead is a named
+design difference in gantry; (c) the tool inherently does more, kept and labelled.
+Ratios are from the 2026-10-03 quiet pass (real repositories) or diagnostic
+single runs on the shared machine (per-operation rows); the next quiet pass
+publishes.
+
+| Comparison | Ratio | Verdict | What each side does |
+|---|---:|---|---|
+| go/graph vs `go list` | 4.3x | (a), then (c) | A bare `-json` computed `Stale` for every package, hashing all sources against the build cache; now `-json=ImportPath,Dir,Imports,GoFiles,CgoFiles,Error,DepsErrors` (same 2,665 packages and imports; diagnostic 2.0–2.3 s to 1.1–1.3 s). The rest is go list's build context: per-file GOOS/GOARCH and build-tag selection, cgo, vendor and module tables. |
+| rust/graph vs cargo-modules | 240x | (c) | cargo-modules loads rust-analyzer's whole workspace and dependency sources, expands macros and resolves names before walking item edges; gantry lexes the selected crate's files and resolves file modules. Workspace discovery (`cargo metadata`, about 0.1 s) is timed alone in `rust/workspace-discovery`. |
+| typescript/graph vs madge | 45x | (c) | madge parses every file to a full AST and resolves each specifier through filing-cabinet with filesystem probes; gantry lexes specifiers and resolves against the in-memory selection. Same 50,508 edges. Phases: node start about 30 ms, module load about 0.3 s, the rest analysis. |
+| typescript/graph vs dependency-cruiser | 40x | (c) | TypeScript AST per file, enhanced-resolve with filesystem probes, module metadata and JSON inside `cruise()`; same start-up split as madge. |
+| python/graph vs Grimp | 2.0x | (c), and start-up | Grimp's Rust parser builds a full syntax tree per module, multi-threaded; of its process time about 45 ms is interpreter start and import, leaving analysis near gantry's scan (within 1.5x). gantry adds package-initializer edges Grimp does not record. |
+| python/graph vs pydeps | 52x | (c), not native | pydeps compiles each module to bytecode and follows `IMPORT_NAME` opcodes. |
+| imports/rust vs syn | 8–9x | (c) | syn builds a typed tree of every item, expression and literal; gantry lexes and records `use`/`mod` paths. |
+| imports/java vs javac | 9–49x | (c) | Each parse needs a fresh `JavacTask` (compiler context) and builds a full tree; the JVM is not fully compiled within 200 ms. |
+| manifests/go.mod vs x/mod modfile | 10–12x | (b) | modfile keeps a full syntax tree with comments and checks every module path and version; gantry's go.mod reader does not validate the format (documented in its README). |
+
+Rows where gantry is not faster (diagnostic): `imports/go` (go/parser
+ImportsOnly stops after the import block, about 2.5x faster), `imports/zig`
+(`std.zig.Ast` about 1.5x faster), `manifests/build.zig.zon` (`std.zig.Ast`
+ZON about 3.5x faster), `process/walk` (ripgrep), `process/tokens` (ripgrep
+matches words in bytes and needs no import scan).
 
 Standalone `zig build -Doptimize=Debug` compiles the pinned after harness
 without running it. Snapshot builds pass `-Dsnapshot=true` to compile the

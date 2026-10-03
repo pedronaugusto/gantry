@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 from prepared import Prepared
 
 class Pass:
@@ -115,13 +116,36 @@ class Pass:
         self.run(['zig','build','-j1','-Doptimize=ReleaseFast',
                   '-Dsmoke='+str(self.smoke).lower(),*(['-Dsnapshot=true'] if sub == 'bench' else []),*steps],cwd=source/sub)
         return self.prepared.require(install / 'bin')
-    def point(self, workload, side, argv, round, cwd=None, env=None, prepare=None, check=None):
+    def measured(self, argv, cwd=None, env=None):
+        """The child's own wall time and peak RSS (wait4), output kept apart in files."""
+        scratch = self.build / 'measured'
+        scratch.mkdir(exist_ok=True)
+        with (scratch/'stdout').open('w+') as out, (scratch/'stderr').open('w+') as err:
+            start = time.perf_counter()
+            process = subprocess.Popen(list(map(str,argv)),cwd=cwd,env=env or self.env,stdout=out,stderr=err,text=True)
+            _, status, usage = os.wait4(process.pid, 0)
+            elapsed = time.perf_counter() - start
+            out.seek(0); err.seek(0)
+            stdout, stderr = out.read(), err.read()
+        if os.waitstatus_to_exitcode(status):
+            raise RuntimeError(self.clean(f'command failed: {argv}\n{stderr[-5000:]}'))
+        rss = usage.ru_maxrss if sys.platform == 'darwin' else usage.ru_maxrss * 1024
+        return stdout + stderr, {'wall_seconds':elapsed, 'peak_rss_bytes':rss}
+    def unavailable(self, workload, side, reason):
+        """A side that has no equivalent operation: one row with the reason, never run."""
+        if self.plan_only: return
+        self.rows.append({'workload':workload,'side':side,'round':0,'status':'unavailable','reason':reason})
+        self.save()
+    def point(self, workload, side, argv, round, cwd=None, env=None, prepare=None, check=None, wall=False):
         print(f'  {workload}: {side} ({round+1}/{self.runs})',flush=True)
         if prepare: prepare()
-        output = self.run(argv,cwd=cwd,env=env)
-        evidence = check(output) if check else None
+        measurements = None
+        if wall and not self.smoke: output, measurements = self.measured(argv,cwd=cwd,env=env)
+        else: output = self.run(argv,cwd=cwd,env=env)
+        evidence = check(output, side) if check else None
         row = {'workload':workload,'side':side,'round':round+1,'status':'passed'}
         if evidence is not None: row['correctness'] = evidence
+        if measurements: row['measurements'] = measurements
         if not self.smoke:
             row['output'] = output
             metrics = []
@@ -146,10 +170,13 @@ class Pass:
             for side, argv in commands:
                 if kwargs.get('prepare'): kwargs['prepare']()
                 output = self.run(argv,cwd=kwargs.get('cwd'),env=kwargs.get('env'))
-                if kwargs.get('check'): kwargs['check'](output)
+                if kwargs.get('check'): kwargs['check'](output, side)
         for round in range(self.runs):
             for side, argv in commands: self.point(workload,side,argv,round,**kwargs)
     def save(self, failure=None):
+        # Preparation and its check measure nothing; writing a report there
+        # could replace the day's real pass with an empty one.
+        if getattr(self, 'plan_only', False): return
         report = self.clean({'mode':'smoke' if self.smoke else 'benchmark', 'revisions':self.revisions,
                  'baseline_note':self.metadata.get('baseline_note','Last first-parent main commit before the midnight cutoff.'),
                  'machine':self.machine, 'harness_commit':self.git('rev-parse','HEAD'),
@@ -158,7 +185,7 @@ class Pass:
                  'samples':self.rows, 'failure':failure,
                  'complete':self.complete, 'timings_recorded':not self.smoke and not self.plan_only})
         # Preparation and its check share the day's folder with a real pass: never its report.
-        name = 'smoke' if self.smoke else 'prepared' if self.plan_only else 'report'
+        name = 'smoke' if self.smoke else 'report'
         (self.out/(name+'.json')).write_text(json.dumps(report,indent=2)+'\n')
         lines = ['# '+('Smoke correctness' if self.smoke else 'Quiet preparation' if self.plan_only else 'Quiet benchmark'),'',
                  'Before: `'+self.revisions['before']+'`; after: `'+self.revisions['after']+'`.','',
@@ -167,9 +194,11 @@ class Pass:
                  'No timings recorded. Tiny harness checks only.' if self.smoke else 'Individual samples follow; preparation and compilation are outside measurements.', '',
                  '| Workload | Side | Round | Status |','|---|---|---:|---|']
         for row in report['samples']:
-            lines.append(f"| {row['workload']} | {row['side']} | {row['round']} | {row['status']} |")
+            status = row['status'] + (': '+row['reason'] if row.get('reason') else '')
+            lines.append(f"| {row['workload']} | {row['side']} | {row['round']} | {status} |")
         if not self.smoke:
             for row in report['samples']:
+                if row['status'] == 'unavailable': continue
                 lines += ['', f"{row['workload']} / {row['side']} / round {row['round']}", '```text',row.get('output',json.dumps(row.get('measurements',{}))).rstrip(),'```','']
         if failure: lines += ['', 'Failure: '+str(report['failure'])]
         (self.out/(name+'.md')).write_text('\n'.join(lines)+'\n')
@@ -178,7 +207,8 @@ class Pass:
         if self.smoke: Prepared(self.here, self.args.build_dir.resolve()/'full').certify()
         self.complete = True
         self.save()
-        print(f"{'Smoke passed; no timings recorded' if self.smoke else 'Pass complete'}: {self.out}",flush=True)
+        if self.plan_only: print('Preparation complete; nothing measured or written to results',flush=True)
+        else: print(f"{'Smoke passed; no timings recorded' if self.smoke else 'Pass complete'}: {self.out}",flush=True)
 
 def tsv(output):
     rows = [line.split('\t') for line in output.splitlines() if '\t' in line]

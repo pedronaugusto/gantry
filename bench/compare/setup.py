@@ -57,6 +57,25 @@ def checkout(repo, url, commit, env):
         raise RuntimeError(f"modified corpus: {repo}")
 
 
+def install_jdk(scratch, env):
+    """The pinned JDK, unpacked in scratch: jdeps for Java agreement, javac's parser for Java imports."""
+    if (jdk_home(scratch) / "bin/jdeps").exists():
+        return
+    key = f"{sys.platform}-{platform.machine().lower().replace('aarch64', 'arm64')}"
+    archive = PINS["jdk"]["archives"].get(key)
+    if archive is None:
+        raise RuntimeError(f"no pinned JDK for {key}")
+    download = scratch / "downloads" / Path(archive["url"]).name.replace("%2B", "+")
+    download.parent.mkdir(exist_ok=True)
+    if not download.exists():
+        run(["curl", "-fsSL", "-o", str(download), archive["url"]], env)
+    digest = hashlib.sha256(download.read_bytes()).hexdigest()
+    if digest != archive["sha256"]:
+        raise RuntimeError(f"JDK archive digest {digest} differs from pin")
+    with tarfile.open(download) as tar:
+        tar.extractall(scratch / "jdk", filter="tar")
+
+
 def run(command, env, cwd=None):
     print("+", " ".join(map(str, command)), flush=True)
     subprocess.run(command, env=env, cwd=cwd, check=True)
@@ -73,20 +92,8 @@ def prepare(scratch, languages):
         # Pinned sources a corpus's own tooling would fetch (Nim's `koch deps`).
         for dependency in pin.get("dependencies", []):
             checkout(repo / dependency["path"], dependency["url"], dependency["commit"], env)
-    if "java" in languages and not (jdk_home(scratch) / "bin/jdeps").exists():
-        key = f"{sys.platform}-{platform.machine().lower().replace('aarch64', 'arm64')}"
-        archive = PINS["jdk"]["archives"].get(key)
-        if archive is None:
-            raise RuntimeError(f"no pinned JDK for {key}")
-        download = scratch / "downloads" / Path(archive["url"]).name.replace("%2B", "+")
-        download.parent.mkdir(exist_ok=True)
-        if not download.exists():
-            run(["curl", "-fsSL", "-o", str(download), archive["url"]], env)
-        digest = hashlib.sha256(download.read_bytes()).hexdigest()
-        if digest != archive["sha256"]:
-            raise RuntimeError(f"JDK archive digest {digest} differs from pin")
-        with tarfile.open(download) as tar:
-            tar.extractall(scratch / "jdk", filter="tar")
+    if "java" in languages:
+        install_jdk(scratch, env)
     if "typescript" in languages:
         npm = scratch / "npm"
         npm.mkdir(exist_ok=True)
@@ -107,6 +114,40 @@ def prepare(scratch, languages):
     if "rust" in languages and not (scratch / "cargo/bin/cargo-modules").exists():
         run(["cargo", "install", "--locked", "--root", str(scratch / "cargo"), "--version", PINS["cargo"]["cargo-modules"], "cargo-modules"], env)
     return env
+
+
+ALTERNATIVES = HERE.parent / "alt"
+
+
+def prepare_alternatives(scratch, env):
+    """Per-operation comparisons, built into <scratch>/alt from locked sources."""
+    out = scratch / "alt"
+    out.mkdir(exist_ok=True)
+    install_jdk(scratch, env)
+    run(["go", "build", "-mod=readonly", "-trimpath", "-o", str(out / "alt-go"), "."], {**env, "CGO_ENABLED": "0"}, cwd=ALTERNATIVES / "go")
+    run(["cargo", "build", "--release", "--locked", "--manifest-path", str(ALTERNATIVES / "rust/Cargo.toml")],
+        {**env, "CARGO_TARGET_DIR": str(scratch / "alt-rust-target")})
+    shutil.copyfile(scratch / "alt-rust-target/release/alt-rust", out / "alt-rust")
+    (out / "alt-rust").chmod(0o755)
+    run([str(jdk_home(scratch) / "bin/javac"), "-nowarn", "-d", str(out / "java"), str(ALTERNATIVES / "java/Imports.java")], env)
+    version = PINS["alternatives"]["ripgrep"]
+    if not (scratch / "cargo/bin/rg").exists():
+        run(["cargo", "install", "--locked", "--root", str(scratch / "cargo"), "--version", version, "ripgrep"], env)
+
+
+def verify_alternatives(scratch, env):
+    pins = PINS["alternatives"]
+    rg = subprocess.check_output([str(scratch / "cargo/bin/rg"), "--version"], env=env, text=True).split()[1]
+    lock = (ALTERNATIVES / "rust/Cargo.lock").read_text()
+    go_sum = (ALTERNATIVES / "go/go.sum").read_text()
+    code = "import importlib.metadata as m; print(m.version('markdown-it-py'))"
+    markdown = subprocess.check_output([str(scratch / "venv/bin/python"), "-c", code], env=env, text=True).strip()
+    if rg != pins["ripgrep"] or f'name = "syn"\nversion = "{pins["syn"]}"' not in lock \
+            or f'golang.org/x/mod {pins["golang.org/x/mod"]} ' not in go_sum or markdown != pins["markdown-it-py"]:
+        raise RuntimeError("per-operation alternatives differ from pins")
+    if f'JAVA_RUNTIME_VERSION="{PINS["jdk"]["version"]}' not in (jdk_home(scratch) / "release").read_text():
+        raise RuntimeError("JDK differs from pin")
+    return {**pins, "jdk": PINS["jdk"]["version"]}
 
 
 def verify_tools(scratch, languages, env):

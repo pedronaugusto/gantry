@@ -4,4 +4,4 @@
         .url = "https://github.com/pedronaugusto/gantry/archive/546bc06ca92caf8df21a63d9a1d95b162b1796da.tar.gz",
         .hash = "gantry-0.1.0-1iNrkcw4BwBD3pRucqF5FkGsGSOPIhkPh0rLr1u4EMDW",
     },
-}, .paths = .{ "build.zig", "build.zig.zon", "scan.zig", "api.zig", "compare" } }
+}, .paths = .{ "build.zig", "build.zig.zon", "scan.zig", "ops.zig", "api.zig", "alt", "compare" } }
