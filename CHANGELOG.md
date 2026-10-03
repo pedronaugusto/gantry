@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Rust `use util::X` resolves to `util.rs` when the current module declares `mod util;`, as rustc's 2018 paths do, and gives no edge beside an `extern crate util`.
+
 - `importlib.import_module` and `__import__` with literal names are `dynamic` edges, a relative name resolved against its literal package; other arguments stay unsupported.
 
 - Python imports under `if TYPE_CHECKING:` are `type_only` edges, nested blocks included and `else` branches not.

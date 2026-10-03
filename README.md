@@ -93,7 +93,9 @@ Rust, Nim and Java. Resolution stays within selected files. Zig named modules an
 caller inputs; JS/TS aliases come from selected local configs; Python initializer and
 literal star-reexport handling are selectable; Go uses selected module/workspace routing
 and optional target constraints. Rust resolves file modules and crate-relative use paths
-without macro expansion; a path rooted at a crate's name (`use serde::X`, `extern crate
+without macro expansion. A `use` path rooted at a file module the current module
+declares (`mod util; use util::Thing;`) resolves to it, as rustc's 2018 paths do; beside an
+`extern crate` of that name it gives no edge, since rustc rejects both. A path rooted at a crate's name (`use serde::X`, `extern crate
 libc`, `serde_json::to_string` in code or an attribute) is an unresolved reference, once
 per file, unless a `use`, module or alias of the file brought the name in.
 

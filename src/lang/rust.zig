@@ -66,7 +66,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         } else if (t.is("use") and i + 1 < ts.len) {
             var j = i + 1;
             const start = out.items.len;
-            try tree(a, ts, &j, &names, t.offset, &out);
+            try tree(a, ts, &j, &names, current.scope, t.offset, &out);
             for (out.items[start..]) |*spec| {
                 spec.kind = if (current.test_item or pending_test) .@"test" else .import;
                 spec.scope = current.scope;
@@ -93,7 +93,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
 }
 // Nested use trees are walked on an explicit stack: source nesting never
 // consumes the machine's call stack.
-fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, offset: usize, out: *std.ArrayList(Spec)) !void {
+fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, scope: []const u8, offset: usize, out: *std.ArrayList(Spec)) !void {
     var prefixes: std.ArrayList([]const u8) = .empty;
     var path: std.ArrayList(u8) = .empty;
     while (j.* < ts.len) : (j.* += 1) {
@@ -104,7 +104,7 @@ fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, off
             continue;
         }
         if (t.is(",") or t.is("}")) {
-            try emit(a, path.items, names, offset, out);
+            try emit(a, path.items, names, scope, offset, out);
             if (t.is("}") and prefixes.items.len > 0) _ = prefixes.pop();
             path.clearRetainingCapacity();
             if (prefixes.getLastOrNull()) |prefix| try path.appendSlice(a, prefix);
@@ -116,19 +116,36 @@ fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, off
         }
         if (t.kind == .word or t.is(":") or t.is("*")) try path.appendSlice(a, t.text) else break;
     }
-    try emit(a, path.items, names, offset, out);
+    try emit(a, path.items, names, scope, offset, out);
 }
-fn emit(a: std.mem.Allocator, raw: []const u8, names: *Names, offset: usize, out: *std.ArrayList(Spec)) !void {
+fn emit(a: std.mem.Allocator, raw: []const u8, names: *Names, scope: []const u8, offset: usize, out: *std.ArrayList(Spec)) !void {
     if (raw.len == 0 or std.mem.endsWith(u8, raw, "::")) return;
     if (std.mem.startsWith(u8, raw, "crate::") or std.mem.startsWith(u8, raw, "super::") or std.mem.startsWith(u8, raw, "self::")) {
         try out.append(a, .{ .name = try a.dupe(u8, raw), .offset = offset, .form = .rust_use });
         return;
     }
-    // `::serde::X` and `serde::X` name the same crate; a module of this
-    // file, a type or `self` alone is no crate.
-    const name = if (std.mem.startsWith(u8, raw, "::")) raw[2..] else raw;
+    // `::serde::X` names a crate whatever this module declares.
+    const global = std.mem.startsWith(u8, raw, "::");
+    const name = if (global) raw[2..] else raw;
     const root = name[0 .. std.mem.indexOf(u8, name, "::") orelse name.len];
-    if (!crateName(root) or (try names.get(a)).modules.contains(root)) return;
+    if (!crateName(root)) return;
+    if (!global) {
+        const found = try names.get(a);
+        const key = try std.fmt.allocPrint(a, "{s}\x00{s}", .{ scope, root });
+        // A module this module declares is what a 2018 `use` path names
+        // first, as rustc resolves it, unless an `extern crate` here takes
+        // the same name: rustc refuses both (E0260), and so no edge.
+        if (found.declared.get(key)) |place| {
+            // An inline module is this file; a `#[path]` one is not read.
+            if (place != .file) return;
+            if (!found.externs.contains(key)) {
+                try out.append(a, .{ .name = try a.dupe(u8, name), .offset = offset, .form = .rust_use });
+                return;
+            }
+        }
+        // A module declared in another module is not in scope here: the
+        // name is an extern crate's, as rustc reads it.
+    }
     try out.append(a, .{ .name = try a.dupe(u8, name), .offset = offset, .form = .rust_crate });
 }
 /// A crate a path names, once per file and kind: `like` gives its kind
@@ -148,28 +165,62 @@ fn noteCrate(a: std.mem.Allocator, t: l.Token, seen: *std.StringHashMapUnmanaged
 const Names = struct {
     ts: []const l.Token,
     found: ?Found = null,
-    const Found = struct { all: std.StringHashMapUnmanaged(void), modules: std.StringHashMapUnmanaged(void) };
+    const Found = struct {
+        all: std.StringHashMapUnmanaged(void),
+        modules: std.StringHashMapUnmanaged(void),
+        /// Modules by `scope\x00name`, and where their items are.
+        declared: std.StringHashMapUnmanaged(enum { file, here, path_attribute }),
+        /// `extern crate` names, or their aliases, by `scope\x00name`.
+        externs: std.StringHashMapUnmanaged(void),
+    };
     fn get(self: *Names, a: std.mem.Allocator) !*const Found {
         if (self.found == null) {
             const ts = self.ts;
             var all: std.StringHashMapUnmanaged(void) = .empty;
             var modules: std.StringHashMapUnmanaged(void) = .empty;
+            var declared: @FieldType(Found, "declared") = .empty;
+            var externs: std.StringHashMapUnmanaged(void) = .empty;
+            // Module scopes as recovery tracks them: only `mod name {` opens one.
+            var scopes: std.ArrayList([]const u8) = .empty;
+            var scope: []const u8 = "";
+            var pending: ?[]const u8 = null;
             var i: usize = 0;
             while (i < ts.len) : (i += 1) {
                 if (ts[i].is("mod") and i + 1 < ts.len and ts[i + 1].kind == .word) {
-                    try modules.put(a, ts[i + 1].text, {});
-                    try all.put(a, ts[i + 1].text, {});
+                    const name = ts[i + 1].text;
+                    try modules.put(a, name, {});
+                    try all.put(a, name, {});
+                    const inline_body = i + 2 < ts.len and ts[i + 2].is("{");
+                    try declared.put(a, try std.fmt.allocPrint(a, "{s}\x00{s}", .{ scope, name }), if (inline_body) .here else if (pathAttribute(ts, i)) .path_attribute else .file);
+                    if (i + 2 < ts.len and ts[i + 2].is("{")) pending = try std.mem.join(a, "/", if (scope.len == 0) &.{name} else &.{ scope, name });
                 } else if (ts[i].is("use")) {
                     while (i < ts.len and !ts[i].is(";")) : (i += 1) if (ts[i].kind == .word) try all.put(a, ts[i].text, {});
-                } else if (ts[i].is("as") and i + 1 < ts.len and ts[i + 1].kind == .word and i >= 3 and ts[i - 3].is("extern")) {
-                    try all.put(a, ts[i + 1].text, {});
-                }
+                } else if (ts[i].is("extern") and i + 2 < ts.len and ts[i + 1].is("crate") and ts[i + 2].kind == .word) {
+                    const alias = i + 4 < ts.len and ts[i + 3].is("as") and ts[i + 4].kind == .word;
+                    const name = ts[i + (if (alias) @as(usize, 4) else 2)].text;
+                    if (alias) try all.put(a, name, {});
+                    try externs.put(a, try std.fmt.allocPrint(a, "{s}\x00{s}", .{ scope, name }), {});
+                } else if (ts[i].is("{")) {
+                    try scopes.append(a, scope);
+                    scope = pending orelse scope;
+                    pending = null;
+                } else if (ts[i].is("}")) {
+                    scope = scopes.pop() orelse "";
+                    pending = null;
+                } else if (ts[i].is(";")) pending = null;
             }
-            self.found = .{ .all = all, .modules = modules };
+            self.found = .{ .all = all, .modules = modules, .declared = declared, .externs = externs };
         }
         return &self.found.?;
     }
 };
+/// Whether `#[path = ...]` stands right before the `mod` at `i`.
+fn pathAttribute(ts: []const l.Token, i: usize) bool {
+    if (i == 0 or !ts[i - 1].is("]")) return false;
+    var k = i - 1;
+    while (k > 0 and !ts[k].is("[")) k -= 1;
+    return k + 1 < i and ts[k + 1].is("path");
+}
 /// A word a path starts with, `name::`, that could name a crate: not
 /// after `::`, `.` or `$`, and not a function called with `::<`. The
 /// caller rules out names the file brought in itself.

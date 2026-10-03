@@ -311,3 +311,46 @@ test "absolute references stay unresolved beside matching relative files" {
     try f.edge(&graph, "c/main.c", "c/x.h", .import, 1);
     try eq(2, graph.edges().len);
 }
+
+fn reference(graph: *const g.Graph, from: []const u8, name: []const u8) !g.Reference {
+    for (graph.references()) |ref| if (std.mem.eql(u8, ref.from, from) and std.mem.eql(u8, ref.name, name)) return ref;
+    std.debug.print("missing reference {s} in {s}\n", .{ name, from });
+    return error.TestExpectedReference;
+}
+
+test "Rust 2018 use paths name the current module's own modules first, as rustc resolves them" {
+    // Each case was compiled with rustc 1.93 (edition 2021): the uniform
+    // paths resolve to the declared modules, an outer module's `mod util`
+    // is not in scope inside `mod inner` (there `util` is the extern
+    // crate, or E0432 without one), and `extern crate util` beside
+    // `mod util` is E0260.
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "src/lib.rs", .text =
+        \\mod util;
+        \\mod inline { pub struct I; }
+        \\mod nested;
+        \\use inline::I;
+        \\use util::Thing;
+        \\mod inner { use util::Other; }
+        \\pub fn k() { use util::Body; }
+        \\fn global() { use ::util::Global; }
+        },
+        .{ .path = "src/util.rs", .text = "pub struct Thing;" },
+        .{ .path = "src/nested.rs", .text = "mod deep;\nuse deep::D;\n" },
+        .{ .path = "src/nested/deep.rs", .text = "pub struct D;" },
+        .{ .path = "conflict/src/lib.rs", .text = "extern crate util;\nmod util;\nuse util::Thing;\n" },
+        .{ .path = "conflict/src/util.rs", .text = "" },
+    } }).scan(a, .{});
+    defer graph.deinit();
+    try std.testing.expect((try reference(&graph, "src/lib.rs", "util::Thing")).resolved);
+    try std.testing.expect((try reference(&graph, "src/lib.rs", "util::Body")).resolved);
+    try std.testing.expect((try reference(&graph, "src/nested.rs", "deep::D")).resolved);
+    try f.edge(&graph, "src/nested.rs", "src/nested/deep.rs", .import, 2);
+    // An inline module is this file: no reference, as before.
+    for (graph.references()) |ref| try std.testing.expect(!std.mem.eql(u8, ref.name, "inline::I"));
+    try std.testing.expect(!(try reference(&graph, "src/lib.rs", "util::Other")).resolved);
+    try std.testing.expect(!(try reference(&graph, "src/lib.rs", "util::Global")).resolved);
+    try std.testing.expect(!(try reference(&graph, "conflict/src/lib.rs", "util::Thing")).resolved);
+    // The declaration's own edge stays; the conflicting use adds none.
+    try f.edge(&graph, "conflict/src/lib.rs", "conflict/src/util.rs", .import, 1);
+}
