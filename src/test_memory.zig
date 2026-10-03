@@ -45,3 +45,15 @@ test "scan holds edges outside graph storage until they are coalesced" {
     // The returned edges, and no outgrown copies of them beside it.
     try std.testing.expect(peak < 4 * edges * @sizeOf(g.Edge));
 }
+
+test "scan returns a large file's scratch before reading the next" {
+    var source: std.ArrayList(u8) = .empty;
+    defer source.deinit(a);
+    try source.appendSlice(a, "package big\n");
+    for (0..20_000) |_| try source.appendSlice(a, "var x = 1\n");
+    var module: Module = .{ .importers = 1, .members = 1, .big = source.items };
+    _ = try module.scan();
+    const tokens = 100_002 * @sizeOf(@import("lexer.zig").Token);
+    try std.testing.expect(module.counter.peak > tokens);
+    try std.testing.expect(module.after_big - module.before_big < tokens / 2);
+}

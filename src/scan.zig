@@ -21,6 +21,10 @@ const PathStore = @import("owned_slice.zig").Store([]const u8);
 pub const Imports = @import("Imports.zig").Imports;
 pub const Paths = PathStore.Owner;
 
+/// Scratch kept between files. A larger file's tokens go back to the
+/// allocator rather than staying resident for the rest of the scan.
+const scratch_kept = 1 << 20;
+
 pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) !Imports {
     const result = try ImportStore.create(gpa);
     errdefer result.deinit();
@@ -112,7 +116,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                 cached[file_index] = try recovery.clone(w, a);
             }
         }
-        _ = scratch.reset(.retain_capacity);
+        _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     };
     progress.at(.go_constraints, null);
     g.go_files = try go_files.toOwnedSlice(a);
@@ -153,7 +157,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                 for (declared.dependencies) |dep| try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group), .origin = dep.origin });
             }
         }
-        _ = scratch.reset(.retain_capacity);
+        _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     }
     const configs = try @import("tsconfig.zig").load(w, gpa, g.paths, &g.files, &reader, Reader.readFile, &progress);
     const nim_configs = try @import("nim_config.zig").load(w, gpa, g.paths, &reader, Reader.readFile, &progress);
@@ -180,7 +184,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         const s = scratch.allocator();
         const prior = if (cached.len > 0) cached[file_index] else null;
         const text = (if (prior != null) "" else try reader.readFile(p, s)) orelse {
-            _ = scratch.reset(.retain_capacity);
+            _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
             continue;
         };
         var ctx = base_ctx;
@@ -239,7 +243,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                 if (!std.mem.eql(u8, target, p)) try edges.append(gpa, .{ .from = from, .to = position.get(target).?, .kind = .asset });
             }
         }
-        _ = scratch.reset(.retain_capacity);
+        _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     }
     progress.at(.graph, null);
     g.edges = try Graph.coalescePending(a, g.paths, edges.items);

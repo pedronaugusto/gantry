@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Keep at most 1 MiB of scan scratch between files: a large file's tokens are released before the next file is read.
+
 - Hold scan edges as path positions until they are coalesced, so graph storage keeps no outgrown edge lists.
 
 - Recover Java imports and package declarations, resolved through the packages selected files declare; `Class.forName` and `loadClass` calls are unsupported.
