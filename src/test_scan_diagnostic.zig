@@ -32,7 +32,6 @@ test "scan diagnostics retain reader causes through every read pass" {
         .{ .path = "package.json" },
         .{ .path = "tsconfig.json" },
         .{ .path = "src/a.rs" },
-        .{ .path = "src/a.rs", .pass = 2 },
         .{ .path = "pkg/a.py" },
         .{ .path = "pkg/a.py", .pass = 2 },
         .{ .path = "src/a.go", .pass = 2 },

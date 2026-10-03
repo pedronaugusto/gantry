@@ -61,3 +61,19 @@ test "Rust inner cfg test marks the file including incoming edges" {
     try f.edge(&graph, "src/lib.rs", "src/helper.rs", .@"test", 1);
     try f.edge(&graph, "src/helper.rs", "src/util.rs", .@"test", 1);
 }
+
+test "Rust test propagation reads each source once and releases reader scratch" {
+    const Reader = struct {
+        calls: usize = 0,
+        fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {
+            self.calls += 1;
+            return try scratch.dupe(u8, if (std.mem.eql(u8, name, "src/lib.rs")) "#[cfg(test)] mod helper;" else if (std.mem.eql(u8, name, "src/helper.rs")) "mod child; use crate::util;" else if (std.mem.eql(u8, name, "src/helper/child.rs")) "use crate::util;" else "");
+        }
+    };
+    var reader: Reader = .{};
+    var graph = try g.scan(a, &.{ "src/lib.rs", "src/helper.rs", "src/helper/child.rs", "src/util.rs" }, &reader, Reader.read, .{});
+    defer graph.deinit();
+    try f.edge(&graph, "src/helper.rs", "src/util.rs", .@"test", 1);
+    try f.edge(&graph, "src/helper/child.rs", "src/util.rs", .@"test", 1);
+    try std.testing.expectEqual(4, reader.calls);
+}

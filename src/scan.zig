@@ -122,7 +122,8 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     progress.at(.resolution, null);
     const index = try recover.names(w, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
-    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &progress);
+    var cached: std.StringHashMapUnmanaged(t.Recovery) = .empty;
+    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &cached, &progress);
     const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
@@ -135,7 +136,8 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         const assets = enabled(options, .asset) and recover.assetText(p);
         if (!code and !links and !assets) continue;
         const s = scratch.allocator();
-        const text = (try reader.readFile(p, s)) orelse {
+        const prior = cached.get(p);
+        const text = (if (prior != null) "" else try reader.readFile(p, s)) orelse {
             _ = scratch.reset(.retain_capacity);
             continue;
         };
@@ -145,7 +147,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
             progress.at(.imports, p);
-            const recovery = try extract(s, language.?, text);
+            const recovery = prior orelse try extract(s, language.?, text);
             if (options.strict_imports and recovery.unsupported.len > 0) {
                 progress.offset = recovery.unsupported[0].offset;
                 return error.UnsupportedImport;

@@ -91,6 +91,8 @@ literal star-reexport handling are selectable; Go uses selected module/workspace
 and optional target constraints. Rust resolves file modules and crate-relative use paths
 without macro expansion.
 
+Rust test classification propagates through file modules; owned recovered operands let it share each available source read with import resolution.
+
 `graph.references()` keeps import spellings, offsets, kinds and resolution status.
 Detectable unsupported constructs appear in `graph.unsupported()` without guessed edges.
 `strict_imports` refuses the first such construct with `UnsupportedImport`, even when
