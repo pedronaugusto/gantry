@@ -3,7 +3,7 @@ const l = @import("../lexer.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    return recoverTokens(a, try l.compact(a, try l.lex(.java, a, source)));
+    return recoverTokens(a, l.compact(try l.lex(.java, a, source)));
 }
 /// The `package` declaration and top-level `import` declarations: single
 /// types, `.*` on demand, and `static` members. Java has no computed import;

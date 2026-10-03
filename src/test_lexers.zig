@@ -174,6 +174,17 @@ test "Groovy and Kotlin interpolation keeps nested braces and strings inside one
     try std.testing.expectEqual(3, kotlin.len);
     try expect(kotlin[0].kind == .word and kotlin[1].kind == .template and kotlin[2].kind == .string);
 }
+test "compaction drops newlines in place without copying the stream" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const lexer = @import("lexer.zig");
+    const tokens = try lexer.lex(.go, arena.allocator(), "package a\n\nimport \"b\"\n");
+    try std.testing.expectEqual(7, tokens.len);
+    const compact = lexer.compact(tokens);
+    try std.testing.expectEqual(tokens.ptr, compact.ptr);
+    try std.testing.expectEqual(4, compact.len);
+    for (compact, [_][]const u8{ "package", "a", "import", "b" }) |token, text| try eq(text, token.text);
+}
 test "Go aliased dot blank block raw imports ignore comments and raw text" {
     try check(.go,
         \\package main

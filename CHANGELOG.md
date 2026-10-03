@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Keep the quiet benchmark worktree outside Zig’s disposable cache.
 
+- Drop newline tokens in place rather than copying each token stream.
+
+- Keep at most 1 MiB of scan scratch between files: a large file's tokens are released before the next file is read.
+
+- Hold scan edges as path positions until they are coalesced, so graph storage keeps no outgrown edge lists.
+
 - Recover Java imports and package declarations, resolved through the packages selected files declare; `Class.forName` and `loadClass` calls are unsupported.
 
 - Read `pom.xml` dependencies with their scope through the file's own properties (`<optional>` is optional scope outside `test`), and literal `build.gradle` and `build.gradle.kts` declarations; computed declarations are unsupported.

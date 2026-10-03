@@ -43,7 +43,7 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []
         progress.at(.rust_tests, from);
         const lexer = @import("lexer.zig");
         const rust = @import("lang/rust.zig");
-        const tokens = try lexer.compact(s, try lexer.lex(.rust, s, text));
+        const tokens = lexer.compact(try lexer.lex(.rust, s, text));
         if (rust.testFileTokens(tokens)) try marked.put(a, from, {});
         const recovery = try rust.recoverTokens(s, tokens);
         if (cached.len > 0) cached[index] = try recovery.clone(a, strings);

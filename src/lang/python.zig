@@ -17,7 +17,7 @@ pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
 pub fn recoverTokens(a: std.mem.Allocator, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
-    const loaders = try l.compact(a, ts);
+    const loaders = l.compact(try a.dupe(l.Token, ts));
     for (loaders, 0..) |token, i| {
         // Recognize exact loader spellings, without resolving bindings or aliases.
         if (i > 0 and loaders[i - 1].is(".")) continue;

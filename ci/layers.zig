@@ -75,6 +75,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/test_java.zig",
         "src/test_kinds.zig",
         "src/test_manifests.zig",
+        "src/test_memory.zig",
         "src/test_nim.zig",
         "src/test_python_policy.zig",
         "src/test_recovery.zig",

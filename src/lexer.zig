@@ -18,7 +18,7 @@ pub const Token = struct {
         return (t.kind == .word or t.kind == .punctuation) and std.mem.eql(u8, t.text, s);
     }
 };
-pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]const Token {
+pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]Token {
     var out: std.ArrayList(Token) = .empty;
     var i: usize = 0;
     var regex_allowed = true;
@@ -376,12 +376,14 @@ fn nimCharEnd(t: []const u8, i: usize) ?usize {
     return null;
 }
 /// Drop newlines for languages where a declaration freely spans lines.
-pub fn compact(a: std.mem.Allocator, tokens: []const Token) ![]const Token {
-    var out: std.ArrayList(Token) = .empty;
+/// Works in place: the stream shrinks rather than being copied.
+pub fn compact(tokens: []Token) []Token {
+    var n: usize = 0;
     for (tokens) |t| if (t.kind != .newline) {
-        try out.append(a, t);
+        tokens[n] = t;
+        n += 1;
     };
-    return out.toOwnedSlice(a);
+    return tokens[0..n];
 }
 /// Decode the ordinary escapes shared by JS, Go and manifest literals.
 /// Unsupported escapes are an error rather than an invented path.

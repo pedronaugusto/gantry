@@ -13,7 +13,6 @@ const languageOf = api.languageOf;
 const Options = api.Options;
 const Language = t.Language;
 const Kind = t.Kind;
-const Edge = t.Edge;
 const Reference = t.Reference;
 const Dependency = t.Dependency;
 const GoFile = api.GoFile;
@@ -21,6 +20,10 @@ const ImportStore = @import("import_store.zig");
 const PathStore = @import("owned_slice.zig").Store([]const u8);
 pub const Imports = @import("Imports.zig").Imports;
 pub const Paths = PathStore.Owner;
+
+/// Scratch kept between files. A larger file's tokens go back to the
+/// allocator rather than staying resident for the rest of the scan.
+const scratch_kept = 1 << 20;
 
 pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) !Imports {
     const result = try ImportStore.create(gpa);
@@ -101,7 +104,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         if (try reader.readFile(p, s)) |text| {
             progress.at(.go_constraints, p);
             const lexer = @import("lexer.zig");
-            const tokens = try lexer.lex(.go, s, text);
+            const tokens = lexer.compact(try lexer.lex(.go, s, text));
             var info = try @import("go_build.zig").parseTokens(s, p, text, options.go_target, tokens);
             info.package = try a.dupe(u8, info.package);
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
@@ -109,11 +112,11 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
             if (!info.selected) try inactive.put(w, p, {});
             if (info.selected and code_enabled) {
                 progress.at(.imports, p);
-                const recovery = try @import("lang/go.zig").recoverTokens(s, text, try lexer.compact(s, tokens));
+                const recovery = try @import("lang/go.zig").recoverTokens(s, text, tokens);
                 cached[file_index] = try recovery.clone(w, a);
             }
         }
-        _ = scratch.reset(.retain_capacity);
+        _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     };
     progress.at(.go_constraints, null);
     g.go_files = try go_files.toOwnedSlice(a);
@@ -154,7 +157,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                 for (declared.dependencies) |dep| try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group), .origin = dep.origin });
             }
         }
-        _ = scratch.reset(.retain_capacity);
+        _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     }
     const configs = try @import("tsconfig.zig").load(w, gpa, g.paths, &g.files, &reader, Reader.readFile, &progress);
     const nim_configs = try @import("nim_config.zig").load(w, gpa, g.paths, &reader, Reader.readFile, &progress);
@@ -164,7 +167,11 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress);
     const java_packages = if (code_enabled) try @import("java_packages.zig").index(w, gpa, g.paths, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
     const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
-    var edges: std.ArrayList(Edge) = .empty;
+    // Edges wait as path positions outside graph storage: a quarter of an
+    // `Edge`, and their outgrown buffers go back to the allocator.
+    const position = try Graph.positions(w, g.paths);
+    var edges: std.ArrayList(Graph.Pending) = .empty;
+    defer edges.deinit(gpa);
     var refs: std.ArrayList(Reference) = .empty;
     for (g.paths, 0..) |p, file_index| {
         if (inactive.contains(p)) continue;
@@ -177,15 +184,16 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         const s = scratch.allocator();
         const prior = if (cached.len > 0) cached[file_index] else null;
         const text = (if (prior != null) "" else try reader.readFile(p, s)) orelse {
-            _ = scratch.reset(.retain_capacity);
+            _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
             continue;
         };
         var ctx = base_ctx;
         ctx.allocator = s;
         ctx.python_reexports = &reexports;
         ctx.java_packages = &java_packages;
+        const from: u32 = @intCast(file_index);
         if (code) {
-            var seen: std.StringHashMapUnmanaged(void) = .empty;
+            var seen: std.AutoHashMapUnmanaged(struct { usize, u32 }, void) = .empty;
             progress.at(.imports, p);
             const recovery = prior orelse try extract(s, language.?, text);
             if (options.strict_imports and recovery.unsupported.len > 0) {
@@ -216,29 +224,29 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                 for (targets) |target| {
                     const edge_kind: Kind = if (kind == .@"test" or test_files.contains(target) or @import("code_kind.zig").file(language.?, target)) .@"test" else .import;
                     if (!enabled(options, edge_kind)) continue;
-                    const key = try std.fmt.allocPrint(s, "{d}:{s}", .{ spec.offset, target });
-                    const entry = try seen.getOrPut(s, key);
-                    if (!entry.found_existing) try edges.append(a, .{ .from = p, .to = g.files.getKey(target).?, .kind = edge_kind });
+                    const to = position.get(target).?;
+                    const entry = try seen.getOrPut(s, .{ spec.offset, to });
+                    if (!entry.found_existing) try edges.append(gpa, .{ .from = from, .to = to, .kind = edge_kind });
                 }
             }
         }
         if (links) {
             progress.at(.links, p);
             for (try recover.links(s, text)) |spec| {
-                if (try recover.linkTarget(ctx, &index, p, spec)) |target| if (!std.mem.eql(u8, target, p)) try edges.append(a, .{ .from = p, .to = g.files.getKey(target).?, .kind = .link });
+                if (try recover.linkTarget(ctx, &index, p, spec)) |target| if (!std.mem.eql(u8, target, p)) try edges.append(gpa, .{ .from = from, .to = position.get(target).?, .kind = .link });
             }
         }
         if (assets) {
             progress.at(.assets, p);
             for (try recover.assets(s, text)) |spec| {
                 const target = (try ctx.candidate("", spec.name, &.{""})) orelse (try ctx.candidate(path.dir(p), spec.name, &.{""})) orelse continue;
-                if (!std.mem.eql(u8, target, p)) try edges.append(a, .{ .from = p, .to = g.files.getKey(target).?, .kind = .asset });
+                if (!std.mem.eql(u8, target, p)) try edges.append(gpa, .{ .from = from, .to = position.get(target).?, .kind = .asset });
             }
         }
-        _ = scratch.reset(.retain_capacity);
+        _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     }
     progress.at(.graph, null);
-    g.edges = try Graph.coalesce(try edges.toOwnedSlice(a));
+    g.edges = try Graph.coalescePending(a, g.paths, edges.items);
     std.mem.sort(Reference, refs.items, {}, struct {
         fn less(_: void, x: Reference, y: Reference) bool {
             const from = std.mem.order(u8, x.from, y.from);

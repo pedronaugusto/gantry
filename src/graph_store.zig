@@ -110,6 +110,43 @@ pub fn coalesce(edges: []t.Edge) ![]const t.Edge {
     return edges[0..n];
 }
 
+/// An edge between positions in sorted `paths`, before it is coalesced.
+pub const Pending = struct { from: u32, to: u32, kind: t.Kind };
+/// Each path's position, for `Pending` edges. Paths are sorted, so position
+/// order is the path order `edgesLess` sorts by.
+pub fn positions(a: std.mem.Allocator, paths: []const []const u8) !std.StringHashMapUnmanaged(u32) {
+    if (paths.len > std.math.maxInt(u32)) return error.OutOfMemory;
+    var result: std.StringHashMapUnmanaged(u32) = .empty;
+    try result.ensureTotalCapacity(a, @intCast(paths.len));
+    for (paths, 0..) |path, i| result.putAssumeCapacity(path, @intCast(i));
+    return result;
+}
+/// `coalesce` for pending edges, into exactly the storage the result needs.
+pub fn coalescePending(a: std.mem.Allocator, paths: []const []const u8, pending: []Pending) ![]const t.Edge {
+    std.mem.sort(Pending, pending, {}, struct {
+        fn less(_: void, x: Pending, y: Pending) bool {
+            if (x.from != y.from) return x.from < y.from;
+            if (x.to != y.to) return x.to < y.to;
+            return @intFromEnum(x.kind) < @intFromEnum(y.kind);
+        }
+    }.less);
+    var n: usize = 0;
+    for (pending, 0..) |edge, i| {
+        if (i == 0 or !std.meta.eql(edge, pending[i - 1])) n += 1;
+    }
+    const edges = try a.alloc(t.Edge, n);
+    n = 0;
+    for (pending, 0..) |edge, i| {
+        if (i > 0 and std.meta.eql(edge, pending[i - 1])) {
+            edges[n - 1].count += 1;
+        } else {
+            edges[n] = .{ .from = paths[edge.from], .to = paths[edge.to], .kind = edge.kind };
+            n += 1;
+        }
+    }
+    return edges;
+}
+
 pub fn owner(comptime Owner: type, state: *Graph) Owner {
     return @enumFromInt(@intFromPtr(state)); // safe: the owning handle preserves the allocated state's address.
 }

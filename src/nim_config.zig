@@ -83,7 +83,7 @@ fn cfg(a: std.mem.Allocator, text: []const u8) ![]const []const u8 {
 /// NimScript: `switch("path", "x")` and `--path:"x"`.
 fn script(a: std.mem.Allocator, text: []const u8) ![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
-    const ts = try l.compact(a, try l.lex(.nim, a, text));
+    const ts = l.compact(try l.lex(.nim, a, text));
     for (ts, 0..) |t, i| {
         if (t.is("switch") and i + 5 < ts.len and ts[i + 1].is("(") and ts[i + 2].kind == .string and ts[i + 3].is(",") and ts[i + 4].kind == .string and ts[i + 5].is(")")) {
             if (pathKey(ts[i + 2].text)) try out.append(a, ts[i + 4].text);

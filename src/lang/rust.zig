@@ -3,7 +3,7 @@ const l = @import("../lexer.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    const ts = try l.compact(a, try l.lex(.rust, a, source));
+    const ts = l.compact(try l.lex(.rust, a, source));
     return recoverTokens(a, ts);
 }
 pub fn recoverTokens(a: std.mem.Allocator, ts: []const l.Token) !types.Recovery {
