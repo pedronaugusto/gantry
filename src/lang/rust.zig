@@ -27,15 +27,19 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         const t = ts[i];
         // A word before `:` may start a crate path; `extern` before `crate`
         // names one. Other tokens skip both.
-        if (t.kind == .word and i + 2 < ts.len) {
-            const next = ts[i + 1];
+        if (t.kind == .word and i + 2 < ts.len and (ts[i + 1].text[0] == ':' or t.text.len == "extern".len)) {
             const testing = current.test_item or pending_test;
-            if (next.kind == .punctuation) {
-                if (next.text[0] == ':' and crateRoot(ts, i) and !(try names.get(a)).all.contains(t.text))
-                    try noteCrate(a, t, if (testing) &test_crates else &crates, .{ .name = "", .offset = 0, .kind = if (testing) .@"test" else .import, .scope = current.scope }, &out);
-            } else if (t.is("extern") and next.is("crate") and ts[i + 2].kind == .word and !ts[i + 2].is("self")) {
-                try out.append(a, .{ .name = ts[i + 2].text, .offset = t.offset, .form = .rust_crate, .kind = if (testing) .@"test" else .import, .scope = current.scope });
-                try (if (testing) &test_crates else &crates).put(a, ts[i + 2].text, {});
+            const seen = if (testing) &test_crates else &crates;
+            const like: Spec = .{ .name = "", .offset = 0, .kind = if (testing) .@"test" else .import, .scope = current.scope };
+            if (ts[i + 1].kind == .punctuation) {
+                if (crateRoot(ts, i) and !(try names.get(a)).all.contains(t.text)) try noteCrate(a, t, seen, like, &out);
+            } else if (t.is("extern") and ts[i + 1].is("crate") and ts[i + 2].kind == .word and !ts[i + 2].is("self")) {
+                var spec = like;
+                spec.name = ts[i + 2].text;
+                spec.offset = t.offset;
+                spec.form = .rust_crate;
+                try out.append(a, spec);
+                try seen.put(a, ts[i + 2].text, {});
             }
         }
         if (t.is("include") and i + 2 < ts.len and ts[i + 1].is("!") and (ts[i + 2].is("(") or ts[i + 2].is("{") or ts[i + 2].is("[")))
@@ -228,14 +232,16 @@ fn crateRoot(ts: []const l.Token, i: usize) bool {
     const t = ts[i];
     // `::` first: most words are not followed by one.
     if (i + 3 >= ts.len or ts[i + 1].offset != t.end or !ts[i + 1].is(":") or !ts[i + 2].is(":") or ts[i + 2].offset != ts[i + 1].end) return false;
-    if (t.kind != .word or !crateName(t.text)) return false;
+    // Inside a path, after a method's `.`, or in a macro's `$crate`.
+    if (i > 0 and ts[i - 1].kind == .punctuation and std.mem.indexOfScalar(u8, ":.$", ts[i - 1].text[0]) != null) return false;
     if (ts[i + 3].is("<")) return false;
-    return !(i > 0 and (ts[i - 1].is(":") or ts[i - 1].is(".") or ts[i - 1].is("$")));
+    return t.kind == .word and crateName(t.text);
 }
 /// A crate's name as code spells it: lower case or `_` first, and not a
 /// keyword a path can start with.
 fn crateName(word: []const u8) bool {
     if (word.len == 0 or !(std.ascii.isLower(word[0]) or word[0] == '_')) return false;
+    if (word[0] != 'c' and word[0] != 's' and word[0] != 'r') return true;
     for ([_][]const u8{ "crate", "self", "super", "r#crate" }) |keyword| if (std.mem.eql(u8, word, keyword)) return false;
     return true;
 }
