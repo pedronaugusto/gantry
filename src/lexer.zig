@@ -33,8 +33,11 @@ pub fn lexSeen(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, se
     var i: usize = 0;
     var regex_allowed = true;
     var control_pending = false;
+    errdefer out.deinit(a);
     var controls: std.ArrayList(bool) = .empty;
+    defer controls.deinit(a);
     var templates: std.ArrayList(usize) = .empty;
+    defer templates.deinit(a);
     if ((lang == .groovy or lang == .kotlin) and std.mem.startsWith(u8, text, "#!")) i = lineEnd(text, 0);
     while (i < text.len) {
         const start = i;

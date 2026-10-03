@@ -282,3 +282,10 @@ test "JS escapes retain Unicode characters and identity escapes in specifiers" {
         \\require('./\q');
     , &.{ "./é", "./😀", "./😀", "./q" });
 }
+
+test "lexing returns only its tokens to a caller's allocator" {
+    // Found by the JavaScript fuzz property: the call and template stacks
+    // were left for an arena to reclaim.
+    const tokens = try @import("lexer.zig").lex(.javascript, std.testing.allocator, "if (f(`a${ g({}) }`)) /x/.test(y);");
+    std.testing.allocator.free(tokens);
+}

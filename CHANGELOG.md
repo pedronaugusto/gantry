@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Free the lexer's own call and template stacks, so a caller's allocator gets back everything but the tokens.
 - Preserve JS template boundaries so interpolation strings cannot become literal import operands.
 - Omit guessed default Rust module edges when a path attribute controls the source file.
 
