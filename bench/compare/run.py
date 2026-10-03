@@ -307,6 +307,18 @@ def java_code(text):
     return re.sub(r"^\s*import\s[^;]*;", " ", text, flags=re.M)
 
 
+tool_environment = cache(environment)
+
+
+@cache
+def typescript_resolution(repo, importer, specifier):
+    """TypeScript's own resolution, under the config nearest the importer."""
+    scratch = repo.parent.parent
+    output = subprocess.check_output(["node", HERE / "typescript.cjs", "resolve", scratch, repo, "", importer, specifier], text=True,
+                                     env=tool_environment(scratch))
+    return json.loads(output)
+
+
 def classify(language, direction, edge, repo, folder, graphs, scope):
     """Use witnesses to separate documented scope from differences needing review."""
     a, b = edge
@@ -314,12 +326,17 @@ def classify(language, direction, edge, repo, folder, graphs, scope):
     refs_by_source, go_contributors, go_active, rust_witnesses, located, reached = witnesses(folder, repo, scope)
     if language == "typescript":
         refs = refs_by_source[a]
-        if direction == "gantry_only" and b.endswith(".js") and (a, b[:-3] + ".d.ts") in graphs["madge"]:
-            return "scope: gantry chooses exact runtime .js; madge chooses its .d.ts declaration", [b[:-3] + ".d.ts"]
         for ref in refs:
-            candidate = posixpath.normpath(posixpath.join(posixpath.dirname(a), ref))
-            if direction == "rival_only" and b.endswith(".d.ts") and ref.startswith(".") and b in (candidate + ".d.ts", candidate.removesuffix(".js") + ".d.ts"):
-                return "scope: declaration-file resolution is outside gantry's documented suffix order", [ref]
+            if not (ref.startswith(".") and ref.endswith(".js")):
+                continue
+            runtime = posixpath.normpath(posixpath.join(posixpath.dirname(a), ref))
+            declaration = runtime.removesuffix(".js") + ".d.ts"
+            if b != (declaration if direction == "gantry_only" else runtime):
+                continue
+            answer = typescript_resolution(repo, a, ref)
+            if answer["resolved"] == declaration:
+                return ("scope: TypeScript resolves a `.js` specifier to the declaration file beside it, as gantry does; the tool took the runtime `.js` file",
+                        [ref, f"TypeScript {answer['version']} with {answer['config']}: {answer['resolved']}"])
         return "review: relative import extraction or rival omission", refs
     if language == "python":
         if direction == "gantry_only" and b.endswith("/__init__.py"):

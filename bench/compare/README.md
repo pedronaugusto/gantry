@@ -135,8 +135,11 @@ claim. Review raw output and the pinned source before changing gantry.
 
 Known differences in the checked-in agreement report:
 
-- TS aliases and declaration-file resolution; gantry's exact `.js` convention
-  differs from madge's type declaration preference.
+- A TS `.js` specifier with a declaration file beside the runtime file:
+  TypeScript resolves the declaration, and gantry and madge follow it;
+  dependency-cruiser takes the runtime `.js` file. Each such difference
+  carries TypeScript's own resolution, under the importer's nearest config,
+  as its witness.
 - Python package initializer bookkeeping; pydeps additionally skips migration
   discovery and follows star re-exported symbols.
 - Go test files, inactive build variants, and workspace/replacement imports.

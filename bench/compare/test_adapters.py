@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+import run
 from run import java_classes, json_stream, nim_dot, nim_statement, nim_target, normalise, rust_dot, typescript_configs
 
 
@@ -62,6 +63,24 @@ class Adapters(unittest.TestCase):
             output = Path(directory) / "gantry.raw"
             output.write_text("E\tsrc/a.ts\tsrc/b.ts\nE\tsrc/tsconfig.json\tsrc/tsconfig.base.json\n")
             self.assertEqual(normalise("gantry", output, Path(directory), {"src/a.ts", "src/b.ts"}, "src", None), {("src/a.ts", "src/b.ts")})
+
+    def test_typescript_declaration_beside_a_runtime_file_is_witnessed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / "gantry.raw").write_text("R\tsrc/a.ts\t0\t1\t./lib/x.js\n")
+            answers = {("src/a.ts", "./lib/x.js"): {"version": "5.7.3", "config": "src/tsconfig.json", "resolved": "src/lib/x.d.ts"}}
+            original = run.typescript_resolution
+            run.typescript_resolution = lambda repo, importer, specifier: answers[(importer, specifier)]
+            try:
+                for direction, target in (("gantry_only", "src/lib/x.d.ts"), ("rival_only", "src/lib/x.js")):
+                    reason, witness = run.classify("typescript", direction, ("src/a.ts", target), folder, folder, {}, "src")
+                    self.assertTrue(reason.startswith("scope: TypeScript resolves a `.js` specifier"), reason)
+                    self.assertEqual(witness, ["./lib/x.js", "TypeScript 5.7.3 with src/tsconfig.json: src/lib/x.d.ts"])
+                answers[("src/a.ts", "./lib/x.js")]["resolved"] = "src/lib/x.js"
+                self.assertTrue(run.classify("typescript", "gantry_only", ("src/a.ts", "src/lib/x.d.ts"), folder, folder, {}, "src")[0].startswith("review:"))
+            finally:
+                run.typescript_resolution = original
+                run.witnesses.cache_clear()
 
     def test_nim_modules_from_the_project_folder_and_outside_lib(self):
         dot = '\n'.join(['digraph nim {', '"nim" -> "ast";', '"ast" -> "std/os";', '"ic/ic" -> "../dist/x/y";', '"ic/ic" -> "ast";', '"ast" -> "ast";', '}'])
