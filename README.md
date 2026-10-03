@@ -183,6 +183,25 @@ type-only chains through. Transitive ordered layers work as import-linter's laye
 contract: a file no layer names has no layer, chains pass through it, and each layered
 file reports the shortest chain through unlayered files to each higher layer it reaches.
 
+A dependency rule joins each unresolved import to the manifests that govern its file:
+those of its ecosystem in the nearest directory at or above it (`package.json`,
+`pyproject.toml`, `Cargo.toml`, `go.mod`, `build.zig.zon`, a `.nimble`, `pom.xml`,
+`build.gradle`). An import names its package by the ecosystem's own rule: an npm name or
+`@scope/name`, a Python top-level module (case and `-_.` runs aside, as PEP 503 compares),
+a Rust crate (`-` as `_`), the longest Go module path that holds it, a Zig module, a Nim
+package (after `pkg/`), and for Java the declarations whose group holds the import's
+package. The language's own modules are no packages: Node builtins and `node:` names,
+Python's standard library, Rust's `std`, `core`, `alloc`, `proc_macro` and `test`, Go
+paths with no dot in their first element, Zig's `std`, `builtin` and `root`, Nim's
+standard modules and `std/`, and the JDK's packages. Findings are `undeclared` imports,
+with the reference, the package and the manifest, once per file and package, and
+`unused` declarations of the rule's scopes (runtime by default), with the declaration,
+for manifests that govern a source file the rule covers. A Go `indirect` requirement,
+Nimble's `nim` and a Gradle or Maven workspace project are never unused. An import whose
+package goes by another name, such as Python's `yaml` from `PyYAML` or Java's
+`com.google.common` from Guava, needs a `names` entry; `ignore` takes package names.
+The graph must be scanned with manifests (`error.UnscannedManifests` otherwise).
+
 A reachable rule names entry files by pattern and reports every file matching `files`
 that no chain from an entry reaches (`unreached`), as madge's orphans and
 dependency-cruiser's `no-orphans` and `reachable: false` rules do; a file with no edges

@@ -25,6 +25,7 @@ test {
     _ = @import("test_graph.zig");
     _ = @import("test_rules.zig");
     _ = @import("test_queries.zig");
+    _ = @import("test_dependencies.zig");
     _ = @import("test_tokens.zig");
     _ = @import("test_fuzz.zig");
     _ = @import("test_manifests.zig");

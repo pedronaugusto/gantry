@@ -3,6 +3,7 @@ const gantry = @import("gantry");
 
 pub const layers: []const gantry.rules.Layer = &.{
     .{ .name = "primitives", .patterns = &.{
+        "src/builtins.zig",
         "src/jsonc.zig",
         "src/owned_slice.zig",
         "src/path.zig",
@@ -54,6 +55,7 @@ pub const layers: []const gantry.rules.Layer = &.{
     } },
     .{ .name = "owners and scan policy", .patterns = &.{
         "src/Graph.zig",
+        "src/dependency_check.zig",
         "src/recover.zig",
         "src/scan_options.zig",
     } },
@@ -72,6 +74,7 @@ pub const layers: []const gantry.rules.Layer = &.{
     .{ .name = "scenarios", .patterns = &.{
         "src/test_configs.zig",
         "src/test_constraints.zig",
+        "src/test_dependencies.zig",
         "src/test_fuzz.zig",
         "src/test_go_modules.zig",
         "src/test_graph.zig",

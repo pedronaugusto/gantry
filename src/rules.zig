@@ -9,6 +9,7 @@ pub const Allow = engine.Allow;
 pub const ReferenceRule = engine.ReferenceRule;
 pub const Required = engine.Required;
 pub const Reachable = engine.Reachable;
+pub const DependencyRule = engine.DependencyRule;
 pub const TokenRule = engine.TokenRule;
 pub const Rules = engine.Rules;
 pub const Violation = engine.Violation;

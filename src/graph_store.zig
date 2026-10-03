@@ -12,6 +12,8 @@ unsupported: []const t.UnsupportedReference = &.{},
 tokens: []const t.Token = &.{},
 /// The token rules the scan recorded occurrences for, by kind and text.
 scanned_tokens: []const @import("rules_check.zig").TokenRule = &.{},
+/// Whether the scan read manifest declarations, which dependency rules need.
+manifests: bool = false,
 /// Selected files for which the caller returned null; never silently omitted.
 unread: []const []const u8 = &.{},
 go_files: []const @import("go_build.zig").File = &.{},

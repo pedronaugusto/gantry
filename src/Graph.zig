@@ -67,9 +67,12 @@ pub const Graph = enum(usize) {
     /// Keep the graph and those caller strings alive until findings are freed
     /// with `rules.free`, which also frees transitive findings' chains;
     /// gpa.free alone frees them when no rule is transitive. A token rule the graph
-    /// was not scanned for is `error.UnscannedToken`, never a silent pass.
+    /// was not scanned for is `error.UnscannedToken`, never a silent pass,
+    /// and a dependency rule on a graph scanned without manifests is
+    /// `error.UnscannedManifests`.
     pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules_check.zig").Rules) ![]const @import("rules_check.zig").Violation {
         for (rules.tokens) |rule| if (!store.get(g.*).scannedFor(rule)) return error.UnscannedToken;
-        return @import("rules_check.zig").check(g, gpa, rules);
+        if (rules.dependencies.len > 0 and !store.get(g.*).manifests) return error.UnscannedManifests;
+        return @import("rules_check.zig").check(g, gpa, rules, @import("dependency_check.zig"));
     }
 };

@@ -300,6 +300,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     g.tokens = try recorder.finish();
     g.references = try refs.toOwnedSlice(a);
     g.dependencies = try deps.toOwnedSlice(a);
+    g.manifests = options.manifests;
     g.unread = try reader.unreadPaths(a, &g.files);
     return @import("graph_store.zig").owner(@import("Graph.zig").Graph, g);
 }

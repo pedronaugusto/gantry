@@ -69,6 +69,28 @@ pub const TokenRule = struct {
     /// Path patterns, as layers use them, of the files that may spell it.
     owners: []const []const u8 = &.{},
 };
+/// Imports joined to the manifests that govern them: for a source file,
+/// the manifests of its ecosystem in the nearest directory at or above it
+/// that has one (npm `package.json`, `pyproject.toml`, `Cargo.toml`,
+/// `go.mod`, `build.zig.zon`, a `.nimble`, `pom.xml` or `build.gradle`).
+pub const DependencyRule = struct {
+    name: []const u8,
+    /// The source files whose imports count, by path pattern.
+    from: []const u8 = "**",
+    /// Report an import of a package its manifests do not declare.
+    undeclared: bool = true,
+    /// Report a declaration of these scopes that no file its manifest
+    /// governs imports.
+    unused: []const t.Dependency.Scope = &.{.runtime},
+    /// Package names never reported, as token patterns (`*`, `?`):
+    /// tools run by name, plugins, a builtin a newer release added.
+    ignore: []const []const u8 = &.{},
+    /// Imports whose package has another name: `.{ .import = "yaml",
+    /// .package = "PyYAML" }`, `.{ .import = "com.google.common", .package
+    /// = "com.google.guava:guava" }`.
+    names: []const Name = &.{},
+    pub const Name = struct { import: []const u8, package: []const u8 };
+};
 pub const Rules = struct {
     ordered: []const OrderedLayers = &.{},
     forbidden: []const EdgeRule = &.{},
@@ -78,6 +100,9 @@ pub const Rules = struct {
     references: []const ReferenceRule = &.{},
     required: []const Required = &.{},
     reachable: []const Reachable = &.{},
+    /// Undeclared and unused dependencies; the graph must have been
+    /// scanned with manifests.
+    dependencies: []const DependencyRule = &.{},
     /// Tokens outside their owners' files; the graph must have been scanned
     /// with the same rules in `Options.tokens`.
     tokens: []const TokenRule = &.{},
@@ -86,14 +111,18 @@ pub const Rules = struct {
 };
 pub const Violation = struct {
     rule: []const u8,
-    reason: enum { upward, forbidden, entry, reference, missing, cycle, token, unreached },
+    reason: enum { upward, forbidden, entry, reference, missing, cycle, token, unreached, undeclared, unused },
     /// The edge a direct rule restricts, or a chain's first edge.
     edge: ?t.Edge = null,
     reference: ?t.Reference = null,
     token: ?t.Token = null,
-    /// A missing required path, an unreachable file, or the file a chain
-    /// ends in.
+    /// A missing required path, an unreachable file, the file a chain
+    /// ends in, or the manifest an undeclared import was looked up in.
     path: ?[]const u8 = null,
+    /// An unused declaration.
+    dependency: ?t.Dependency = null,
+    /// The package an undeclared import names, as a slice of its spelling.
+    package: ?[]const u8 = null,
     /// A transitive rule's witness, its first file to its last; empty for
     /// every other finding. `free` releases it with the findings.
     chain: []const []const u8 = &.{},
@@ -124,7 +153,8 @@ fn named(r: OrderedLayers, path: []const u8) ?usize {
 /// Findings borrow graph storage, rule names and required-path strings.
 /// Keep the graph and those caller strings alive until findings are freed
 /// with `free`; a.free alone frees them when no rule is transitive.
-pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules) ![]const Violation {
+/// `dependencies` joins imports to manifests: `check(g, a, rule, out)`.
+pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependencies: type) ![]const Violation {
     var out: Findings = .{ .a = a };
     errdefer out.deinit();
     var scratch: std.heap.ArenaAllocator = .init(a);
@@ -205,16 +235,17 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules) ![]const Violation 
         if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
         try walks.?.unreached(&out, g.edges(), r);
     }
+    for (rules.dependencies) |r| try dependencies.check(g, scratch.allocator(), r, &out);
     return out.finish();
 }
 /// Findings, and their chains gathered into one block for `free`.
-const Findings = struct {
+pub const Findings = struct {
     a: std.mem.Allocator,
     items: std.ArrayList(Violation) = .empty,
     chains: std.ArrayList([]const u8) = .empty,
     /// Where each chain lies in `chains`, by finding.
     spans: std.ArrayList(struct { finding: usize, start: usize, len: usize }) = .empty,
-    fn append(f: *Findings, v: Violation) !void {
+    pub fn append(f: *Findings, v: Violation) !void {
         try f.items.append(f.a, v);
     }
     fn appendChain(f: *Findings, v: Violation, paths: []const []const u8, nodes: []const u32) !void {
