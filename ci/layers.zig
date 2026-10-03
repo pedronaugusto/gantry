@@ -21,6 +21,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/Imports.zig",
         "src/go_build.zig",
         "src/go_config.zig",
+        "src/gradle.zig",
         "src/lang/c.zig",
         "src/lang/java.zig",
         "src/lang/nim.zig",

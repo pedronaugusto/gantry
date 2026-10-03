@@ -505,6 +505,107 @@ test "malformed Maven documents and dependencies fail rather than reporting part
     }) |text| try std.testing.expectError(error.InvalidManifest, g.manifests.parse(arena.allocator(), "pom.xml", text));
     try eq(0, (try g.manifests.parse(arena.allocator(), "pom.xml", "<settings><dependencies><dependency><groupId>a</groupId><artifactId>b</artifactId></dependency></dependencies></settings>")).len);
 }
+test "Gradle Groovy declarations keep literal notations and their configuration's scope" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const text =
+        \\buildscript {
+        \\    dependencies { classpath 'com.android.tools.build:gradle:8.5.0' }
+        \\}
+        \\plugins { id 'java' }
+        \\// implementation 'fake:commented:1'
+        \\dependencies {
+        \\    implementation 'com.google.guava:guava:33.0.0-jre'
+        \\    api("org.slf4j:slf4j-api:2.0.13") {
+        \\        exclude group: 'x'
+        \\    }
+        \\    implementation 'a:one:1', 'a:two:2:jdk8',
+        \\        'a:three'
+        \\    testImplementation group: 'junit', name: 'junit', version: '4.13.2', transitive: false
+        \\    compileOnly 'org.projectlombok:lombok:1.18.32'
+        \\    annotationProcessor 'org.projectlombok:lombok:1.18.32'
+        \\    implementation project(':core')
+        \\    implementation platform('org.springframework.boot:spring-boot-dependencies:3.3.0')
+        \\    runtimeOnly 'com.h2database:h2:2.2.224@jar'
+        \\    implementation 'literal:dollar:$notInterpolated'
+        \\    constraints {
+        \\        implementation 'managed:constraint:1.0'
+        \\    }
+        \\    implementation "org.x:y:$version"
+        \\    implementation libs.guava
+        \\    implementation fileTree(dir: 'libs', include: ['*.jar'])
+        \\    if (useFast) {
+        \\        implementation 'fast:lib:1'
+        \\    }
+        \\    testImplementation "org.junit:junit-bom:${junitVersion}"
+        \\    implementation 'after:computed:1'
+        \\}
+        \\task copy { from '''implementation 'fake:block:1' ''' }
+    ;
+    const declared = try g.manifests.read(arena.allocator(), "app/build.gradle", text);
+    const deps = declared.dependencies;
+    const Scope = g.Dependency.Scope;
+    try eq(14, deps.len);
+    try eq(Scope.build, (try find(deps, "com.android.tools.build:gradle")).scope());
+    const guava = try find(deps, "com.google.guava:guava");
+    try std.testing.expectEqualStrings("33.0.0-jre", guava.requirement);
+    try std.testing.expectEqualStrings("implementation", guava.group);
+    try eq(Scope.runtime, guava.scope());
+    try eq(Scope.runtime, (try find(deps, "org.slf4j:slf4j-api")).scope());
+    try std.testing.expectEqualStrings("2:jdk8", (try find(deps, "a:two")).requirement);
+    try std.testing.expectEqualStrings("", (try find(deps, "a:three")).requirement);
+    const junit = try find(deps, "junit:junit");
+    try std.testing.expectEqualStrings("4.13.2", junit.requirement);
+    try eq(Scope.development, junit.scope());
+    try eq(Scope.build, (try find(deps, "org.projectlombok:lombok")).scope());
+    const core = try find(deps, ":core");
+    try eq(g.Dependency.Origin.workspace, core.origin);
+    try std.testing.expectEqualStrings("3.3.0", (try find(deps, "org.springframework.boot:spring-boot-dependencies")).requirement);
+    try std.testing.expectEqualStrings("2.2.224@jar", (try find(deps, "com.h2database:h2")).requirement);
+    try std.testing.expectEqualStrings("$notInterpolated", (try find(deps, "literal:dollar")).requirement);
+    _ = try find(deps, "after:computed");
+    try std.testing.expectError(error.TestMissingDependency, find(deps, "managed:constraint"));
+    try std.testing.expectError(error.TestMissingDependency, find(deps, "fast:lib"));
+    try eq(5, declared.unsupported.len);
+    for (declared.unsupported, [_][]const u8{ "implementation \"org.x", "implementation libs", "implementation fileTree", "if (useFast)", "testImplementation \"org.junit" }) |record, spelling| {
+        try eq(g.ImportExpression.gradle_dependency, record.expression);
+        try std.testing.expect(std.mem.startsWith(u8, text[record.offset..], spelling));
+    }
+}
+test "Gradle Kotlin declarations read string templates and helpers as computed" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const declared = try g.manifests.read(arena.allocator(), "build.gradle.kts",
+        \\#!/usr/bin/env kotlin
+        \\/* dependencies { implementation("fake:nested:1") /* nested */ } */
+        \\dependencies {
+        \\    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+        \\    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+        \\    testRuntimeOnly(group = "org.junit.platform", name = "junit-platform-launcher")
+        \\    "integrationTestImplementation"("org.assertj:assertj-core:3.26.0")
+        \\    add("ksp", "com.google.dagger:dagger-compiler:2.51")
+        \\    implementation(project(":lib")) { isTransitive = false }
+        \\    implementation(project(path = ":other"))
+        \\    implementation("org.x:y:${'$'}{v}")
+        \\    implementation("org.x:z:$v")
+        \\    testImplementation(kotlin("test"))
+        \\    implementation(libs.bundles.ktor)
+        \\    implementation(projects.core)
+        \\    val x = "a:b:1"
+        \\}
+    );
+    const deps = declared.dependencies;
+    const Scope = g.Dependency.Scope;
+    try eq(7, deps.len);
+    try eq(Scope.runtime, (try find(deps, "com.squareup.okhttp3:okhttp")).scope());
+    try eq(Scope.development, (try find(deps, "org.junit:junit-bom")).scope());
+    try std.testing.expectEqualStrings("", (try find(deps, "org.junit.platform:junit-platform-launcher")).requirement);
+    try eq(Scope.development, (try find(deps, "org.assertj:assertj-core")).scope());
+    try eq(Scope.build, (try find(deps, "com.google.dagger:dagger-compiler")).scope());
+    try eq(g.Dependency.Origin.workspace, (try find(deps, ":lib")).origin);
+    _ = try find(deps, ":other");
+    try eq(6, declared.unsupported.len);
+}
 test "Nimble requirements keep their constraint, origin, revision and scope" {
     var arena: std.heap.ArenaAllocator = .init(a);
     defer arena.deinit();

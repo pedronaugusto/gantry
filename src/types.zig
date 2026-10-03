@@ -29,6 +29,8 @@ pub const ImportExpression = enum {
     java_load_class,
     /// A `pom.xml` dependency naming a property its file does not define.
     maven_dependency,
+    /// A Gradle `dependencies` statement that is not a literal declaration.
+    gradle_dependency,
 };
 /// Owned by Imports or Graph, with a byte offset at the construct's start.
 pub const UnsupportedReference = struct {
@@ -80,7 +82,7 @@ pub const Dependency = struct {
         /// shorthand, a PEP 508 URL, a Go module path, a Nimble URL.
         remote,
         /// Another member of the same workspace: npm `workspace:`, Cargo
-        /// `workspace = true`.
+        /// `workspace = true`, a Gradle `project(":path")`.
         workspace,
     };
 
@@ -89,17 +91,21 @@ pub const Dependency = struct {
         /// To run: npm `dependencies` and `peerDependencies`, Cargo
         /// `dependencies`, PEP 621 `project.dependencies`, Poetry's main
         /// table, Nimble `requires`, Maven `compile`, `runtime` and
-        /// `system` scopes, every ZON and Go requirement.
+        /// `system` scopes, Gradle `implementation`, `api`, `runtimeOnly`
+        /// and other configurations, every ZON and Go requirement.
         runtime,
         /// To develop or test: npm `devDependencies`, Cargo
         /// `dev-dependencies`, PEP 735 `dependency-groups`, Poetry's
         /// `dev-dependencies` and named groups, Nimble `taskRequires`,
-        /// Maven `test` scope.
+        /// Maven `test` scope, Gradle test configurations (`testImplementation`,
+        /// `androidTestImplementation`, `testFixturesApi`).
         development,
         /// Only when asked for: npm `optionalDependencies`, PEP 621
         /// `project.optional-dependencies` (extras), Nimble `feature` blocks.
         optional,
-        /// To build: Cargo `build-dependencies`, Maven `provided` scope.
+        /// To build: Cargo `build-dependencies`, Maven `provided` scope,
+        /// Gradle `compileOnly`, annotation processors and `buildscript`
+        /// `classpath`.
         build,
     };
 
@@ -125,6 +131,13 @@ pub const Dependency = struct {
         if (std.mem.eql(u8, manifest, "pom.xml")) {
             if (std.mem.eql(u8, dep.group, "test")) return .development;
             if (std.mem.eql(u8, dep.group, "provided")) return .build;
+            return .runtime;
+        }
+        if (std.mem.eql(u8, manifest, "build.gradle") or std.mem.eql(u8, manifest, "build.gradle.kts")) {
+            const configuration = dep.group;
+            if (std.mem.startsWith(u8, configuration, "test") or std.mem.indexOf(u8, configuration, "Test") != null) return .development;
+            for ([_][]const u8{ "compileOnly", "compileOnlyApi", "annotationProcessor", "kapt", "ksp", "classpath" }) |name| if (std.mem.eql(u8, configuration, name)) return .build;
+            if (std.mem.endsWith(u8, configuration, "CompileOnly") or std.mem.endsWith(u8, configuration, "AnnotationProcessor")) return .build;
             return .runtime;
         }
         if (std.mem.eql(u8, manifest, "Cargo.toml")) {

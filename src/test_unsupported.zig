@@ -30,6 +30,7 @@ fn lexical(language: g.Language, source: []const u8, count: usize) !void {
             .java_for_name => "Class.forName",
             .java_load_class => "loadClass",
             .maven_dependency => "<dependency",
+            .gradle_dependency => "",
         };
         try std.testing.expect(std.mem.startsWith(u8, rest, spelling));
     }

@@ -4,7 +4,7 @@ const l = @import("lexer.zig");
 const t = @import("types.zig");
 const p = @import("path.zig");
 /// The manifest file names `parse` reads, each the whole base name of a path.
-pub const names = [_][]const u8{ "build.zig.zon", "package.json", "Cargo.toml", "go.mod", "pyproject.toml", "pom.xml" };
+pub const names = [_][]const u8{ "build.zig.zon", "package.json", "Cargo.toml", "go.mod", "pyproject.toml", "pom.xml", "build.gradle", "build.gradle.kts" };
 /// The manifest extensions `parse` reads, for manifests named after their package.
 pub const extensions = [_][]const u8{".nimble"};
 /// Whether `path`'s base name is one of `names` or ends in one of `extensions`.
@@ -32,7 +32,7 @@ pub fn read(a: std.mem.Allocator, path: []const u8, text: []const u8) !Declarati
     var out: std.ArrayList(t.Dependency) = .empty;
     var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     const name = p.base(path);
-    if (std.mem.eql(u8, name, "package.json")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, "build.zig.zon")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, "go.mod")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, "Cargo.toml") or std.mem.eql(u8, name, "pyproject.toml")) try toml(a, path, text, &out) else if (supported(path) and std.mem.endsWith(u8, name, ".nimble")) try @import("nimble.zig").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, "pom.xml")) try @import("maven.zig").parse(a, path, text, &out, &unsupported) else return error.UnsupportedManifest;
+    if (std.mem.eql(u8, name, "package.json")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, "build.zig.zon")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, "go.mod")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, "Cargo.toml") or std.mem.eql(u8, name, "pyproject.toml")) try toml(a, path, text, &out) else if (supported(path) and std.mem.endsWith(u8, name, ".nimble")) try @import("nimble.zig").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, "pom.xml")) try @import("maven.zig").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, "build.gradle") or std.mem.eql(u8, name, "build.gradle.kts")) try @import("gradle.zig").parse(a, path, text, &out, &unsupported) else return error.UnsupportedManifest;
     return .{ .dependencies = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
 fn json(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) !void {
