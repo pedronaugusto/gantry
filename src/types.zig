@@ -257,6 +257,26 @@ pub const Dependency = struct {
     }
 };
 pub const Layer = struct { path: []const u8, depth: usize };
+/// The coupling of a file, or of a directory and everything under it: the
+/// distinct file-to-file dependencies that cross its boundary, whatever
+/// their kinds and counts.
+pub const Coupling = struct {
+    path: []const u8,
+    /// The graph's nodes it holds: one for a file, and directories in an
+    /// aggregate's analysis.
+    files: usize = 1,
+    /// Afferent coupling (Ca): dependencies on it from outside.
+    fan_in: usize,
+    /// Efferent coupling (Ce): its dependencies on what lies outside.
+    fan_out: usize,
+    /// Ce / (Ca + Ce), from 0 (depended on, depending on nothing outside)
+    /// to 1 (depending, with no dependents); 0 with neither.
+    pub fn instability(c: Coupling) f64 {
+        const total = c.fan_in + c.fan_out;
+        if (total == 0) return 0;
+        return @as(f64, @floatFromInt(c.fan_out)) / @as(f64, @floatFromInt(total));
+    }
+};
 pub const Cycle = struct { members: []const []const u8, path: []const []const u8 };
 pub fn stringsLess(_: void, a: []const u8, b: []const u8) bool {
     return std.mem.order(u8, a, b) == .lt;

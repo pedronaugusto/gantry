@@ -15,6 +15,7 @@ pub const UnsupportedReference = t.UnsupportedReference;
 pub const ImportExpression = t.ImportExpression;
 pub const Dependency = t.Dependency;
 pub const Layer = t.Layer;
+pub const Coupling = t.Coupling;
 pub const Cycle = t.Cycle;
 pub const Spec = t.Spec;
 pub const PythonInitializers = resolver.PythonInitializers;

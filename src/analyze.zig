@@ -41,6 +41,8 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
     self.paths = owned;
     self.forward = adj;
     self.backward = rev;
+    self.coupling = try fileCoupling(a, owned, from.items, to.items);
+    self.directory_coupling = try directoryCoupling(a, s, owned, from.items, to.items);
     const seen = try s.alloc(bool, n);
     @memset(seen, false);
     var frames: std.ArrayList(Frame) = .empty;
@@ -181,3 +183,56 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
     return self;
 }
 
+/// Each node's distinct dependents and dependencies, itself not counted.
+fn fileCoupling(a: std.mem.Allocator, paths: []const []const u8, from: []const u32, to: []const u32) ![]const t.Coupling {
+    const result = try a.alloc(t.Coupling, paths.len);
+    for (paths, result) |path, *c| c.* = .{ .path = path, .fan_in = 0, .fan_out = 0 };
+    for (from, to) |v, w| if (v != w) {
+        result[v].fan_out += 1;
+        result[w].fan_in += 1;
+    };
+    return result;
+}
+/// Every directory above a node, as a slice of the node's own path, with
+/// the dependencies that cross its boundary: a pair counts for each
+/// directory that holds one end and not the other.
+fn directoryCoupling(a: std.mem.Allocator, s: std.mem.Allocator, paths: []const []const u8, from: []const u32, to: []const u32) ![]const t.Coupling {
+    var ids: std.StringHashMapUnmanaged(u32) = .empty;
+    var names: std.ArrayList([]const u8) = .empty;
+    // Each node's directories, outermost first, as one list with offsets.
+    const offsets = try s.alloc(u32, paths.len + 1);
+    var chains: std.ArrayList(u32) = .empty;
+    offsets[0] = 0;
+    for (paths, 0..) |path, v| {
+        var at: usize = 0;
+        while (std.mem.indexOfScalarPos(u8, path, at, '/')) |slash| : (at = slash + 1) {
+            const entry = try ids.getOrPut(s, path[0..slash]);
+            if (!entry.found_existing) {
+                entry.value_ptr.* = @intCast(names.items.len);
+                try names.append(s, path[0..slash]);
+            }
+            try chains.append(s, entry.value_ptr.*);
+        }
+        offsets[v + 1] = @intCast(chains.items.len);
+    }
+    const counts = try s.alloc(t.Coupling, names.items.len);
+    for (names.items, counts) |name, *c| c.* = .{ .path = name, .files = 0, .fan_in = 0, .fan_out = 0 };
+    for (paths, 0..) |_, v| for (chains.items[offsets[v]..offsets[v + 1]]) |d| {
+        counts[d].files += 1;
+    };
+    for (from, to) |v, w| {
+        if (v == w) continue;
+        const outer = chains.items[offsets[v]..offsets[v + 1]];
+        const inner = chains.items[offsets[w]..offsets[w + 1]];
+        var shared: usize = 0;
+        while (shared < outer.len and shared < inner.len and outer[shared] == inner[shared]) shared += 1;
+        for (outer[shared..]) |d| counts[d].fan_out += 1;
+        for (inner[shared..]) |d| counts[d].fan_in += 1;
+    }
+    std.mem.sort(t.Coupling, counts, {}, struct {
+        fn less(_: void, x: t.Coupling, y: t.Coupling) bool {
+            return std.mem.order(u8, x.path, y.path) == .lt;
+        }
+    }.less);
+    return a.dupe(t.Coupling, counts);
+}

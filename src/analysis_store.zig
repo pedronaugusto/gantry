@@ -11,6 +11,8 @@ components: []const []const []const u8 = &.{},
 paths: []const []const u8 = &.{},
 forward: Adjacency = empty,
 backward: Adjacency = empty,
+coupling: []const t.Coupling = &.{},
+directory_coupling: []const t.Coupling = &.{},
 const Adjacency = @import("reach.zig").Adjacency;
 const empty: Adjacency = .{ .offsets = &.{}, .targets = &.{} };
 

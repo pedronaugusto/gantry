@@ -10,6 +10,12 @@ fn expectPaths(want: []const []const u8, got: []const []const u8) !void {
     for (want, got) |w, x| try std.testing.expectEqualStrings(w, x);
 }
 
+fn counts(c: g.Coupling, files_under: usize, fan_in: usize, fan_out: usize) !void {
+    try eq(files_under, c.files);
+    try eq(fan_in, c.fan_in);
+    try eq(fan_out, c.fan_out);
+}
+
 const files = &[_][]const u8{ "a/w.zig", "a/x.zig", "b/y.zig", "b/z.zig", "b/c/q.zig", "r.zig" };
 const edges = &[_]g.Edge{
     .{ .from = "a/x.zig", .to = "b/y.zig" },
@@ -20,6 +26,35 @@ const edges = &[_]g.Edge{
     .{ .from = "b/c/q.zig", .to = "b/y.zig" },
     .{ .from = "b/y.zig", .to = "b/c/q.zig" },
 };
+
+test "coupling counts distinct dependencies per file and across each directory's boundary" {
+    var analysis = try g.Analysis.init(a, files, edges);
+    defer analysis.deinit();
+    const want = [_]struct { []const u8, usize, usize }{
+        .{ "a/w.zig", 0, 1 }, .{ "a/x.zig", 2, 2 }, .{ "b/c/q.zig", 1, 1 }, .{ "b/y.zig", 2, 1 }, .{ "b/z.zig", 1, 0 }, .{ "r.zig", 0, 1 },
+    };
+    try eq(want.len, analysis.coupling().len);
+    for (want, analysis.coupling()) |w, c| {
+        try std.testing.expectEqualStrings(w[0], c.path);
+        try eq(w[1], c.fan_in);
+        try eq(w[2], c.fan_out);
+        try eq(1, c.files);
+    }
+    // a/x's two kinds of edge to b/z are one dependency; a/w -> a/x stays inside a.
+    const dirs = analysis.directoryCoupling();
+    try eq(3, dirs.len);
+    try std.testing.expectEqualStrings("a", dirs[0].path);
+    try counts(dirs[0], 2, 1, 2);
+    try std.testing.expectApproxEqAbs(2.0 / 3.0, dirs[0].instability(), 1e-12);
+    try std.testing.expectEqualStrings("b", dirs[1].path);
+    try counts(dirs[1], 3, 2, 0);
+    try eq(0, dirs[1].instability());
+    try std.testing.expectEqualStrings("b/c", dirs[2].path);
+    try counts(dirs[2], 1, 1, 1);
+    try eq(0.5, dirs[2].instability());
+    // Neither dependents nor dependencies is maximally stable.
+    try eq(0, (g.Coupling{ .path = "lone", .fan_in = 0, .fan_out = 0 }).instability());
+}
 
 test "queries list direct and transitive neighbours, affected files and shortest chains" {
     var analysis = try g.Analysis.init(a, files, edges);
@@ -42,7 +77,7 @@ test "queries list direct and transitive neighbours, affected files and shortest
     try std.testing.expectError(error.UnknownPath, analysis.chain(a, "a/w.zig", "gone.zig"));
 }
 
-test "generated graphs agree with an independent closure and shortest chains" {
+test "generated graphs agree with an independent closure, shortest chains and coupling" {
     const n = 10;
     const paths = &[_][]const u8{ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" };
     const far = std.math.maxInt(usize) / 4;
@@ -88,6 +123,14 @@ test "generated graphs agree with an independent closure and shortest chains" {
             for (backward) |r| count += @intFromBool(r);
             try eq(count, affected.len);
             for (affected) |p| try std.testing.expect(backward[p[0] - '0']);
+            var fan_out: usize = 0;
+            var fan_in: usize = 0;
+            for (0..n) |w| if (w != v) {
+                fan_out += @intFromBool(direct[v][w]);
+                fan_in += @intFromBool(direct[w][v]);
+            };
+            try eq(fan_out, analysis.coupling()[v].fan_out);
+            try eq(fan_in, analysis.coupling()[v].fan_in);
             for (0..n) |w| {
                 // The lowest first step among the shortest, then the lowest
                 // next step one nearer the end.

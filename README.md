@@ -157,6 +157,12 @@ between two files. Results are path-ordered slices the caller frees; their paths
 the analysis. A query holds one mark and one queue entry per node, whatever the closure.
 To follow some edge kinds only, analyse a graph of those edges (`Analysis.init`).
 
+`coupling()` gives each node's distinct dependents (`fan_in`, Ca) and dependencies
+(`fan_out`, Ce), with `instability()` Ce / (Ca + Ce), 0 for a node with neither.
+`directoryCoupling()` does the same for every directory above a node: a dependency
+counts for each directory holding one end and not the other, as dependency-cruiser's
+folder metrics count it. Edges of several kinds between two files are one dependency.
+
 Rules restrict ordered layers, source/target patterns, raw references, required paths
 and cycles. Exceptions apply to a named restriction. Path patterns use `*` and `?`
 within a component and `**` across components. Every matching restriction reports in

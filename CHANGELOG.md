@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `Analysis.coupling` and `directoryCoupling`: fan-in, fan-out and instability (Ce / (Ca + Ce)) for each file and for every directory above one.
+
 - `Analysis.direct`, `reach`, `affected` and `chain`: what a file depends on or what depends on it, directly or through any chain, the files a change affects, and the shortest chain between two files, in memory linear in the graph.
 
 - Edge kinds `type_only` (TypeScript `import type`, `export type`, all-`type` braces, `import("x")` in a type) and `dynamic` (`import("x")` calls), recorded by default, so a rule can allow type-only edges.

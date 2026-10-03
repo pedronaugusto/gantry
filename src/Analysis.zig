@@ -20,6 +20,18 @@ pub const Analysis = enum(usize) {
     pub fn components(self: *const Analysis) []const []const []const u8 {
         return store.get(self.*).components;
     }
+    /// Each node's coupling, in path order: its distinct dependents
+    /// (`fan_in`) and dependencies (`fan_out`), itself not counted.
+    pub fn coupling(self: *const Analysis) []const t.Coupling {
+        return store.get(self.*).coupling;
+    }
+    /// Each directory above a node, in path order, with the files under it
+    /// and the dependencies that cross its boundary: a dependency counts
+    /// for every directory holding one end and not the other. The root is
+    /// not listed.
+    pub fn directoryCoupling(self: *const Analysis) []const t.Coupling {
+        return store.get(self.*).directory_coupling;
+    }
     pub const Direction = enum {
         /// What a file depends on.
         dependencies,
