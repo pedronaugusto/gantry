@@ -1,6 +1,7 @@
 //! Properties that hold for any bytes, checked by `std.testing.fuzz` for every
 //! lexer and every manifest and config reader. `zig build test` runs each over
-//! its seeds; `zig build test --fuzz` searches from them.
+//! its seeds; `zig build test --fuzz` searches from them. Dependency rules
+//! run over every manifest graph, and import spellings give package names.
 //!
 //! For each input: nothing panics or leaks, a scan fails only with an error a
 //! reader documents, output is bounded by the input, and the same bytes give
@@ -82,6 +83,20 @@ fn scanTwice(paths: []const []const u8, text: []const u8, options: g.Options) !v
     try testing.expect(first.dependencies().len <= text.len);
     try testing.expect(first.tokens().len <= text.len);
     try checkTokens(&first, text);
+    if (options.manifests) try checkDependencies(&first);
+}
+
+/// A dependency rule over any graph reports at most once per reference and
+/// declaration, each finding with its evidence.
+fn checkDependencies(graph: *const g.Graph) !void {
+    const findings = try graph.check(testing.allocator, .{ .dependencies = &.{.{ .name = "deps", .unused = &.{ .runtime, .development, .optional, .build } }} });
+    defer g.rules.free(testing.allocator, findings);
+    try testing.expect(findings.len <= graph.references().len + graph.dependencies().len);
+    for (findings) |finding| switch (finding.reason) {
+        .undeclared => try testing.expect(finding.reference != null and finding.package != null and finding.path != null),
+        .unused => try testing.expect(finding.dependency != null),
+        else => return error.TestUnexpectedResult,
+    };
 }
 
 fn sameGraph(x: *const g.Graph, y: *const g.Graph) !void {
@@ -259,6 +274,7 @@ test "fuzz: Rust source" {
         "use super::f0::Thing;\n// comment\nlet text = r#\"use crate::fake;\"#;\n",
         "#[cfg(test)] mod tests { use super::*; }\nmod a; pub mod b;\nfn f<'a>(x: &'a str) -> char { 'x' }\n/* a /* nested */ b */ include!(\"x.rs\");",
         "use crate::{a::{b, c}, d as e}; let s = \"\\x1b[\\u{1b}]\"; let b = b'\\n';",
+        "use ::serde::de; extern crate libc as c; #[tokio::main] fn f() { serde_json::to_string(&1); Vec::<u8>::new(); x.y::<T>(); $crate::z; }",
     });
 }
 test "fuzz: Nim source" {
@@ -344,4 +360,21 @@ test "fuzz: jsconfig.json" {
     try manifest(&.{ "jsconfig.json", "src/a.js" }, null, &.{
         "{\"compilerOptions\":{\"baseUrl\":\"src\"}}",
     });
+}
+
+test "fuzz: package names in import spellings" {
+    const dependencies = @import("dependency_check.zig");
+    const Property = struct {
+        fn one(_: void, smith: *testing.Smith) anyerror!void {
+            var buffer: [most]u8 = undefined;
+            const text = bytesOf(smith, &buffer);
+            for (std.enums.values(dependencies.Ecosystem)) |e| {
+                // A package is a slice of the spelling, never more.
+                const package = dependencies.packageOf(e, text) orelse continue;
+                try testing.expect(package.len > 0 and @intFromPtr(package.ptr) >= @intFromPtr(text.ptr) and @intFromPtr(package.ptr) + package.len <= @intFromPtr(text.ptr) + text.len);
+                try testing.expect(dependencies.declares(e, .{ .manifest = "m", .name = package }, package) or e == .java);
+            }
+        }
+    };
+    try testing.fuzz({}, Property.one, .{ .corpus = seeds(&.{ "@scope/pkg/sub", "node:fs", "requests.adapters.X", "::serde::de", "github.com/x/y/v2/pkg", "pkg/foo/bar", "com.google.common.collect.List", "" }) });
 }
