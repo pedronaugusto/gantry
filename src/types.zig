@@ -174,6 +174,40 @@ pub const Dependency = struct {
         return dep.source[hash + 1 ..];
     }
 
+    /// The package's own name without the namespace its ecosystem
+    /// qualifies it with, as a slice of `name`: a Maven or Gradle
+    /// `group:artifact` gives `artifact` and a Gradle `project(":libs:x")`
+    /// gives `x`; a Go module path gives its last element, or the one
+    /// before a major version suffix (`host/me/kit/v3` → `kit`); an npm
+    /// `@scope/x` gives `x`. Every other name is already its own.
+    pub fn shortName(dep: Dependency) []const u8 {
+        const manifest = baseName(dep.manifest);
+        const name = dep.name;
+        if (std.mem.eql(u8, manifest, "pom.xml") or std.mem.eql(u8, manifest, "build.gradle") or std.mem.eql(u8, manifest, "build.gradle.kts")) {
+            return name[if (std.mem.lastIndexOfScalar(u8, name, ':')) |colon| colon + 1 else 0..];
+        }
+        if (std.mem.eql(u8, manifest, "go.mod")) {
+            const path = std.mem.trimEnd(u8, name, "/");
+            const slash = std.mem.lastIndexOfScalar(u8, path, '/') orelse return path;
+            const last = path[slash + 1 ..];
+            if (!majorSuffix(last)) return last;
+            const before = path[0..slash];
+            return before[if (std.mem.lastIndexOfScalar(u8, before, '/')) |s| s + 1 else 0..];
+        }
+        if (std.mem.eql(u8, manifest, "package.json") and std.mem.startsWith(u8, name, "@")) {
+            return name[if (std.mem.indexOfScalar(u8, name, '/')) |slash| slash + 1 else 0..];
+        }
+        return name;
+    }
+
+    /// A Go major version element: `v2`, `v3`, … (`v0` and `v1` are never
+    /// spelled in a module path).
+    fn majorSuffix(element: []const u8) bool {
+        if (element.len < 2 or element[0] != 'v' or element[1] == '0') return false;
+        for (element[1..]) |c| if (!std.ascii.isDigit(c)) return false;
+        return !std.mem.eql(u8, element, "v1");
+    }
+
     /// `git+https://host/owner/x.git@v1#egg=x` → `v1`.
     fn vcsRevision(source: []const u8) []const u8 {
         const plus = std.mem.indexOfScalar(u8, source, '+') orelse return "";

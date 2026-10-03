@@ -375,6 +375,33 @@ test "a revision is the pin a remote source spells in its own text" {
     const go = try g.manifests.parse(aa, "go.mod", "module m\nrequire github.com/me/core v1.2.0\n");
     try std.testing.expectEqualStrings("", go[0].revision());
 }
+test "a short name is the package's own name without its namespace" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const pom = try g.manifests.parse(aa, "pom.xml", "<project><dependencies><dependency><groupId>org.me</groupId><artifactId>core</artifactId></dependency></dependencies></project>");
+    try std.testing.expectEqualStrings("core", pom[0].shortName());
+    const gradle = try g.manifests.parse(aa, "app/build.gradle.kts",
+        \\dependencies {
+        \\  implementation("org.me:engine:1.0")
+        \\  implementation(project(":libs:render"))
+        \\}
+    );
+    try std.testing.expectEqualStrings("engine", (try find(gradle, "org.me:engine")).shortName());
+    try std.testing.expectEqualStrings("render", (try find(gradle, ":libs:render")).shortName());
+    const go = try g.manifests.parse(aa, "go.mod", "module m\nrequire (\n github.com/me/core v1.2.0\n github.com/me/kit/v3 v3.0.1\n gopkg.in/yaml.v3 v3.0.1\n)\n");
+    try std.testing.expectEqualStrings("core", (try find(go, "github.com/me/core")).shortName());
+    // a major version suffix names the version, not the package
+    try std.testing.expectEqualStrings("kit", (try find(go, "github.com/me/kit/v3")).shortName());
+    try std.testing.expectEqualStrings("yaml.v3", (try find(go, "gopkg.in/yaml.v3")).shortName());
+    const npm = try g.manifests.parse(aa, "package.json",
+        \\{"dependencies":{"@me/ui":"^1.0.0","plain":"^1.0.0"}}
+    );
+    try std.testing.expectEqualStrings("ui", (try find(npm, "@me/ui")).shortName());
+    try std.testing.expectEqualStrings("plain", (try find(npm, "plain")).shortName());
+    const zon = try g.manifests.parse(aa, "build.zig.zon", ".{ .dependencies = .{ .strand = .{ .path = \"../strand\" } } }");
+    try std.testing.expectEqualStrings("strand", zon[0].shortName());
+}
 test "a declaration's scope follows its manifest's groups" {
     var arena: std.heap.ArenaAllocator = .init(a);
     defer arena.deinit();

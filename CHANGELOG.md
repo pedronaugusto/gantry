@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `Dependency.shortName`: the package's own name without its namespace (Maven and Gradle artifact, Go module path element before a major version, npm scope).
+
 - Drop newline tokens in place rather than copying each token stream.
 
 - Keep at most 1 MiB of scan scratch between files: a large file's tokens are released before the next file is read.
