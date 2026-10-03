@@ -121,8 +121,11 @@ import edges are disabled. An unresolved supported literal is a reference, not a
 unsupported construct. Loader aliases, generated imports and other runtime semantics can
 remain undetected.
 
-Import and test edges are enabled by default; links and assets require explicit kind
-selection. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and wiki links while
+Import, type-only, dynamic and test edges are enabled by default; links and assets
+require explicit kind selection. A TypeScript `import type`, `export type`, braces whose
+every name is marked `type`, and `typeof import("x")` or `import("x").T` in a type give
+`type_only` edges; any other `import("x")` call gives a `dynamic` edge, and a test file's
+import a `test` edge whatever its form. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and wiki links while
 excluding fenced code and comments. Asset recovery matches path tokens in supported text
 files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
 `go.mod`, `pyproject.toml`, `pom.xml`, `build.gradle`, `build.gradle.kts`

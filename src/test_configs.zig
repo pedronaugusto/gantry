@@ -151,9 +151,9 @@ test "TS path aliases reach type-only imports and import types in declaration fi
         .{ .path = "src/vs/base/browser/mouseEvent.ts" },
     } }).scan(a, .{ .manifests = false });
     defer graph.deinit();
-    try f.edge(&graph, "src/bootstrap-window.ts", "src/vs/base/common/sandboxTypes.ts", .import, 1);
-    try f.edge(&graph, "src/bootstrap-window.ts", "src/vs/window/common/window.ts", .import, 1);
-    try f.edge(&graph, "src/vs/webview/webviewMessages.d.ts", "src/vs/base/browser/mouseEvent.ts", .import, 1);
+    try f.edge(&graph, "src/bootstrap-window.ts", "src/vs/base/common/sandboxTypes.ts", .type_only, 1);
+    try f.edge(&graph, "src/bootstrap-window.ts", "src/vs/window/common/window.ts", .type_only, 1);
+    try f.edge(&graph, "src/vs/webview/webviewMessages.d.ts", "src/vs/base/browser/mouseEvent.ts", .type_only, 1);
     try std.testing.expectEqual(3, graph.edges().len);
 }
 

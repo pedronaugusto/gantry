@@ -1,6 +1,24 @@
 const std = @import("std");
 pub const Language = enum { zig, c, javascript, python, go, rust, nim, java };
-pub const Kind = enum { import, link, asset, @"test" };
+/// What an edge or reference is. A source import is `import`, `type_only`,
+/// `dynamic` or `test`; a test file's import, or an import of a test file,
+/// is `test` whatever its form.
+pub const Kind = enum {
+    /// A static import, include or `require`.
+    import,
+    /// A Markdown link.
+    link,
+    /// A path a text file names.
+    asset,
+    /// An import in or of a test file.
+    @"test",
+    /// A TypeScript import or re-export that brings in types alone:
+    /// `import type`, `export type`, braces whose every name is marked
+    /// `type`, and `typeof import("x")` or `import("x").T` in a type.
+    type_only,
+    /// A JavaScript `import("x")` call, which loads the module when it runs.
+    dynamic,
+};
 pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: usize = 1 };
 pub const Form = enum { literal, python, rust_mod, rust_use, java_static };
 /// Raw references borrow the source or the allocator passed to the lexer.

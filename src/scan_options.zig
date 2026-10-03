@@ -11,7 +11,8 @@ const PythonInitializers = resolver.PythonInitializers;
 const languages = @import("languages.zig");
 
 pub const Options = struct {
-    kinds: []const Kind = &.{ .import, .@"test" },
+    /// The edge kinds to record. References are recorded whatever their kind.
+    kinds: []const Kind = &.{ .import, .type_only, .dynamic, .@"test" },
     manifests: bool = true,
     /// Reject detectable unsupported imports in participating source files,
     /// and declarations read manifests cannot read. This also extracts code

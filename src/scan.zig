@@ -46,13 +46,18 @@ fn extract(a: std.mem.Allocator, language: Language, source: []const u8, recorde
 }
 /// The reference kinds `scan` reads from `file`, by its name alone:
 /// `import` and `test` from source in a supported language (`languageOf`),
-/// `link` from Markdown, `asset` from text that can name other files. Which of
+/// and `type_only` and `dynamic` too from JavaScript and TypeScript, `link`
+/// from Markdown, `asset` from text that can name other files. Which of
 /// them a scan collects is still `Options.kinds`.
 pub fn kindsOf(file: []const u8) std.EnumSet(Kind) {
     var kinds: std.EnumSet(Kind) = .initEmpty();
-    if (languageOf(file) != null) {
+    if (languageOf(file)) |language| {
         kinds.insert(.import);
         kinds.insert(.@"test");
+        if (language == .javascript) {
+            kinds.insert(.type_only);
+            kinds.insert(.dynamic);
+        }
     }
     if (std.mem.endsWith(u8, file, ".md")) kinds.insert(.link);
     if (recover.assetText(file)) kinds.insert(.asset);
@@ -94,7 +99,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     defer scratch.deinit();
     // Runs before any path-owning storage is destroyed.
     errdefer |cause| progress.fail(cause);
-    const code_enabled = options.strict_imports or enabled(options, .import) or enabled(options, .@"test");
+    const code_enabled = options.strict_imports or enabled(options, .import) or enabled(options, .type_only) or enabled(options, .dynamic) or enabled(options, .@"test");
     const needs_cache = blk: {
         if (code_enabled) for (g.paths) |p| {
             const language = languageOf(p);
@@ -222,7 +227,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
             const specs = recovery.specs;
             for (specs) |spec| {
                 progress.at(.resolution, p);
-                const kind: Kind = if (spec.kind == .@"test" or test_files.contains(p) or @import("code_kind.zig").file(language.?, p)) .@"test" else .import;
+                const kind: Kind = if (spec.kind == .@"test" or test_files.contains(p) or @import("code_kind.zig").file(language.?, p)) .@"test" else spec.kind;
                 const targets = try ctx.targets(p, language.?, spec);
                 try refs.append(a, .{ .from = p, .name = if (prior != null) spec.name else try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| (if (prior != null) member else try a.dupe(u8, member)) else null, .resolved = targets.len > 0, .kind = kind });
                 if (spec.member != null) continue;
@@ -236,7 +241,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                     if (children > 0 and !missing) continue;
                 }
                 for (targets) |target| {
-                    const edge_kind: Kind = if (kind == .@"test" or test_files.contains(target) or @import("code_kind.zig").file(language.?, target)) .@"test" else .import;
+                    const edge_kind: Kind = if (kind == .@"test" or test_files.contains(target) or @import("code_kind.zig").file(language.?, target)) .@"test" else kind;
                     if (!enabled(options, edge_kind)) continue;
                     const to = position.get(target).?;
                     const entry = try seen.getOrPut(s, .{ spec.offset, to });

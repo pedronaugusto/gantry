@@ -16,7 +16,8 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         if (i > 0 and (ts[i - 1].is(".") or ts[i - 1].is("?"))) continue;
         if (t.is("require") or t.is("import")) {
             if (i + 3 < ts.len and ts[i + 1].is("(") and ts[i + 2].kind == .string and (ts[i + 3].is(")") or ts[i + 3].is(","))) {
-                try out.append(a, .{ .name = try l.decodeJS(a, ts[i + 2].text), .offset = t.offset });
+                const kind: types.Kind = if (t.is("require")) (if (typeOnlyRequire(ts, i)) .type_only else .import) else callKind(ts, i);
+                try out.append(a, .{ .name = try l.decodeJS(a, ts[i + 2].text), .offset = t.offset, .kind = kind });
                 continue;
             }
             if (i + 1 < ts.len and ts[i + 1].is("(")) {
@@ -32,13 +33,46 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         var j = i + 1;
         while (j < ts.len and !ts[j].is(";") and !ts[j].is("=")) : (j += 1) {
             if (ts[j].is("from") and j + 1 < ts.len and ts[j + 1].kind == .string) {
-                try out.append(a, .{ .name = try l.decodeJS(a, ts[j + 1].text), .offset = t.offset });
+                try out.append(a, .{ .name = try l.decodeJS(a, ts[j + 1].text), .offset = t.offset, .kind = if (typeOnlyClause(ts[i + 1 .. j])) .type_only else .import });
                 break;
             }
             if (ts[j].is("import") or ts[j].is("export")) break;
         }
     }
     return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
+}
+/// `import("x")` loads a module when it runs, unless it stands in a type:
+/// after `typeof`, or before a member that is not a promise's own.
+fn callKind(ts: []const l.Token, i: usize) types.Kind {
+    if (i > 0 and ts[i - 1].is("typeof")) return .type_only;
+    if (i + 5 < ts.len and ts[i + 3].is(")") and ts[i + 4].is(".") and ts[i + 5].kind == .word) {
+        for ([_][]const u8{ "then", "catch", "finally" }) |member| if (ts[i + 5].is(member)) return .dynamic;
+        return .type_only;
+    }
+    return .dynamic;
+}
+/// `import type name = require("x")`.
+fn typeOnlyRequire(ts: []const l.Token, i: usize) bool {
+    return i >= 4 and ts[i - 1].is("=") and ts[i - 2].kind == .word and ts[i - 3].is("type") and ts[i - 4].is("import");
+}
+/// The tokens between `import` or `export` and `from` bring in types alone:
+/// `type` before the bindings (`type from` and `type,` name a binding
+/// called `type`), or braces alone whose every name is marked `type`.
+fn typeOnlyClause(clause: []const l.Token) bool {
+    if (clause.len == 0) return false;
+    if (clause[0].is("type")) return clause.len > 1 and !clause[1].is(",");
+    if (!clause[0].is("{") or !clause[clause.len - 1].is("}")) return false;
+    var names: usize = 0;
+    var start: usize = 1;
+    for (clause[1..], 1..) |token, k| {
+        if (!token.is(",") and !token.is("}")) continue;
+        const element = clause[start..k];
+        start = k + 1;
+        if (element.len == 0) continue;
+        if (element.len < 2 or !element[0].is("type") or element[1].is("as")) return false;
+        names += 1;
+    }
+    return names > 0;
 }
 
 const p = @import("../path.zig");
