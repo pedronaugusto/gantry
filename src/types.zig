@@ -27,6 +27,8 @@ pub const ImportExpression = enum {
     java_for_name,
     /// A `.loadClass(` call on a class loader.
     java_load_class,
+    /// A `pom.xml` dependency naming a property its file does not define.
+    maven_dependency,
 };
 /// Owned by Imports or Graph, with a byte offset at the construct's start.
 pub const UnsupportedReference = struct {
@@ -70,7 +72,8 @@ pub const Dependency = struct {
         /// proxy resolves. A Go requirement's module path is a `remote`.
         registry,
         /// A folder on this machine: a ZON `.path`, a Cargo or Poetry
-        /// `path`, an npm `file:`, `link:` or path, a PEP 508 `file:` URL.
+        /// `path`, an npm `file:`, `link:` or path, a PEP 508 `file:` URL,
+        /// a Maven `system` dependency's `systemPath`.
         local,
         /// A repository or archive elsewhere: a ZON `.url`, a Cargo or
         /// Poetry `git` or `url`, an npm git, URL or `owner/repo`
@@ -85,16 +88,18 @@ pub const Dependency = struct {
     pub const Scope = enum {
         /// To run: npm `dependencies` and `peerDependencies`, Cargo
         /// `dependencies`, PEP 621 `project.dependencies`, Poetry's main
-        /// table, Nimble `requires`, every ZON and Go requirement.
+        /// table, Nimble `requires`, Maven `compile`, `runtime` and
+        /// `system` scopes, every ZON and Go requirement.
         runtime,
         /// To develop or test: npm `devDependencies`, Cargo
         /// `dev-dependencies`, PEP 735 `dependency-groups`, Poetry's
-        /// `dev-dependencies` and named groups, Nimble `taskRequires`.
+        /// `dev-dependencies` and named groups, Nimble `taskRequires`,
+        /// Maven `test` scope.
         development,
         /// Only when asked for: npm `optionalDependencies`, PEP 621
         /// `project.optional-dependencies` (extras), Nimble `feature` blocks.
         optional,
-        /// To build: Cargo `build-dependencies`.
+        /// To build: Cargo `build-dependencies`, Maven `provided` scope.
         build,
     };
 
@@ -115,6 +120,11 @@ pub const Dependency = struct {
         if (std.mem.endsWith(u8, manifest, ".nimble")) {
             if (std.mem.startsWith(u8, dep.group, "taskRequires.")) return .development;
             if (std.mem.startsWith(u8, dep.group, "feature.")) return .optional;
+            return .runtime;
+        }
+        if (std.mem.eql(u8, manifest, "pom.xml")) {
+            if (std.mem.eql(u8, dep.group, "test")) return .development;
+            if (std.mem.eql(u8, dep.group, "provided")) return .build;
             return .runtime;
         }
         if (std.mem.eql(u8, manifest, "Cargo.toml")) {

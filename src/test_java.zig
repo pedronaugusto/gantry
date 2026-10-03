@@ -4,7 +4,7 @@ const f = @import("test_support.zig");
 const a = std.testing.allocator;
 const eq = std.testing.expectEqual;
 
-test "fixture: a Maven-layout Java project resolves types, packages, statics and tests" {
+test "fixture: a Maven Java project resolves types, packages, statics, tests and its declarations" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const io = std.testing.io;
@@ -24,11 +24,12 @@ test "fixture: a Maven-layout Java project resolves types, packages, statics and
         .{ .path = "src/main/java/com/acme/model/Order.java", .text = "package com.acme.model;\nimport com.acme.util.Strings.Inner;\npublic class Order {}" },
         .{ .path = "src/main/java/com/acme/model/package-info.java", .text = "@Deprecated\npackage com.acme.model;" },
         .{ .path = "src/test/java/com/acme/app/AppTest.java", .text = "package com.acme.app;\nimport com.acme.util.Strings.Inner;\nimport org.junit.Test;\nclass AppTest {}" },
+        .{ .path = "pom.xml", .text = "<project><dependencies><dependency><groupId>junit</groupId><artifactId>junit</artifactId><version>4.13.2</version><scope>test</scope></dependency></dependencies></project>" },
     };
     var paths: [items.len][]const u8 = undefined;
     for (items, &paths) |item, *path| {
         path.* = item.path;
-        try tmp.dir.createDirPath(io, g.path.dir(item.path));
+        if (g.path.dir(item.path).len > 0) try tmp.dir.createDirPath(io, g.path.dir(item.path));
         try tmp.dir.writeFile(io, .{ .sub_path = item.path, .data = item.text.? });
     }
     var graph = try g.scan(a, &paths, g.DirReader{ .io = io, .dir = tmp.dir }, g.DirReader.read, .{});
@@ -46,6 +47,9 @@ test "fixture: a Maven-layout Java project resolves types, packages, statics and
         unresolved += 1;
     };
     try eq(2, unresolved);
+    try eq(1, graph.dependencies().len);
+    try std.testing.expectEqualStrings("junit:junit", graph.dependencies()[0].name);
+    try eq(g.Dependency.Scope.development, graph.dependencies()[0].scope());
 }
 
 test "Java types resolve by declared package wherever the file sits" {

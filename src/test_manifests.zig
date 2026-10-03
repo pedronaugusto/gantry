@@ -443,6 +443,68 @@ test "the manifest names are the ones parse reads" {
     try std.testing.expect(!g.manifests.supported("requirements.txt"));
     try std.testing.expect(!g.manifests.supported("app.nimble.bak"));
 }
+test "Maven dependencies interpolate this file's properties and map their scope" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const text =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<!-- <dependency><groupId>fake</groupId></dependency> -->
+        \\<project xmlns="http://maven.apache.org/POM/4.0.0">
+        \\  <parent><groupId>org.acme</groupId><version>2.0</version></parent>
+        \\  <artifactId>app</artifactId>
+        \\  <dependencies>
+        \\    <dependency>
+        \\      <groupId>org.junit.jupiter</groupId>
+        \\      <artifactId>junit-jupiter</artifactId>
+        \\      <version>${junit.version}</version>
+        \\      <scope>test</scope>
+        \\    </dependency>
+        \\    <dependency><groupId>${project.groupId}</groupId><artifactId>core</artifactId><version>${project.version}</version></dependency>
+        \\    <dependency><groupId>javax.servlet</groupId><artifactId>servlet-api</artifactId><scope>provided</scope></dependency>
+        \\    <dependency><groupId>com.x</groupId><artifactId>native</artifactId><version>1</version><scope>system</scope><systemPath>${basedir}/lib/native.jar</systemPath></dependency>
+        \\    <dependency><groupId>a&amp;b</groupId><artifactId><![CDATA[c]]></artifactId><optional>true</optional></dependency>
+        \\    <dependency><groupId>com.y</groupId><artifactId>lib</artifactId><version>${elsewhere.version}</version></dependency>
+        \\  </dependencies>
+        \\  <dependencyManagement><dependencies><dependency><groupId>managed</groupId><artifactId>m</artifactId></dependency></dependencies></dependencyManagement>
+        \\  <build><plugins><plugin><dependencies><dependency><groupId>plugin</groupId><artifactId>p</artifactId></dependency></dependencies></plugin></plugins></build>
+        \\  <properties>
+        \\    <junit.version>${junit.major}.10.2</junit.version>
+        \\    <junit.major>5</junit.major>
+        \\  </properties>
+        \\</project>
+    ;
+    const declared = try g.manifests.read(arena.allocator(), "app/pom.xml", text);
+    const deps = declared.dependencies;
+    try eq(5, deps.len);
+    const Scope = g.Dependency.Scope;
+    const junit = try find(deps, "org.junit.jupiter:junit-jupiter");
+    try std.testing.expectEqualStrings("5.10.2", junit.requirement);
+    try eq(Scope.development, junit.scope());
+    const core = try find(deps, "org.acme:core");
+    try std.testing.expectEqualStrings("2.0", core.requirement);
+    try eq(Scope.runtime, core.scope());
+    try std.testing.expectEqualStrings("compile", core.group);
+    try eq(Scope.build, (try find(deps, "javax.servlet:servlet-api")).scope());
+    const native = try find(deps, "com.x:native");
+    try eq(g.Dependency.Origin.local, native.origin);
+    try std.testing.expectEqualStrings("./lib/native.jar", native.source);
+    try eq(g.Dependency.Origin.registry, (try find(deps, "a&b:c")).origin);
+    try eq(1, declared.unsupported.len);
+    try eq(g.ImportExpression.maven_dependency, declared.unsupported[0].expression);
+    try std.testing.expect(std.mem.startsWith(u8, text[declared.unsupported[0].offset..], "<dependency><groupId>com.y"));
+}
+test "malformed Maven documents and dependencies fail rather than reporting part of them" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    for ([_][]const u8{
+        "<project><dependencies>",
+        "<project></dependencies>",
+        "<project><!-- unterminated </project>",
+        "<project><dependencies><dependency><artifactId>x</artifactId></dependency></dependencies></project>",
+        "<project attr=\"x>",
+    }) |text| try std.testing.expectError(error.InvalidManifest, g.manifests.parse(arena.allocator(), "pom.xml", text));
+    try eq(0, (try g.manifests.parse(arena.allocator(), "pom.xml", "<settings><dependencies><dependency><groupId>a</groupId><artifactId>b</artifactId></dependency></dependencies></settings>")).len);
+}
 test "Nimble requirements keep their constraint, origin, revision and scope" {
     var arena: std.heap.ArenaAllocator = .init(a);
     defer arena.deinit();

@@ -28,6 +28,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/lang/rust.zig",
         "src/lang/zig.zig",
         "src/manifests.zig",
+        "src/maven.zig",
         "src/nim_config.zig",
         "src/nimble.zig",
         "src/tsconfig.zig",
