@@ -4,7 +4,7 @@ const f = @import("test_support.zig");
 const a = std.testing.allocator;
 const eq = std.testing.expectEqual;
 
-test "fixture: a Nim project resolves sources, groups, includes and its tests' search path" {
+test "fixture: a Nim project resolves sources, groups, includes, its tests' search path and requirements" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const io = std.testing.io;
@@ -15,6 +15,7 @@ test "fixture: a Nim project resolves sources, groups, includes and its tests' s
         .{ .path = "src/app/inc.nim", .text = "proc included() = discard" },
         .{ .path = "tests/config.nims", .text = "switch(\"path\", \"../src\")" },
         .{ .path = "tests/tapp.nim", .text = "import app, app/util\nimport unittest" },
+        .{ .path = "app.nimble", .text = "srcDir = \"src\"\nrequires \"nim >= 2.0\", \"jester#head\"\ntaskRequires \"test\", \"unittest2\"" },
     };
     try tmp.dir.createDirPath(io, "src/app");
     try tmp.dir.createDirPath(io, "tests");
@@ -39,6 +40,10 @@ test "fixture: a Nim project resolves sources, groups, includes and its tests' s
     };
     // std/os, strutils, winlean, posix, unittest
     try eq(5, unresolved);
+    try eq(2, graph.dependencies().len);
+    try std.testing.expectEqualStrings("jester", graph.dependencies()[0].name);
+    try std.testing.expectEqualStrings("head", graph.dependencies()[0].revision());
+    try eq(g.Dependency.Scope.development, graph.dependencies()[1].scope());
 }
 
 test "Nim std names only the standard library and pkg only search paths" {

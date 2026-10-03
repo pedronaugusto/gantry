@@ -26,6 +26,7 @@ fn lexical(language: g.Language, source: []const u8, count: usize) !void {
             .rust_path => "#[path",
             .nim_import => if (std.mem.startsWith(u8, rest, "from")) "from" else "import",
             .nim_include => "include",
+            .nimble_requires => if (std.mem.startsWith(u8, rest, "task")) "taskRequires" else "requires",
         };
         try std.testing.expect(std.mem.startsWith(u8, rest, spelling));
     }

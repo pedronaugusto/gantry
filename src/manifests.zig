@@ -5,21 +5,35 @@ const t = @import("types.zig");
 const p = @import("path.zig");
 /// The manifest file names `parse` reads, each the whole base name of a path.
 pub const names = [_][]const u8{ "build.zig.zon", "package.json", "Cargo.toml", "go.mod", "pyproject.toml" };
-/// Whether `path`'s base name is one of `names`.
+/// The manifest extensions `parse` reads, for manifests named after their package.
+pub const extensions = [_][]const u8{".nimble"};
+/// Whether `path`'s base name is one of `names` or ends in one of `extensions`.
 pub fn supported(path: []const u8) bool {
     const name = p.base(path);
     for (names) |s| if (std.mem.eql(u8, s, name)) return true;
+    for (extensions) |s| if (name.len > s.len and std.mem.endsWith(u8, name, s)) return true;
     return false;
 }
+/// What a manifest declares, and the declarations it spells in a form that
+/// is not read: each record's offset starts the construct.
+pub const Declarations = struct {
+    dependencies: []const t.Dependency,
+    unsupported: []const t.UnsupportedReference,
+};
 /// a must be an arena: parser workspaces and strings share its lifetime.
 /// Returned declarations borrow text or that arena; parse does not own either.
 /// ZON validates the whole document and reads only the root struct dependencies.
 /// Invalid ZON or dependency shapes return InvalidManifest, with no partial result.
 pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8) ![]const t.Dependency {
+    return (try read(a, path, text)).dependencies;
+}
+/// `parse`, keeping the declarations it cannot read (records without a path).
+pub fn read(a: std.mem.Allocator, path: []const u8, text: []const u8) !Declarations {
     var out: std.ArrayList(t.Dependency) = .empty;
+    var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     const name = p.base(path);
-    if (std.mem.eql(u8, name, "package.json")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, "build.zig.zon")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, "go.mod")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, "Cargo.toml") or std.mem.eql(u8, name, "pyproject.toml")) try toml(a, path, text, &out) else return error.UnsupportedManifest;
-    return out.toOwnedSlice(a);
+    if (std.mem.eql(u8, name, "package.json")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, "build.zig.zon")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, "go.mod")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, "Cargo.toml") or std.mem.eql(u8, name, "pyproject.toml")) try toml(a, path, text, &out) else if (supported(path) and std.mem.endsWith(u8, name, ".nimble")) try @import("nimble.zig").parse(a, path, text, &out, &unsupported) else return error.UnsupportedManifest;
+    return .{ .dependencies = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
 fn json(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) !void {
     const value = std.json.parseFromSliceLeaky(std.json.Value, a, text, .{}) catch |err| switch (err) {

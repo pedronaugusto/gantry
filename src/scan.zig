@@ -127,6 +127,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     var modules: std.ArrayList(resolver.GoModule) = .empty;
     var workspaces: std.ArrayList(@import("go_config.zig").Workspace) = .empty;
     var deps: std.ArrayList(Dependency) = .empty;
+    var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     // Read manifests first: Go imports need the module identity even when
     // manifest dependencies have been disabled.
     for (g.paths) |p| {
@@ -143,9 +144,15 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                 };
                 if (is_work) try workspaces.append(w, .{ .root = path.dir(p), .uses = parsed.uses, .replacements = parsed.replacements });
             }
-            if (options.manifests and manifests.supported(p)) for (try manifests.parse(s, p, text)) |dep| {
-                try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group), .origin = dep.origin });
-            };
+            if (options.manifests and manifests.supported(p)) {
+                const declared = try manifests.read(s, p, text);
+                if (options.strict_imports and declared.unsupported.len > 0) {
+                    progress.offset = declared.unsupported[0].offset;
+                    return error.UnsupportedImport;
+                }
+                for (declared.unsupported) |record| try unsupported.append(a, .{ .from = p, .offset = record.offset, .expression = record.expression });
+                for (declared.dependencies) |dep| try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group), .origin = dep.origin });
+            }
         }
         _ = scratch.reset(.retain_capacity);
     }
@@ -158,7 +165,6 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
-    var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     for (g.paths, 0..) |p, file_index| {
         if (inactive.contains(p)) continue;
         const language = languageOf(p);
@@ -254,7 +260,13 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
             return std.mem.order(u8, x.source, y.source) == .lt;
         }
     }.less);
-    // Selected paths and each extractor are already in source order.
+    // Each extractor is in source order; manifests are read before sources.
+    std.mem.sort(t.UnsupportedReference, unsupported.items, {}, struct {
+        fn less(_: void, x: t.UnsupportedReference, y: t.UnsupportedReference) bool {
+            const from = std.mem.order(u8, x.from.?, y.from.?);
+            return from == .lt or (from == .eq and x.offset < y.offset);
+        }
+    }.less);
     g.unsupported = try unsupported.toOwnedSlice(a);
     g.references = try refs.toOwnedSlice(a);
     g.dependencies = try deps.toOwnedSlice(a);

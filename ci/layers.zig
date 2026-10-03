@@ -28,6 +28,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/lang/zig.zig",
         "src/manifests.zig",
         "src/nim_config.zig",
+        "src/nimble.zig",
         "src/tsconfig.zig",
     } },
     .{ .name = "graph storage and language policy", .patterns = &.{

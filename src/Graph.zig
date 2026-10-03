@@ -30,8 +30,9 @@ pub const Graph = enum(usize) {
     pub fn references(g: *const Graph) []const t.Reference {
         return store.get(g.*).references;
     }
-    /// Detectable import constructs omitted by lexical recovery, ordered by
-    /// source path and byte offset. These slices belong to this graph.
+    /// Detectable import and manifest declaration constructs omitted by
+    /// lexical recovery, ordered by path and byte offset. These slices
+    /// belong to this graph.
     pub fn unsupported(g: *const Graph) []const t.UnsupportedReference {
         return store.get(g.*).unsupported;
     }

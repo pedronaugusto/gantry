@@ -434,5 +434,88 @@ test "the manifest names are the ones parse reads" {
         try std.testing.expect(g.manifests.supported(nested));
         _ = g.manifests.parse(arena.allocator(), name, "") catch |err| try std.testing.expect(err != error.UnsupportedManifest);
     }
+    for (g.manifests.extensions) |extension| {
+        const named = try std.fmt.allocPrint(arena.allocator(), "pkg/app{s}", .{extension});
+        try std.testing.expect(g.manifests.supported(named));
+        _ = g.manifests.parse(arena.allocator(), named, "") catch |err| try std.testing.expect(err != error.UnsupportedManifest);
+        try std.testing.expect(!g.manifests.supported(extension));
+    }
     try std.testing.expect(!g.manifests.supported("requirements.txt"));
+    try std.testing.expect(!g.manifests.supported("app.nimble.bak"));
+}
+test "Nimble requirements keep their constraint, origin, revision and scope" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const declared = try g.manifests.read(arena.allocator(), "app.nimble",
+        \\# requires "commented"
+        \\version = "0.1.0"
+        \\requires "nim >= 2.0.0", "jester >= 0.6",
+        \\  "karax#head"
+        \\requires("https://github.com/me/lib.git#v1.2 >= 1.0")
+        \\when defined(windows):
+        \\  requires "winim"
+        \\taskRequires "test", "unittest2 ~= 0.2"
+        \\feature "web":
+        \\  requires "prologue"
+        \\requires "after"
+        \\let s = "requires \"fake\""
+    );
+    const deps = declared.dependencies;
+    try eq(0, declared.unsupported.len);
+    try eq(7, deps.len);
+    const Scope = g.Dependency.Scope;
+    const jester = try find(deps, "jester");
+    try std.testing.expectEqualStrings(">= 0.6", jester.requirement);
+    try eq(g.Dependency.Origin.registry, jester.origin);
+    try eq(Scope.runtime, jester.scope());
+    const karax = try find(deps, "karax");
+    try std.testing.expectEqualStrings("#head", karax.requirement);
+    try std.testing.expectEqualStrings("head", karax.revision());
+    const lib = try find(deps, "https://github.com/me/lib.git");
+    try eq(g.Dependency.Origin.remote, lib.origin);
+    try std.testing.expectEqualStrings("https://github.com/me/lib.git#v1.2", lib.source);
+    try std.testing.expectEqualStrings("v1.2", lib.revision());
+    try std.testing.expectEqualStrings(">= 1.0", lib.requirement);
+    try eq(Scope.runtime, (try find(deps, "winim")).scope());
+    const unittest = try find(deps, "unittest2");
+    try std.testing.expectEqualStrings("taskRequires.test", unittest.group);
+    try eq(Scope.development, unittest.scope());
+    try eq(Scope.optional, (try find(deps, "prologue")).scope());
+    try eq(Scope.runtime, (try find(deps, "after")).scope());
+}
+test "Nimble requirements that are not string literals declare nothing and are kept unsupported" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const text =
+        \\const ver = "1.0"
+        \\requires "a", "b >= " & ver
+        \\requires someList
+        \\taskRequires taskName, "c"
+        \\requires "d"
+    ;
+    const declared = try g.manifests.read(arena.allocator(), "x.nimble", text);
+    try eq(1, declared.dependencies.len);
+    try std.testing.expectEqualStrings("d", declared.dependencies[0].name);
+    try eq(3, declared.unsupported.len);
+    for (declared.unsupported) |record| {
+        try eq(g.ImportExpression.nimble_requires, record.expression);
+        const rest = text[record.offset..];
+        try std.testing.expect(std.mem.startsWith(u8, rest, "requires") or std.mem.startsWith(u8, rest, "taskRequires"));
+    }
+    const fixture: f.Fixture = .{ .items = &.{
+        .{ .path = "x.nimble", .text = text },
+        .{ .path = "a.nim", .text = "import $name" },
+    } };
+    var graph = try fixture.scan(a, .{});
+    defer graph.deinit();
+    try eq(4, graph.unsupported().len);
+    try std.testing.expectEqualStrings("a.nim", graph.unsupported()[0].from.?);
+    try std.testing.expectEqualStrings("x.nimble", graph.unsupported()[1].from.?);
+    var options: g.Options = .{ .strict_imports = true };
+    options.kinds = &.{};
+    var diagnostic = g.ScanDiagnostic.init(a);
+    defer diagnostic.deinit();
+    try std.testing.expectError(error.UnsupportedImport, g.scanWithDiagnostic(a, &.{"x.nimble"}, fixture, f.Fixture.read, options, &diagnostic));
+    try std.testing.expectEqual(g.ScanDiagnostic.Phase.manifests, diagnostic.failure.?.phase);
+    try std.testing.expectEqual(@as(?usize, std.mem.indexOf(u8, text, "requires \"a\"")), diagnostic.failure.?.offset);
 }

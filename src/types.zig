@@ -6,7 +6,8 @@ pub const Form = enum { literal, python, rust_mod, rust_use };
 /// Raw references borrow the source or the allocator passed to the lexer.
 pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false };
 pub const Reference = struct { from: []const u8, name: []const u8, offset: usize, member: ?[]const u8 = null, resolved: bool = false, kind: Kind = .import };
-/// The lexical construct that recovery could not turn into a reference.
+/// The lexical construct that recovery could not turn into a reference, or
+/// a manifest construct it could not turn into a declaration.
 pub const ImportExpression = enum {
     zig_import,
     c_include,
@@ -20,6 +21,8 @@ pub const ImportExpression = enum {
     nim_import,
     /// An `include` operand that is not a module path or string.
     nim_include,
+    /// A `.nimble` `requires` or `taskRequires` argument that is not a string literal.
+    nimble_requires,
 };
 /// Owned by Imports or Graph, with a byte offset at the construct's start.
 pub const UnsupportedReference = struct {
@@ -65,7 +68,7 @@ pub const Dependency = struct {
         local,
         /// A repository or archive elsewhere: a ZON `.url`, a Cargo or
         /// Poetry `git` or `url`, an npm git, URL or `owner/repo`
-        /// shorthand, a PEP 508 URL, a Go module path.
+        /// shorthand, a PEP 508 URL, a Go module path, a Nimble URL.
         remote,
         /// Another member of the same workspace: npm `workspace:`, Cargo
         /// `workspace = true`.
@@ -76,14 +79,14 @@ pub const Dependency = struct {
     pub const Scope = enum {
         /// To run: npm `dependencies` and `peerDependencies`, Cargo
         /// `dependencies`, PEP 621 `project.dependencies`, Poetry's main
-        /// table, every ZON and Go requirement.
+        /// table, Nimble `requires`, every ZON and Go requirement.
         runtime,
         /// To develop or test: npm `devDependencies`, Cargo
         /// `dev-dependencies`, PEP 735 `dependency-groups`, Poetry's
-        /// `dev-dependencies` and named groups.
+        /// `dev-dependencies` and named groups, Nimble `taskRequires`.
         development,
         /// Only when asked for: npm `optionalDependencies`, PEP 621
-        /// `project.optional-dependencies` (extras).
+        /// `project.optional-dependencies` (extras), Nimble `feature` blocks.
         optional,
         /// To build: Cargo `build-dependencies`.
         build,
@@ -103,6 +106,11 @@ pub const Dependency = struct {
             if (std.mem.startsWith(u8, dep.group, "project.optional-dependencies.")) return .optional;
             return .development;
         }
+        if (std.mem.endsWith(u8, manifest, ".nimble")) {
+            if (std.mem.startsWith(u8, dep.group, "taskRequires.")) return .development;
+            if (std.mem.startsWith(u8, dep.group, "feature.")) return .optional;
+            return .runtime;
+        }
         if (std.mem.eql(u8, manifest, "Cargo.toml")) {
             var parts = std.mem.splitScalar(u8, dep.group, '.');
             while (parts.next()) |part| {
@@ -120,10 +128,13 @@ pub const Dependency = struct {
     /// VCS URL (`git+https://host/x.git@v1`). Empty when it names none, for
     /// every other origin, and for a revision a manifest keeps under a key
     /// of its own (Cargo's and Poetry's `rev`, `tag`, `branch`), which is
-    /// not read. A Go requirement's version is its `requirement`.
+    /// not read. A Go requirement's version is its `requirement`. A Nimble
+    /// package from the registry can pin one too (`name#head`), as a slice
+    /// of its `requirement`.
     pub fn revision(dep: Dependency) []const u8 {
-        if (dep.origin != .remote) return "";
         const manifest = baseName(dep.manifest);
+        if (std.mem.endsWith(u8, manifest, ".nimble") and dep.origin == .registry and std.mem.startsWith(u8, dep.requirement, "#")) return dep.requirement[1..];
+        if (dep.origin != .remote) return "";
         if (std.mem.eql(u8, manifest, "go.mod")) return "";
         if (std.mem.eql(u8, manifest, "pyproject.toml")) return vcsRevision(dep.source);
         const hash = std.mem.lastIndexOfScalar(u8, dep.source, '#') orelse return "";
