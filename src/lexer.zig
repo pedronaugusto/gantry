@@ -36,11 +36,14 @@ pub fn lexCompact(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8,
     return tokenize(lang, false, a, text, seen);
 }
 fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator, text: []const u8, seen: ?Observer) ![]Token {
-    var out: std.ArrayList(Token) = .empty;
+    var out: Stream = .{ .total = text.len };
+    // Room at once for a small file: a token in four bytes, up to a few
+    // hundred, which a large sparse file never pays for.
+    try out.list.ensureTotalCapacityPrecise(a, @min(text.len / 4 + 4, 512));
     var i: usize = 0;
     var regex_allowed = true;
     var control_pending = false;
-    errdefer out.deinit(a);
+    errdefer out.list.deinit(a);
     var controls: std.ArrayList(bool) = .empty;
     defer controls.deinit(a);
     var templates: std.ArrayList(usize) = .empty;
@@ -56,7 +59,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
         if (lang == .javascript and (c == '`' or (c == '}' and templates.items.len > 0 and templates.items[templates.items.len - 1] == 0))) {
             // Retain an opaque boundary so a string inside an interpolation
             // cannot become the literal operand of an enclosing import call.
-            try out.append(a, .{ .kind = .template, .text = text[start .. start + 1], .offset = start, .end = start + 1 });
+            try out.push(a, .{ .kind = .template, .text = text[start .. start + 1], .offset = start, .end = start + 1 });
             if (c == '}') _ = templates.pop();
             i += 1;
             while (i < text.len) {
@@ -80,7 +83,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
         }
         if (c == '\n') {
             i += 1;
-            if (newlines) try out.append(a, .{ .kind = .newline, .text = text[start..i], .offset = start, .end = i });
+            if (newlines) try out.push(a, .{ .kind = .newline, .text = text[start..i], .offset = start, .end = i });
             continue;
         }
         if (std.ascii.isWhitespace(c)) {
@@ -111,7 +114,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
                     depth += 1;
                     i += 2;
                 } else {
-                    if (newlines and lang == .c and text[i] == '\n') try out.append(a, .{ .kind = .newline, .text = text[i .. i + 1], .offset = i, .end = i + 1 });
+                    if (newlines and lang == .c and text[i] == '\n') try out.push(a, .{ .kind = .newline, .text = text[i .. i + 1], .offset = i, .end = i + 1 });
                     i += 1;
                 }
             }
@@ -183,7 +186,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             // prefixed one doubles its quote. A prefix like `fmt` makes a call.
             const triple = std.mem.startsWith(u8, text[i..], "\"\"\"");
             i = if (triple) tripleEnd(text, i + 3, "\"\"\"") else nimRawEnd(text, i + 1);
-            if (!triple) try out.append(a, .{ .kind = .template, .text = text[start..i], .offset = start, .end = i });
+            if (!triple) try out.push(a, .{ .kind = .template, .text = text[start..i], .offset = start, .end = i });
             regex_allowed = false;
             continue;
         }
@@ -196,7 +199,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
         if ((lang == .groovy or lang == .kotlin) and c == '"') {
             const scanned = try interpolation(a, text, i + 1);
             i = scanned.end;
-            if (scanned.closed) try out.append(a, .{ .kind = if (scanned.code) .template else .string, .text = text[start + 1 .. i - 1], .offset = start, .end = i });
+            if (scanned.closed) try out.push(a, .{ .kind = if (scanned.code) .template else .string, .text = text[start + 1 .. i - 1], .offset = start, .end = i });
             regex_allowed = false;
             continue;
         }
@@ -204,7 +207,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             // A backquoted Kotlin name is a word.
             const close = std.mem.indexOfAnyPos(u8, text, i + 1, "`\n") orelse text.len;
             if (close < text.len and text[close] == '`') {
-                try out.append(a, .{ .kind = .word, .text = text[i + 1 .. close], .offset = start, .end = close + 1 });
+                try out.push(a, .{ .kind = .word, .text = text[i + 1 .. close], .offset = start, .end = close + 1 });
                 i = close + 1;
                 regex_allowed = false;
                 continue;
@@ -244,8 +247,8 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             i = @min(i + width, text.len);
             const character = c == '\'' and (lang == .zig or lang == .c or lang == .rust or lang == .java or lang == .kotlin);
             if (closed and !triple and !character and !(lang == .javascript and c == '`')) {
-                try out.append(a, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
-                if (seen) |observer| try observer.token(observer.context, out.items);
+                try out.push(a, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
+                if (seen) |observer| try observer.token(observer.context, out.list.items);
             }
             regex_allowed = false;
             continue;
@@ -254,14 +257,14 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             i += 1;
             while (i < text.len and identIn(lang, text[i])) : (i += 1) {}
             const word = text[start..i];
-            try out.append(a, .{ .kind = .word, .text = word, .offset = start, .end = i });
-            if (seen) |observer| try observer.token(observer.context, out.items);
+            try out.push(a, .{ .kind = .word, .text = word, .offset = start, .end = i });
+            if (seen) |observer| try observer.token(observer.context, out.list.items);
             control_pending = std.mem.eql(u8, word, "if") or std.mem.eql(u8, word, "while") or std.mem.eql(u8, word, "for") or std.mem.eql(u8, word, "with") or std.mem.eql(u8, word, "switch") or std.mem.eql(u8, word, "catch");
             regex_allowed = std.mem.eql(u8, word, "return") or std.mem.eql(u8, word, "throw") or std.mem.eql(u8, word, "case") or std.mem.eql(u8, word, "else") or std.mem.eql(u8, word, "do") or std.mem.eql(u8, word, "yield") or std.mem.eql(u8, word, "await") or std.mem.eql(u8, word, "typeof") or std.mem.eql(u8, word, "void") or std.mem.eql(u8, word, "delete") or std.mem.eql(u8, word, "in") or std.mem.eql(u8, word, "instanceof");
             continue;
         }
         i += 1;
-        try out.append(a, .{ .kind = .punctuation, .text = text[start..i], .offset = start, .end = i });
+        try out.push(a, .{ .kind = .punctuation, .text = text[start..i], .offset = start, .end = i });
         regex_allowed = std.mem.indexOfScalar(u8, "=(:,;!&|?{}", c) != null;
         if (lang == .javascript) {
             if (c == '(') {
@@ -275,8 +278,29 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             }
         }
     }
-    return out.toOwnedSlice(a);
+    return out.list.toOwnedSlice(a);
 }
+/// A token stream as it is lexed. It grows by the density of the text read
+/// so far, so a long stream moves a few times rather than at every half
+/// again, and a sparse text never holds room for tokens it lacks.
+const Stream = struct {
+    list: std.ArrayList(Token) = .empty,
+    /// The length of the text.
+    total: usize,
+    fn push(s: *Stream, a: std.mem.Allocator, token: Token) !void {
+        if (s.list.items.len == s.list.capacity) try s.grow(a, token.end);
+        s.list.appendAssumeCapacity(token);
+    }
+    fn grow(s: *Stream, a: std.mem.Allocator, read: usize) !void {
+        @branchHint(.unlikely);
+        const n = s.list.items.len;
+        const projected = @as(u128, n) * s.total / @max(read, 1);
+        // Between half again and four times what is held.
+        const least = n + n / 2 + 16;
+        const most = 4 * n + 16;
+        try s.list.ensureTotalCapacityPrecise(a, @intCast(@min(@max(projected, least), most)));
+    }
+};
 fn ident(c: u8) bool {
     return std.ascii.isAlphanumeric(c) or c == '_' or c == '$' or c >= 128;
 }
