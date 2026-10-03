@@ -65,7 +65,9 @@ const p = @import("../path.zig");
 /// is the file `C.java` declaring `package a.b`, and a nested or static
 /// member such as `a.b.C.D` falls back to its enclosing type's file. `a.b.*`
 /// is every file of package `a.b`, or the type `a.b` when there is no such
-/// package. A type several selected files declare resolves to each of them.
+/// package: an over-approximation, since the importer uses only some of
+/// them, which symbol-level dependencies would narrow. A type several
+/// selected files declare resolves to each of them.
 pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     _ = from;
     const a = c.allocator;

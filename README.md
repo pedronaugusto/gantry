@@ -107,8 +107,10 @@ a `$` substitution is not read.
 
 Java imports resolve through the `package` each selected file declares, wherever the file
 sits: `a.b.C` is `C.java` in package `a.b`, a nested or static member falls back to its
-enclosing type's file, and `a.b.*` is every file of the package. A type that several
-selected files declare resolves to each of them. Types of the importer's own package and
+enclosing type's file, and `a.b.*` is an edge to every file of the package. That
+over-approximates: the importer uses only some of those types, and only symbol-level
+dependencies could narrow it. A type that several selected files declare resolves to each
+of them. Types of the importer's own package and
 fully qualified names need no import, so they give no edge. Sources are read once for
 their package and imports. `Class.forName` and `loadClass` calls are unsupported.
 
