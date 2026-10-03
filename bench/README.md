@@ -98,7 +98,7 @@ workloads (`process/*`) are timed from outside as processes, with wall time and
 peak RSS, and each side reports its phases (start, imports, analysis) so tool
 start-up stays apart from the work.
 
-Sizes: imports per file 20 / 200 / 5,000; manifest declarations 10 / 100 / 1,000;
+Sizes: imports per file 20 / 200 / 5,000 (kinds: seven imports of three kinds per unit, 20 / 200 / 5,000 units); manifest declarations 10 / 100 / 1,000;
 in-memory trees 100 / 5,000 / 50,000 files (groups of ten, each a ten-file cycle,
 with cross-group edges); whole-tree workloads use the 30,002-file synthetic
 corpus, 5,000 Markdown pages, or a 5,501-file Python package.
@@ -125,6 +125,12 @@ corpus, 5,000 Markdown pages, or a 5,501-file Python package.
 | `path.normalize` | `path/normalize/<size>` | unavailable: `posixpath.normpath` and `std.fs.path.resolve` keep `..` above the root and accept absolute paths |
 | `rules.matches`, `rules.matchesToken` | `match/path/<size>`; `match/token/<size>` after only | unavailable: the pinned tools match globs only inside interpreters |
 | whole-tree `scan` + graph | `<language>/graph` (existing) | madge, dependency-cruiser, pydeps, Grimp, `go list`, cargo-modules |
+| `Analysis.direct`, `reach`, `affected`, `chain` | `graph/{direct,reach,affected,chain}/<size>`, after only | Grimp 3.17 `find_modules_that_directly_import`, `find_upstream_modules`, `find_downstream_modules`, `find_shortest_chain` on its own graph of the same edges, built outside the clock |
+| `Analysis.coupling`, `directoryCoupling` | inside `graph/analyze`; end to end `process/metrics-js`, after only | dependency-cruiser 16.10.4 `--metrics` (same files, folders, distinct dependencies and folder couplings) |
+| transitive forbidden rules and ordered layers | `rules/{transitive,layers-transitive}/<size>`; end to end `process/reach-js`, `process/reach-python`, after only | in process unavailable (the rule tools check only graphs they build); dependency-cruiser `reachable: true`, import-linter forbidden contract with indirect imports (sources that reach a forbidden module) |
+| reachable rules | `rules/reachable/<size>`, after only | unavailable: dependency-cruiser's `reachable: false` and madge `--orphans` check only graphs they build |
+| dependency rules | `rules/dependencies/<size>`, after only | unavailable: dependency-cruiser `no-non-package-json`, depcheck and deptry judge packages resolved in an installed `node_modules` or environment, and the bench installs none |
+| `imports` edge kinds (TS) | `kinds/javascript/<size>`, after only | TypeScript 5.7.3 syntax tree (`isTypeOnly`, `ImportTypeNode`, `import()` calls), as dependency-cruiser reads it |
 
 Skipped as value helpers with no measurable cost: `languageOf`, `kindsOf`,
 `manifests.supported`, `manifests.modulePath`, `path.dir/base/within/directory`,
@@ -154,6 +160,10 @@ publishes.
 | manifests/build.zig.zon vs `std.zig.Ast` | 0.7–0.9x | (a) | The comparison parsed only; it now also runs `std.zig.ZonGen`, which checks ZON semantics as `std.zon` and gantry do (ZonGen was about 60% of gantry's time). Parsing alone was 3.5–4.5x faster than gantry. The rest is the fresh arena the harness gives each parse. |
 | imports/go vs go/parser ImportsOnly | 0.9–1.2x | (b) | ImportsOnly stops after the import declarations; gantry lexes the whole file, because it reports an `import` wherever one is spelled and token rules read the same stream. Go's scanner alone over the whole file takes 2.8–3.8x gantry's time. |
 | process/walk vs ripgrep `--files` | 0.7x | (b) | ripgrep walks on a thread per core (0.26 CPU-s against gantry's 0.07); gantry starts no thread. With `-j1` ripgrep is 1.5x slower. |
+| graph/{reach,affected} vs Grimp | 30–40x | (b) | Same 55,000 edges and the same set of 50,000 files. gantry walks adjacency arrays of path positions with one mark per file and returns borrowed path slices; Grimp walks its hashed module graph and builds a Python set of 50,000 module-name strings per call. The harness counts the start a chain returns to without copying Grimp's set (it was copied once; diagnostic). |
+| graph/direct vs Grimp | 7–8x | (b) | Both answer two dependents; Grimp's answer is a Python set built across the Rust boundary, gantry's a slice of the analysis's adjacency. |
+| graph/chain vs Grimp | 7x | (b) | Same chain length (6 per group crossed); gantry's distances are one breadth-first pass over adjacency arrays, Grimp's bidirectional search keys a hash map by module and returns a Python tuple of names. |
+| process/reach-python vs import-linter | 3x | (c) | Same 500 source modules; import-linter (Grimp underneath) searches a chain for every source and forbidden module pair (250,000 pairs), gantry one nearest-target pass per rule. |
 | process/tokens vs ripgrep | 0.5x | (b) | ripgrep searches on a thread per core (3.8 CPU-s against 0.65) and only matches words; gantry also scans every import. With `-j1` ripgrep is 1.2x slower. Both spend most of the time opening files. |
 
 Rows where gantry is not faster (diagnostic, gantry `fast` branch): `imports/go`

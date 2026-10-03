@@ -46,6 +46,15 @@ def source(language, n):
     return ''.join(out)
 
 
+def kinds(n):
+    """TypeScript with each import kind: one static, five type-only, one
+    dynamic, and a commented-out import, per unit."""
+    return ''.join(
+        f"import {{ a{i} }} from './m{i}';\nimport type {{ T{i} }} from './t{i}';\nexport type {{ U{i} }} from './u{i}';\n"
+        f"import {{ type V{i}, type W{i} }} from './v{i}';\nconst d{i} = import('./d{i}');\nlet x{i}: import('./x{i}').X;\n"
+        f"type Y{i} = typeof import('./y{i}');\n// import type {{ Z }} from './fake'\n" for i in range(n))
+
+
 def manifest(name, n):
     r = range(n)
     if name == 'package.json':
@@ -92,6 +101,17 @@ def python_package(root, count, write):
         write(root / f'pkg/g{g}/f{m}.py', body + '# ' + 'comment ' * 16 + '\ntext = "import pkg.fake"\n')
 
 
+def typescript_tree(root, count, write):
+    """js/gN/fM.ts imports the file before it in its folder, and each f0 the
+    f5 of folder (N - 1) / 2: dependencies inside and across folders, in
+    chains no deeper than a balanced tree (dependency-cruiser's recursive
+    cycle search exhausts node's stack on a chain of hundreds of folders)."""
+    for i in range(count):
+        g, m = divmod(i, 10)
+        body = f"import './f{m - 1}';\n" if m else (f"import '../g{(g - 1) // 2}/f5';\n" if g else '')
+        write(root / f'js/g{g}/f{m}.ts', body + '// ' + 'comment ' * 16 + "\nexport const text = \"import './fake'\";\n")
+
+
 def save(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists() or path.read_text() != text:
@@ -112,6 +132,11 @@ def generate(root, smoke, write=True):
                 path = root / 'imports' / language / size / 'Big.java'
             write(path, source(language, n))
             files[('imports', language, size)] = path
+    for size, n in IMPORT_SIZES.items():
+        if smoke and size != 'small': continue
+        path = root / 'kinds' / 'javascript' / (size + '.ts')
+        write(path, kinds(n))
+        files[('kinds', 'javascript', size)] = path
     for name in MANIFESTS:
         for size, n in MANIFEST_SIZES.items():
             if smoke and size != 'small': continue
@@ -121,6 +146,9 @@ def generate(root, smoke, write=True):
     count = 10 if smoke else 5000
     markdown(root / 'markdown', count, write)
     python_package(root / 'python', count, write)
+    typescript_tree(root / 'typescript', 30 if smoke else 5000, write)
     write(root / 'python.importlinter', '[importlinter]\nroot_package = pkg\n\n[importlinter:contract:forbid]\nname = forbid\n'
           'type = forbidden\nsource_modules =\n    pkg.*.f5\nforbidden_modules =\n    pkg.*.f4\nallow_indirect_imports = True\n')
+    write(root / 'python-reach.importlinter', '[importlinter]\nroot_package = pkg\n\n[importlinter:contract:far]\nname = far\n'
+          'type = forbidden\nsource_modules =\n    pkg.*.f9\nforbidden_modules =\n    pkg.*.f1\n')
     return files

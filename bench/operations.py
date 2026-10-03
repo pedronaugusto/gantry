@@ -12,6 +12,7 @@ SIZES = ('small', 'medium', 'large')
 NO_TOOL_GRAPH = 'no pinned tool takes a caller edge list: madge --circular and import-linter analyse only graphs they build'
 NO_TOOL_MATCH = 'the pinned tools offer path globs only inside interpreters (minimatch, pathlib), where one call costs more than the match'
 UNAVAILABLE = {
+    'rules/transitive': 'dependency-cruiser and import-linter check only graphs they build; end to end in process/reach-js and process/reach-python',
     'imports/c': 'no include lister short of a preprocessor: cc -M and libclang evaluate conditionals and need every header present',
     'imports/nim': "Nim's parser ships only inside the compiler; nim genDepend compiles a whole project",
     'manifests/build.gradle': 'Gradle reads build scripts only by evaluating them in its daemon; there is no standalone declaration reader',
@@ -26,8 +27,13 @@ UNAVAILABLE = {
     'path/normalize': "posixpath.normpath and std.fs.path.resolve keep '..' above the root and accept absolute paths",
     'match/path': NO_TOOL_MATCH, 'match/token': NO_TOOL_MATCH,
 }
+UNAVAILABLE['rules/dependencies'] = ('dependency-cruiser no-non-package-json, depcheck and deptry judge packages resolved in an installed '
+                                     'node_modules or environment; the bench installs none for its corpora')
+UNAVAILABLE['rules/reachable'] = ("dependency-cruiser's reachable: false and madge --orphans check only graphs they build; "
+                                  'unreached files are not compared end to end')
 for family in ('forbidden', 'allowed', 'nothing-imports', 'references', 'required', 'cycles'):
     UNAVAILABLE['rules/' + family] = UNAVAILABLE['rules/ordered']
+UNAVAILABLE['rules/layers-transitive'] = UNAVAILABLE['rules/transitive']
 for op in ('from-edges', 'analysis-init', 'analyze', 'aggregate'):
     UNAVAILABLE['graph/' + op] = NO_TOOL_GRAPH
 
@@ -50,6 +56,12 @@ def alternatives(workload, arg, after, scratch, here, jdk):
         'manifests/build.zig.zon': [('zig-std-zon', [after / 'alt-zig', workload, arg])],
         'process/walk': [('find', ['find', arg, '-type', 'f']), ('ripgrep', [scratch / 'cargo/bin/rg', '--files', arg])],
         'process/check-js': [('dependency-cruiser', node)],
+        'process/metrics-js': [('dependency-cruiser', node)],
+        'process/reach-js': [('dependency-cruiser', node)],
+        'process/reach-python': [('import-linter', py)],
+        'kinds/javascript': [('typescript', node)],
+        'graph/direct': [('grimp', py)], 'graph/reach': [('grimp', py)],
+        'graph/affected': [('grimp', py)], 'graph/chain': [('grimp', py)],
         'process/check-python': [('import-linter', py)],
         'process/links': [('markdown-it-py', py)],
         'process/tokens': [('ripgrep', [scratch / 'cargo/bin/rg', '--word-regexp', '--count-matches', 'Thing', arg])],
@@ -93,10 +105,11 @@ def run(p, binary, scratch, env, jdk):
     env.pop('BENCH_PHASES', None)
     listed = {s: set(p.run([binary[s] / 'ops', '--list']).split()) for s in binary}
     corpus = {'process/walk': p.build / 'corpus', 'process/check-js': p.build / 'corpus', 'process/tokens': p.build / 'corpus',
-              'process/check-python': root / 'python', 'process/links': root / 'markdown'}
+              'process/metrics-js': root / 'typescript', 'process/reach-js': p.build / 'corpus',
+              'process/check-python': root / 'python', 'process/reach-python': root / 'python', 'process/links': root / 'markdown'}
     for workload in sorted(listed['after'], key=lambda w: (w.startswith('process/'), w)):
         kind = workload.split('/')[0]
-        if kind in ('imports', 'manifests'):
+        if kind in ('imports', 'manifests', 'kinds'):
             name = workload.split('/', 1)[1]
             points = [(size, files[(kind, name, size)]) for size in SIZES if (kind, name, size) in files]
         elif kind == 'process':

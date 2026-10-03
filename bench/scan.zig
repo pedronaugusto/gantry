@@ -29,8 +29,14 @@ pub fn main(init: std.process.Init) !void {
         var dirs = try graph.aggregate(a, 2);
         defer dirs.deinit();
         const aggregated = benchmarkNow(io);
-        std.debug.print("round {d}: scan {d:.3} ms, analyze {d:.3} ms, aggregate {d:.3} ms; edges {d}, references {d}, dependencies {d}, SCCs {d}, cycles {d}\n", .{
-            round, ms(start, scanned), ms(scanned, analyzed), ms(analyzed, aggregated), api.edges(&graph).len, api.references(&graph).len, api.dependencies(&graph).len, api.components(&analysis).len, api.cycles(&analysis).len,
+        // A revision that tells `import()` calls from static imports keeps
+        // the corpus's TypeScript pair as two edges.
+        var dynamic: usize = 0;
+        if (comptime @hasField(gantry.Kind, "dynamic")) for (api.edges(&graph)) |edge| {
+            dynamic += @intFromBool(edge.kind == .dynamic);
+        };
+        std.debug.print("round {d}: scan {d:.3} ms, analyze {d:.3} ms, aggregate {d:.3} ms; edges {d}, references {d}, dependencies {d}, dynamic {d}, SCCs {d}, cycles {d}\n", .{
+            round, ms(start, scanned), ms(scanned, analyzed), ms(analyzed, aggregated), api.edges(&graph).len, api.references(&graph).len, api.dependencies(&graph).len, dynamic, api.components(&analysis).len, api.cycles(&analysis).len,
         });
     }
     var memory: std.heap.ArenaAllocator = .init(a);

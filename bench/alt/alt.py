@@ -119,6 +119,72 @@ def importlinter(workload, root):
     row('import-linter', workload, 'findings', len(broken), 'count')
 
 
+SIZES = {'small': 100, 'medium': 5_000, 'large': 50_000}
+
+
+def grimp_query(workload, size):
+    """Grimp's own graph (Rust), built from bench/ops's in-memory corpus
+    edges outside the clock: groups of ten in a cycle, each group's f0
+    importing the previous group's f5. The query alone is timed."""
+    import grimp
+    n = SIZES[size]
+    graph = grimp.ImportGraph()
+    edges = 0
+    for i in range(n):
+        g, m = divmod(i, 10)
+        graph.add_import(importer=f'g{g}.f{m}', imported=f'g{g}.f{9 if m == 0 else m - 1}')
+        edges += 1
+        if m == 0 and g > 0:
+            graph.add_import(importer=f'g{g}.f0', imported=f'g{g - 1}.f5')
+            edges += 1
+    last = f'g{n // 10 - 1}.f0'
+    # gantry lists a start a chain returns to; every start here sits on its
+    # group's cycle, and Grimp's sets leave the module out, so it counts once
+    # more (without copying the set).
+    def plus(found, start):
+        return len(found) + (start not in found)
+    ops = {
+        'graph/direct': lambda _: len(graph.find_modules_that_directly_import('g0.f5')),
+        'graph/reach': lambda _: plus(graph.find_upstream_modules(last), last),
+        'graph/affected': lambda _: plus(graph.find_downstream_modules('g0.f0'), 'g0.f0'),
+        'graph/chain': lambda _: len(graph.find_shortest_chain(last, 'g0.f1')),
+    }
+    metric = workload.removeprefix('graph/')
+    count = ops[workload](None)
+    if SMOKE:
+        row('grimp', workload, 'ns_per_op', 0, 'ns')
+    else:
+        iterations, start = 0, time.perf_counter_ns()
+        while iterations < 3 or time.perf_counter_ns() - start < 200_000_000:
+            count = ops[workload](None)
+            iterations += 1
+        row('grimp', workload, 'ns_per_op', f'{(time.perf_counter_ns() - start) / iterations:.3f}', 'ns')
+        row('grimp', workload, 'iterations', iterations, 'iterations')
+    row('grimp', workload, 'files', n, 'count')
+    row('grimp', workload, 'input_edges', edges, 'count')
+    row('grimp', workload, metric, count, 'count')
+
+
+def importlinter_reach(workload, root):
+    """import-linter's forbidden contract with indirect imports: every
+    source module that a chain leads to a forbidden one, no cache."""
+    config = Path(root).parent / 'python-reach.importlinter'
+    loaded = time.perf_counter()
+    sys.path.insert(0, str(root))
+    from importlinter.cli import lint_imports
+    imported = time.perf_counter()
+    report = io.StringIO()
+    with redirect_stdout(report):
+        lint_imports(config_filename=str(config), no_cache=True, no_logo=True)
+    done = time.perf_counter()
+    text = re.sub(r'\x1b\[[0-9;?]*[A-Za-z]', '', report.getvalue())
+    sources = set(re.findall(r'^(pkg\.\S+) is not allowed to import (?:pkg\.\S+):', text, re.M))
+    if not sources and 'BROKEN' in text:
+        raise SystemExit('import-linter output changed shape:\n' + report.getvalue())
+    phases('import-linter', workload, loaded, imported, done)
+    row('import-linter', workload, 'findings', len(sources), 'count')
+
+
 def phases(side, workload, loaded, imported, done):
     # Interpreter start until this script ran is the remainder of the outer wall time.
     if SMOKE: return
@@ -138,6 +204,10 @@ def main():
         links(workload, arg)
     elif workload == 'process/check-python':
         importlinter(workload, arg)
+    elif workload == 'process/reach-python':
+        importlinter_reach(workload, arg)
+    elif workload in ('graph/direct', 'graph/reach', 'graph/affected', 'graph/chain'):
+        grimp_query(workload, arg)
     else:
         raise SystemExit(f'unknown workload {workload}')
 

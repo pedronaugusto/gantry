@@ -26,9 +26,11 @@ def main():
         p.prepared.require(corpus)
         p.prepared.require(p.build/'corpus-bytes.json')
         def check_scan(out, side=None):
-            counts=re.findall(r'edges (\d+), references (\d+), dependencies (\d+)',out)
+            counts=re.findall(r'edges (\d+), references (\d+), dependencies (\d+), dynamic (\d+)',out)
             if len(counts)!=1:raise ValueError('missing scan counts')
-            if tuple(map(int,counts[0])) != (15*count,7*count,2):raise ValueError('unexpected synthetic graph')
+            # Each TypeScript file's import() is an edge of its own where the revision tells it apart.
+            dynamic=int(counts[0][3])
+            if dynamic not in (0,count) or tuple(map(int,counts[0][:3])) != (15*count+dynamic,7*count,2):raise ValueError('unexpected synthetic graph')
             return {'source_bytes':total,'code_files':6*count,'edges':int(counts[0][0]),'references':int(counts[0][1]),'dependencies':int(counts[0][2])}
         p.interleave('synthetic/list-scan-memory-analysis-aggregate',[(s,[binary[s]/'scan',corpus,'1']) for s in source],check=check_scan)
         sys.path.insert(0,str(p.here/'compare'))

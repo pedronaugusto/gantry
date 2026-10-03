@@ -13,6 +13,18 @@ const api = @import("api.zig");
 const has_tokens = @hasField(gantry.Options, "tokens");
 const has_diagnostic = @hasDecl(gantry, "scanWithDiagnostic");
 const has_match_token = @hasDecl(gantry.rules, "matchesToken");
+const has_free = @hasDecl(gantry.rules, "free");
+const has_queries = @hasDecl(gantry.Analysis, "affected");
+const has_coupling = @hasDecl(gantry.Analysis, "coupling");
+const has_transitive = @hasField(gantry.rules.EdgeRule, "transitive");
+const has_reachable = @hasField(gantry.rules.Rules, "reachable");
+const has_dependency_rules = @hasField(gantry.rules.Rules, "dependencies");
+const has_kinds = @hasField(gantry.Kind, "type_only");
+
+/// Findings with any chains a transitive rule gave them.
+fn freeFindings(gpa: std.mem.Allocator, findings: anytype) void {
+    if (has_free) gantry.rules.free(gpa, findings) else gpa.free(findings);
+}
 const budget_ns: i96 = 200 * std.time.ns_per_ms;
 
 const Out = struct {
@@ -42,10 +54,14 @@ pub fn main(init: std.process.Init) !void {
     const out: Out = .{ .writer = w, .workload = name };
     if (std.mem.startsWith(u8, name, "imports/")) return importsWorkload(gpa, io, out, std.meta.stringToEnum(gantry.Language, name["imports/".len..]) orelse return error.UnknownLanguage, arg);
     if (std.mem.startsWith(u8, name, "manifests/")) return manifestWorkload(gpa, io, out, name["manifests/".len..], arg);
+    if (has_kinds and std.mem.eql(u8, name, "kinds/javascript")) return kindsWorkload(gpa, io, out, arg);
     if (std.mem.startsWith(u8, name, "process/")) return processWorkload(gpa, io, out, name["process/".len..], arg);
     const n = try size(arg);
     if (std.mem.startsWith(u8, name, "rules/")) return rulesWorkload(gpa, io, out, name["rules/".len..], n);
     if (std.mem.startsWith(u8, name, "scan/")) return scanWorkload(gpa, io, out, name["scan/".len..], n);
+    if (has_queries) for ([_][]const u8{ "direct", "reach", "affected", "chain" }) |query| {
+        if (std.mem.eql(u8, name["graph/".len..], query) and std.mem.startsWith(u8, name, "graph/")) return queryWorkload(gpa, io, out, query, n);
+    };
     if (std.mem.startsWith(u8, name, "graph/")) return graphWorkload(gpa, io, out, name["graph/".len..], n);
     if (std.mem.eql(u8, name, "path/normalize") or std.mem.startsWith(u8, name, "match/")) return helperWorkload(gpa, io, out, name, n);
     return error.UnknownWorkload;
@@ -63,6 +79,13 @@ fn list(w: *std.Io.Writer) !void {
     }
     for ([_][]const u8{ "ordered", "forbidden", "allowed", "nothing-imports", "references", "required", "cycles" }) |f| try w.print("rules/{s}\n", .{f});
     if (has_tokens) try w.writeAll("rules/tokens\n");
+    if (has_transitive) try w.writeAll("rules/transitive\nrules/layers-transitive\n");
+    if (has_reachable) try w.writeAll("rules/reachable\n");
+    if (has_dependency_rules) try w.writeAll("rules/dependencies\n");
+    if (has_queries) try w.writeAll("graph/direct\ngraph/reach\ngraph/affected\ngraph/chain\n");
+    if (has_kinds) try w.writeAll("kinds/javascript\n");
+    if (has_coupling) try w.writeAll("process/metrics-js\n");
+    if (has_transitive) try w.writeAll("process/reach-js\nprocess/reach-python\n");
     try w.writeAll("scan/memory\nscan/links\nscan/assets\n");
     if (has_diagnostic) try w.writeAll("scan/diagnostic\n");
     if (has_tokens) try w.writeAll("scan/tokens\n");
@@ -158,7 +181,7 @@ const Corpus = struct {
     store: std.StringHashMapUnmanaged([]const u8) = .empty,
     edges: []const gantry.Edge = &.{},
 
-    const Shape = enum { zig, links, assets };
+    const Shape = enum { zig, links, assets, packages };
     fn init(gpa: std.mem.Allocator, n: usize, shape: Shape) !Corpus {
         var c: Corpus = .{ .arena = .init(gpa), .paths = &.{} };
         errdefer c.arena.deinit();
@@ -183,6 +206,13 @@ const Corpus = struct {
                     try text.appendSlice(a, "\n```\n[not a link](m0.md)\n```\n\n<!-- [hidden](m1.md) -->\n");
                     try c.store.put(a, p.*, text.items);
                 },
+                .packages => {
+                    // TypeScript importing one of a hundred packages, a sibling
+                    // and a builtin; the manifest declares ninety of them and
+                    // ten that nothing imports.
+                    p.* = try std.fmt.allocPrint(a, "g{d}/f{d}.ts", .{ g, m });
+                    try c.store.put(a, p.*, try std.fmt.allocPrint(a, "import a from 'dep{d}/sub';\nimport b from './f{d}';\nimport fs from 'node:fs';\n// {s} import x from 'fake'\n", .{ (i * 7) % 100, prev, filler }));
+                },
                 .assets => {
                     // Even entries are text that names files; odd ones are the named images.
                     p.* = if (m % 2 == 0) try std.fmt.allocPrint(a, "a{d}/t{d}.txt", .{ g, m }) else try std.fmt.allocPrint(a, "a{d}/i{d}.svg", .{ g, m });
@@ -201,6 +231,19 @@ const Corpus = struct {
                 if (m == 0 and g > 0) try edges.append(a, .{ .from = paths[i], .to = paths[(g - 1) * 10 + 5] });
             }
             c.edges = edges.items;
+        }
+        if (shape == .packages) {
+            var manifest: std.ArrayList(u8) = .empty;
+            try manifest.appendSlice(a, "{\"dependencies\":{");
+            for (0..90) |k| try manifest.print(a, "\"dep{d}\":\"1\",", .{k});
+            for (0..10) |k| try manifest.print(a, "\"unused{d}\":\"1\"{s}", .{ k, if (k == 9) "" else "," });
+            try manifest.appendSlice(a, "}}\n");
+            try c.store.put(a, "package.json", manifest.items);
+            const all = try a.alloc([]const u8, n + 1);
+            @memcpy(all[0..n], paths);
+            all[n] = "package.json";
+            c.paths = all;
+            return c;
         }
         c.paths = paths;
         return c;
@@ -227,7 +270,7 @@ fn scanCorpus(gpa: std.mem.Allocator, c: *const Corpus, options: gantry.Options)
 }
 
 fn rulesWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, family: []const u8, n: usize) !void {
-    var corpus = try Corpus.init(gpa, n, .zig);
+    var corpus = try Corpus.init(gpa, n, if (std.mem.eql(u8, family, "dependencies")) .packages else .zig);
     defer corpus.deinit();
     var graph = try scanCorpus(gpa, &corpus, if (std.mem.eql(u8, family, "tokens")) tokenOptions() else .{});
     defer graph.deinit();
@@ -260,23 +303,44 @@ fn rulesWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, family: []const u
         rules.no_cycles = "acyclic";
     } else if (has_tokens and std.mem.eql(u8, family, "tokens")) {
         rules.tokens = &token_rule_list;
+    } else if (has_transitive and std.mem.eql(u8, family, "transitive")) {
+        // Each f9 reaches its group's f1 through f8 to f2.
+        rules.forbidden = &.{.{ .name = "far", .from = "**/f9.zig", .to = "**/f1.zig", .transitive = true }};
+    } else if (has_transitive and std.mem.eql(u8, family, "layers-transitive")) {
+        rules.ordered = &.{.{ .name = "layers", .layers = &.{ .{ .name = "low", .patterns = &.{"**/f9.zig"} }, .{ .name = "high", .patterns = &.{"**/f1.zig"} } }, .transitive = true }};
+    } else if (has_reachable and std.mem.eql(u8, family, "reachable")) {
+        // g1/f0 reaches groups one and zero.
+        rules.reachable = &.{.{ .name = "reached", .entries = &.{"g1/f0.zig"} }};
+    } else if (has_dependency_rules and std.mem.eql(u8, family, "dependencies")) {
+        rules.dependencies = &.{.{ .name = "deps" }};
     } else return error.UnknownRule;
     const Ctx = struct {
         gpa: std.mem.Allocator,
         graph: *const gantry.Graph,
         rules: R.Rules,
+        chained: bool,
         findings: usize = 0,
         fn op(c: *@This()) !void {
             const findings = try c.graph.check(c.gpa, c.rules);
-            defer c.gpa.free(findings);
+            // A finding owns a chain only under a transitive rule; the
+            // others free as before.
+            defer if (c.chained) freeFindings(c.gpa, findings) else c.gpa.free(findings);
             c.findings = findings.len;
         }
     };
-    var ctx: Ctx = .{ .gpa = gpa, .graph = &graph, .rules = rules };
+    var ctx: Ctx = .{ .gpa = gpa, .graph = &graph, .rules = rules, .chained = std.mem.endsWith(u8, family, "transitive") };
     try repeat(io, out, &ctx, Ctx.op);
     try out.count("files", n);
     try out.count("edges", api.edges(&graph).len);
     try out.count("findings", ctx.findings);
+    if (comptime has_free) if (ctx.chained) {
+        // Chains are counted once, outside the clock.
+        const findings = try graph.check(gpa, rules);
+        defer freeFindings(gpa, findings);
+        var chains: usize = 0;
+        for (findings) |finding| chains += finding.chain.len;
+        try out.count("chain_files", chains);
+    };
 }
 
 fn scanWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u8, n: usize) !void {
@@ -372,6 +436,69 @@ fn graphWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, op_name: []const 
     }
 }
 
+/// Queries on an analysis made outside the clock: the dependents of
+/// g0/f5, what the last group's f0 reaches, what a change to g0/f0
+/// affects, and the shortest chain from the last group's f0 to g0/f1.
+fn queryWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, query: []const u8, n: usize) !void {
+    var corpus = try Corpus.init(gpa, n, .zig);
+    defer corpus.deinit();
+    var analysis = try gantry.Analysis.init(gpa, corpus.paths, corpus.edges);
+    defer analysis.deinit();
+    var names: std.heap.ArenaAllocator = .init(gpa);
+    defer names.deinit();
+    const last = try std.fmt.allocPrint(names.allocator(), "g{d}/f0.zig", .{n / 10 - 1});
+    const Ctx = struct {
+        gpa: std.mem.Allocator,
+        analysis: *const gantry.Analysis,
+        last: []const u8,
+        which: enum { direct, reach, affected, chain },
+        result: usize = 0,
+        fn op(c: *@This()) !void {
+            const found = switch (c.which) {
+                .direct => try c.analysis.direct(c.gpa, "g0/f5.zig", .dependents),
+                .reach => try c.analysis.reach(c.gpa, &.{c.last}, .dependencies),
+                .affected => try c.analysis.affected(c.gpa, &.{"g0/f0.zig"}),
+                .chain => (try c.analysis.chain(c.gpa, c.last, "g0/f1.zig")).?,
+            };
+            defer c.gpa.free(found);
+            c.result = found.len;
+        }
+    };
+    var ctx: Ctx = .{ .gpa = gpa, .analysis = &analysis, .last = last, .which = std.meta.stringToEnum(@FieldType(Ctx, "which"), query).? };
+    try repeat(io, out, &ctx, Ctx.op);
+    try out.count("files", n);
+    try out.count("input_edges", corpus.edges.len);
+    try out.count(query, ctx.result);
+}
+
+/// Static, type-only and dynamic imports of a TypeScript file, by kind.
+fn kindsWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, file: []const u8) !void {
+    const source = try std.Io.Dir.cwd().readFileAlloc(io, file, gpa, .unlimited);
+    defer gpa.free(source);
+    const Ctx = struct {
+        gpa: std.mem.Allocator,
+        source: []const u8,
+        counts: [3]usize = .{ 0, 0, 0 },
+        fn op(c: *@This()) !void {
+            var found = try gantry.imports(c.gpa, .javascript, c.source);
+            defer found.deinit();
+            c.counts = .{ 0, 0, 0 };
+            for (api.specs(&found)) |spec| switch (spec.kind) {
+                .import => c.counts[0] += 1,
+                .type_only => c.counts[1] += 1,
+                .dynamic => c.counts[2] += 1,
+                else => {},
+            };
+        }
+    };
+    var ctx: Ctx = .{ .gpa = gpa, .source = source };
+    try repeat(io, out, &ctx, Ctx.op);
+    try out.row("source", source.len, "bytes");
+    try out.count("static", ctx.counts[0]);
+    try out.count("type_only", ctx.counts[1]);
+    try out.count("dynamic", ctx.counts[2]);
+}
+
 fn helperWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, name: []const u8, n: usize) !void {
     var arena: std.heap.ArenaAllocator = .init(gpa);
     defer arena.deinit();
@@ -413,7 +540,7 @@ fn processWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u
     var dir = try std.Io.Dir.cwd().openDir(io, root, .{ .iterate = true });
     defer dir.close(io);
     const start = now(io);
-    const subtree: []const u8 = if (std.mem.eql(u8, mode, "check-js")) "js" else "";
+    const subtree: []const u8 = if (std.mem.endsWith(u8, mode, "-js")) "js" else "";
     var paths = try gantry.walk(gpa, io, dir, subtree, keepUnder);
     defer paths.deinit();
     const listed = now(io);
@@ -431,7 +558,11 @@ fn processWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u
     } else if (has_tokens and std.mem.eql(u8, mode, "tokens")) {
         options.tokens = &corpus_token_rules;
         rules.tokens = &corpus_token_rules;
-    } else return error.UnknownProcessWorkload;
+    } else if (has_transitive and std.mem.eql(u8, mode, "reach-js")) {
+        rules.forbidden = &.{.{ .name = "far", .from = "js/**/f9.ts", .to = "js/**/f1.ts", .transitive = true }};
+    } else if (has_transitive and std.mem.eql(u8, mode, "reach-python")) {
+        rules.forbidden = &.{.{ .name = "far", .from = "pkg/*/f9.py", .to = "pkg/*/f1.py", .transitive = true }};
+    } else if (!(has_coupling and std.mem.eql(u8, mode, "metrics-js"))) return error.UnknownProcessWorkload;
     var graph = try gantry.scan(gpa, api.items(&paths), gantry.DirReader{ .io = io, .dir = dir }, gantry.DirReader.read, options);
     defer graph.deinit();
     const scanned = now(io);
@@ -441,10 +572,45 @@ fn processWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u
         for (api.edges(&graph)) |e| links += @intFromBool(e.kind == .link);
         return out.count("links", links);
     }
+    if (has_coupling and std.mem.eql(u8, mode, "metrics-js")) {
+        var analysis = try graph.analyze(gpa);
+        defer analysis.deinit();
+        try out.row("analyze_ms", ms(scanned, now(io)), "ms");
+        // Distinct dependencies between two files, and across folder boundaries.
+        var fan_out: usize = 0;
+        for (analysis.coupling()) |c| fan_out += c.fan_out;
+        var folder_fan_in: usize = 0;
+        var folder_fan_out: usize = 0;
+        for (analysis.directoryCoupling()) |c| {
+            folder_fan_in += c.fan_in;
+            folder_fan_out += c.fan_out;
+        }
+        try out.count("folders", analysis.directoryCoupling().len);
+        try out.count("fan_out", fan_out);
+        try out.count("folder_fan_in", folder_fan_in);
+        return out.count("folder_fan_out", folder_fan_out);
+    }
     const findings = try graph.check(gpa, rules);
-    defer gpa.free(findings);
+    defer freeFindings(gpa, findings);
     try out.row("check_ms", ms(scanned, now(io)), "ms");
-    try out.count("findings", findings.len);
+    // The tools report a pair once, whatever the kinds of its edges.
+    var pairs: std.StringHashMapUnmanaged(void) = .empty;
+    defer {
+        var keys = pairs.keyIterator();
+        while (keys.next()) |key| gpa.free(key.*);
+        pairs.deinit(gpa);
+    }
+    var others: usize = 0;
+    for (findings) |finding| {
+        const e = finding.edge orelse {
+            others += 1;
+            continue;
+        };
+        const key = try std.fmt.allocPrint(gpa, "{s}\x00{s}", .{ e.from, e.to });
+        const entry = try pairs.getOrPut(gpa, key);
+        if (entry.found_existing) gpa.free(key);
+    }
+    try out.count("findings", pairs.count() + others);
 }
 const corpus_token_rules = if (has_tokens) [_]gantry.rules.TokenRule{.{ .name = "owned", .token = "Thing" }} else {};
 
