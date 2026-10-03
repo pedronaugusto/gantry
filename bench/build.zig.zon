@@ -1,7 +1,7 @@
 .{ .name = .gantry_benchmark, .version = "0.0.0", .minimum_zig_version = "0.16.0", .fingerprint = 0xbac99e9f0600d768, .dependencies = .{
     .gantry = .{ .path = ".." },
     .after = .{
-        .url = "https://github.com/pedronaugusto/gantry/archive/850023678d05c2f8fcc0d86560a9da7663c212a8.tar.gz",
-        .hash = "gantry-0.1.0-1iNrkW2hBAAl3pVN4rlHHlEHBM-XzaUych4lAkKOrrNp",
+        .url = "https://github.com/pedronaugusto/gantry/archive/277ee0c7d696a9ce9bd102ef5a36fa2a8d767495.tar.gz",
+        .hash = "gantry-0.1.0-1iNrkRZLBgAhZRMZBcRTM3e9dF9-IJB0D_gpVYkZKvtX",
     },
 }, .paths = .{ "build.zig", "build.zig.zon", "scan.zig", "api.zig", "compare" } }

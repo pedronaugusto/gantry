@@ -2,7 +2,7 @@
 
 Keep the `bench` worktree in the workspace’s `.bench/gantry`, outside `.zig-cache`; `bench/quiet.sh` resolves its files from its own directory.
 
-Pinned after (`perf`): `850023678d05c2f8fcc0d86560a9da7663c212a8`.
+Pinned after (final main): `277ee0c7d696a9ce9bd102ef5a36fa2a8d767495`.
 **No main commit exists before the requested cutoff.** The initial main commit,
 `24cc1cec108edf15a60a932ce79a864e811fec35`, is a clearly labelled substitute
 baseline. This pass cannot establish a before/after result for a pre-cutoff
