@@ -179,7 +179,9 @@ with gzip.open("bench/compare/results/edges.json.gz", "rt") as stream:
     edges = json.load(stream)
 ```
 
-`agreement.md` / `.json` and `smoke.md` / `.json` are the reports. The
+`agreement.md` / `.json` and `smoke.md` / `.json` are the reports.
+The Nim and Java agreement is `langs-agreement.md` / `.json`, with every graph
+and difference in `langs-edges.json.gz` (same layout). The
 agreement's source commit records the harness before these artifacts were
 added; its `src` tree is also recorded. Raw tool output remains in the chosen
 scratch directory. No real benchmark timings were collected on the busy host.
