@@ -162,6 +162,18 @@ test "Java package and imports ignore comments strings text blocks characters an
     try expect(specs[2].form == .literal and specs[2].star);
     try expect(specs[3].form == .java_static and specs[3].star);
 }
+test "Groovy and Kotlin interpolation keeps nested braces and strings inside one template" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const lexer = @import("lexer.zig");
+    const groovy = try lexer.lex(.groovy, arena.allocator(), "x \"${ f { a } + \"y\" }\" 'z' \"$w\" \"plain\"");
+    try std.testing.expectEqual(5, groovy.len);
+    try expect(groovy[1].kind == .template and groovy[3].kind == .template);
+    try expect(groovy[2].kind == .string and groovy[4].kind == .string);
+    const kotlin = try lexer.lex(.kotlin, arena.allocator(), "/* a /* b */ c */ `if` 'q' \"${'$'}{v}\" \"\"\"raw $x\"\"\" \"plain\"");
+    try std.testing.expectEqual(3, kotlin.len);
+    try expect(kotlin[0].kind == .word and kotlin[1].kind == .template and kotlin[2].kind == .string);
+}
 test "Go aliased dot blank block raw imports ignore comments and raw text" {
     try check(.go,
         \\package main
