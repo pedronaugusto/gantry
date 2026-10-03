@@ -93,6 +93,8 @@ without macro expansion.
 
 Rust test classification propagates through file modules; owned recovered operands let it share each available source read with import resolution.
 
+Go workspace routing keeps local module edges, and recorded build constraints let caller targets select files; constraint parsing and imports share a source read and token stream.
+
 `graph.references()` keeps import spellings, offsets, kinds and resolution status.
 Detectable unsupported constructs appear in `graph.unsupported()` without guessed edges.
 `strict_imports` refuses the first such construct with `UnsupportedImport`, even when

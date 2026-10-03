@@ -41,3 +41,20 @@ test "Go build expression rejects malformed syntax and honors OS aliases" {
     try std.testing.expect(try build.evaluate(a, "unix && linux && !windows", .{ .os = "android", .arch = "arm64" }));
     for ([_][]const u8{ "a &&", "(a", "a b", "a | b", "a)", "" }) |expression| try std.testing.expectError(error.InvalidBuildConstraint, build.evaluate(a, expression, .{ .os = "linux", .arch = "amd64" }));
 }
+
+test "Go constraints and imports share one source read" {
+    const Reader = struct {
+        calls: usize = 0,
+        fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {
+            self.calls += 1;
+            return try scratch.dupe(u8, if (std.mem.eql(u8, name, "go.mod")) "module example.org/app" else if (std.mem.eql(u8, name, "main.go")) "//go:build linux\n\npackage app\nimport \"example.org/app/lib\"" else "package lib");
+        }
+    };
+    var reader: Reader = .{};
+    var graph = try g.scan(a, &.{ "go.mod", "main.go", "lib/a.go" }, &reader, Reader.read, .{ .manifests = false, .go_target = .{ .os = "linux", .arch = "amd64" } });
+    defer graph.deinit();
+    try f.edge(&graph, "main.go", "lib/a.go", .import, 1);
+    try std.testing.expectEqualStrings("app", graph.goFiles()[1].package);
+    try std.testing.expectEqualStrings("linux", graph.goFiles()[1].constraint.?);
+    try std.testing.expectEqual(3, reader.calls);
+}

@@ -70,17 +70,25 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     defer scratch.deinit();
     // Runs before any path-owning storage is destroyed.
     errdefer |cause| progress.fail(cause);
+    var cached: std.StringHashMapUnmanaged(t.Recovery) = .empty;
     var go_files: std.ArrayList(GoFile) = .empty;
     var inactive: std.StringHashMapUnmanaged(void) = .empty;
     for (g.paths) |p| if (languageOf(p) == .go) {
         const s = scratch.allocator();
         if (try reader.readFile(p, s)) |text| {
             progress.at(.go_constraints, p);
-            var info = try @import("go_build.zig").parse(s, p, text, options.go_target);
+            const lexer = @import("lexer.zig");
+            const tokens = try lexer.lex(.go, s, text);
+            var info = try @import("go_build.zig").parseTokens(s, p, text, options.go_target, tokens);
             info.package = try a.dupe(u8, info.package);
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
             try go_files.append(a, info);
             if (!info.selected) try inactive.put(w, p, {});
+            if (info.selected and (options.strict_imports or enabled(options, .import) or enabled(options, .@"test"))) {
+                progress.at(.imports, p);
+                const recovery = try @import("lang/go.zig").recoverTokens(s, text, try lexer.compact(s, tokens));
+                try cached.put(w, p, try recovery.clone(w));
+            }
         }
         _ = scratch.reset(.retain_capacity);
     };
@@ -122,7 +130,6 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     progress.at(.resolution, null);
     const index = try recover.names(w, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
-    var cached: std.StringHashMapUnmanaged(t.Recovery) = .empty;
     const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &cached, &progress);
     const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;

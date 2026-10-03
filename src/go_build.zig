@@ -93,8 +93,10 @@ pub fn evaluate(a: std.mem.Allocator, expression: []const u8, target: Target) !b
     return values.items[0];
 }
 pub fn parse(a: std.mem.Allocator, file: []const u8, text: []const u8, target: ?Target) !File {
+    return parseTokens(a, file, text, target, try l.lex(.go, a, text));
+}
+pub fn parseTokens(a: std.mem.Allocator, file: []const u8, text: []const u8, target: ?Target, ts: []const l.Token) !File {
     var result: File = .{ .path = file };
-    const ts = try l.lex(.go, a, text);
     for (ts, 0..) |token, i| if (token.is("package") and i + 1 < ts.len) {
         result.package = try a.dupe(u8, ts[i + 1].text);
         break;
