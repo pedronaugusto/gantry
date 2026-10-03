@@ -125,7 +125,8 @@ fn goMod(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arr
     var lines = std.mem.splitScalar(u8, text, '\n');
     var block = false;
     while (lines.next()) |line| {
-        const clean = line[0 .. std.mem.indexOf(u8, line, "//") orelse line.len];
+        const comment_at = std.mem.indexOf(u8, line, "//");
+        const clean = line[0 .. comment_at orelse line.len];
         var words = std.mem.tokenizeAny(u8, clean, " \t\r");
         var name = words.next() orelse continue;
         if (std.mem.eql(u8, name, "require")) {
@@ -142,8 +143,10 @@ fn goMod(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arr
         const version = words.next() orelse return error.InvalidManifest;
         // `// indirect` marks a module only other modules import, as Go
         // reads the comment: the word alone or before a `;`.
-        const comment = if (std.mem.indexOf(u8, line, "//")) |at| std.mem.trim(u8, line[at + 2 ..], " \t\r") else "";
-        const indirect = std.mem.eql(u8, comment, "indirect") or std.mem.startsWith(u8, comment, "indirect;");
+        const indirect = if (comment_at) |at| blk: {
+            const comment = std.mem.trim(u8, line[at + 2 ..], " \t\r");
+            break :blk std.mem.eql(u8, comment, "indirect") or std.mem.startsWith(u8, comment, "indirect;");
+        } else false;
         try out.append(a, .{ .manifest = path, .name = std.mem.trim(u8, name, "\"`"), .source = std.mem.trim(u8, name, "\"`"), .requirement = version, .group = if (indirect) "indirect" else "require", .origin = .remote });
     }
     if (block) return error.InvalidManifest;

@@ -25,12 +25,18 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
     var i: usize = 0;
     while (i < ts.len) : (i += 1) {
         const t = ts[i];
-        const testing = current.test_item or pending_test;
-        if (t.is("extern") and i + 2 < ts.len and ts[i + 1].is("crate") and ts[i + 2].kind == .word and !ts[i + 2].is("self")) {
-            try out.append(a, .{ .name = ts[i + 2].text, .offset = t.offset, .form = .rust_crate, .kind = if (testing) .@"test" else .import, .scope = current.scope });
-            try (if (testing) &test_crates else &crates).put(a, ts[i + 2].text, {});
-        } else if (crateRoot(ts, i) and !(try names.get(a)).all.contains(t.text)) {
-            try noteCrate(a, t, if (testing) &test_crates else &crates, .{ .name = "", .offset = 0, .kind = if (testing) .@"test" else .import, .scope = current.scope }, &out);
+        // A word before `:` may start a crate path; `extern` before `crate`
+        // names one. Other tokens skip both.
+        if (t.kind == .word and i + 2 < ts.len) {
+            const next = ts[i + 1];
+            const testing = current.test_item or pending_test;
+            if (next.kind == .punctuation) {
+                if (next.text[0] == ':' and crateRoot(ts, i) and !(try names.get(a)).all.contains(t.text))
+                    try noteCrate(a, t, if (testing) &test_crates else &crates, .{ .name = "", .offset = 0, .kind = if (testing) .@"test" else .import, .scope = current.scope }, &out);
+            } else if (t.is("extern") and next.is("crate") and ts[i + 2].kind == .word and !ts[i + 2].is("self")) {
+                try out.append(a, .{ .name = ts[i + 2].text, .offset = t.offset, .form = .rust_crate, .kind = if (testing) .@"test" else .import, .scope = current.scope });
+                try (if (testing) &test_crates else &crates).put(a, ts[i + 2].text, {});
+            }
         }
         if (t.is("include") and i + 2 < ts.len and ts[i + 1].is("!") and (ts[i + 2].is("(") or ts[i + 2].is("{") or ts[i + 2].is("[")))
             try unsupported.append(a, .{ .offset = t.offset, .expression = .rust_include });
@@ -169,8 +175,9 @@ const Names = struct {
 /// caller rules out names the file brought in itself.
 fn crateRoot(ts: []const l.Token, i: usize) bool {
     const t = ts[i];
-    if (t.kind != .word or !crateName(t.text) or i + 3 >= ts.len) return false;
-    if (!ts[i + 1].is(":") or !ts[i + 2].is(":") or ts[i + 2].offset != ts[i + 1].end or ts[i + 1].offset != t.end) return false;
+    // `::` first: most words are not followed by one.
+    if (i + 3 >= ts.len or ts[i + 1].offset != t.end or !ts[i + 1].is(":") or !ts[i + 2].is(":") or ts[i + 2].offset != ts[i + 1].end) return false;
+    if (t.kind != .word or !crateName(t.text)) return false;
     if (ts[i + 3].is("<")) return false;
     return !(i > 0 and (ts[i - 1].is(":") or ts[i - 1].is(".") or ts[i - 1].is("$")));
 }
