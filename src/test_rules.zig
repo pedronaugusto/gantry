@@ -112,3 +112,134 @@ test "fixture: proto sibling boundary covers unresolved and normalized literal p
     try std.testing.expectEqualStrings("../daemon/missing.zig", findings[0].reference.?.name);
     try std.testing.expectEqualStrings("nested/missing.zig", findings[1].reference.?.name);
 }
+
+fn expectChain(want: []const []const u8, got: []const []const u8) !void {
+    try eq(want.len, got.len);
+    for (want, got) |w, x| try std.testing.expectEqualStrings(w, x);
+}
+
+test "a transitive rule catches the chain one intermediate file hides from a direct rule" {
+    var graph = try g.Graph.fromEdges(a, &.{ "ui/view.zig", "ui/panel.zig", "core/model.zig", "core/cache.zig", "db/store.zig", "db/index.zig", "ui/alone.zig" }, &.{
+        .{ .from = "ui/view.zig", .to = "core/model.zig" },
+        .{ .from = "core/model.zig", .to = "db/store.zig" },
+        .{ .from = "ui/view.zig", .to = "core/cache.zig" },
+        .{ .from = "core/cache.zig", .to = "db/index.zig" },
+        .{ .from = "ui/panel.zig", .to = "db/index.zig", .kind = .type_only },
+        .{ .from = "db/store.zig", .to = "db/index.zig" },
+    });
+    defer graph.deinit();
+    // The direct rule sees only ui/panel's edge.
+    const direct = try graph.check(a, .{ .forbidden = &.{.{ .name = "ui to db", .from = "ui/**", .to = "db/**" }} });
+    defer g.rules.free(a, direct);
+    try eq(1, direct.len);
+    try std.testing.expectEqualStrings("ui/panel.zig", direct[0].edge.?.from);
+    try eq(0, direct[0].chain.len);
+
+    const findings = try graph.check(a, .{ .forbidden = &.{.{ .name = "ui to db", .from = "ui/**", .to = "db/**", .transitive = true }} });
+    defer g.rules.free(a, findings);
+    try eq(2, findings.len);
+    // Two chains of two edges: the first path at each position wins.
+    try expectChain(&.{ "ui/panel.zig", "db/index.zig" }, findings[0].chain);
+    try expectChain(&.{ "ui/view.zig", "core/cache.zig", "db/index.zig" }, findings[1].chain);
+    try eq(.forbidden, findings[1].reason);
+    try std.testing.expectEqualStrings("core/cache.zig", findings[1].edge.?.to);
+    try std.testing.expectEqualStrings("db/index.zig", findings[1].path.?);
+
+    // An allowance takes its edges out of the chains; a kind narrows them.
+    const allowed = try graph.check(a, .{
+        .forbidden = &.{ .{ .name = "ui to db", .from = "ui/**", .to = "db/**", .transitive = true }, .{ .name = "values", .from = "ui/**", .to = "db/**", .kind = .type_only, .transitive = true } },
+        .allowed = &.{ .{ .rule = "ui to db", .from = "core/cache.zig" }, .{ .rule = "ui to db", .kind = .type_only } },
+    });
+    defer g.rules.free(a, allowed);
+    try eq(2, allowed.len);
+    try expectChain(&.{ "ui/view.zig", "core/model.zig", "db/store.zig" }, allowed[0].chain);
+    try std.testing.expectEqualStrings("values", allowed[1].rule);
+    try expectChain(&.{ "ui/panel.zig", "db/index.zig" }, allowed[1].chain);
+}
+
+test "a transitive chain stops at its first target and a file in both sets needs an edge" {
+    var graph = try g.Graph.fromEdges(a, &.{ "x/a", "x/b", "x/c" }, &.{
+        .{ .from = "x/a", .to = "x/b" },
+        .{ .from = "x/b", .to = "x/c" },
+    });
+    defer graph.deinit();
+    const findings = try graph.check(a, .{ .forbidden = &.{.{ .name = "inside", .from = "x/*", .to = "x/*", .transitive = true }} });
+    defer g.rules.free(a, findings);
+    try eq(2, findings.len);
+    try expectChain(&.{ "x/a", "x/b" }, findings[0].chain);
+    try expectChain(&.{ "x/b", "x/c" }, findings[1].chain);
+}
+
+test "transitive layers report chains through unlayered files, once per file and higher layer" {
+    var graph = try g.Graph.fromEdges(a, &.{ "low/a", "low/b", "util/u", "util/v", "mid/m", "high/h" }, &.{
+        .{ .from = "low/a", .to = "util/u" },
+        .{ .from = "util/u", .to = "util/v" },
+        .{ .from = "util/v", .to = "high/h" },
+        .{ .from = "util/u", .to = "mid/m" },
+        .{ .from = "low/b", .to = "mid/m" },
+        .{ .from = "mid/m", .to = "high/h" },
+        .{ .from = "high/h", .to = "util/u" },
+    });
+    defer graph.deinit();
+    const layers = [_]g.rules.Layer{
+        .{ .name = "low", .patterns = &.{"low/**"} },
+        .{ .name = "mid", .patterns = &.{"mid/**"} },
+        .{ .name = "high", .patterns = &.{"high/**"} },
+    };
+    // Directly, util is the default (lowest) layer: its edges up are found,
+    // but not that low/a reaches high through it.
+    const direct = try graph.check(a, .{ .ordered = &.{.{ .name = "layers", .layers = &layers }} });
+    defer g.rules.free(a, direct);
+    try eq(4, direct.len);
+    const findings = try graph.check(a, .{ .ordered = &.{.{ .name = "layers", .layers = &layers, .transitive = true }} });
+    defer g.rules.free(a, findings);
+    try eq(4, findings.len);
+    try expectChain(&.{ "low/a", "util/u", "mid/m" }, findings[0].chain);
+    try expectChain(&.{ "low/a", "util/u", "util/v", "high/h" }, findings[1].chain);
+    try expectChain(&.{ "low/b", "mid/m" }, findings[2].chain);
+    // low/b reaches high only through mid, a layered file: that chain is mid's.
+    try expectChain(&.{ "mid/m", "high/h" }, findings[3].chain);
+    try eq(.upward, findings[3].reason);
+    try std.testing.expectEqualStrings("high/h", findings[3].path.?);
+}
+
+test "transitive findings agree with an independent nearest-target search" {
+    const n = 10;
+    const paths = &[_][]const u8{ "a0", "a1", "a2", "a3", "a4", "b0", "b1", "b2", "b3", "b4" };
+    const far = std.math.maxInt(usize) / 4;
+    var random: std.Random.DefaultPrng = .init(0x7265616368);
+    for (0..128) |_| {
+        var list: std.ArrayList(g.Edge) = .empty;
+        defer list.deinit(a);
+        var direct: [n][n]bool = @splat(@splat(false));
+        for (0..n) |v| for (0..n) |w| if (random.random().uintLessThan(u8, 10) < 2) {
+            direct[v][w] = true;
+            try list.append(a, .{ .from = paths[v], .to = paths[w] });
+        };
+        // Distance to the nearest b file, chains stopping at the first one.
+        var near: [n]usize = @splat(far);
+        for (5..n) |v| near[v] = 0;
+        for (0..n) |_| for (0..n) |v| if (v < 5) for (0..n) |w| if (direct[v][w]) {
+            near[v] = @min(near[v], near[w] + 1);
+        };
+        var graph = try g.Graph.fromEdges(a, paths, list.items);
+        defer graph.deinit();
+        const findings = try graph.check(a, .{ .forbidden = &.{.{ .name = "a to b", .from = "a*", .to = "b*", .transitive = true }} });
+        defer g.rules.free(a, findings);
+        var k: usize = 0;
+        for (0..5) |v| {
+            var best: usize = far;
+            for (0..n) |w| if (direct[v][w]) {
+                best = @min(best, near[w] + 1);
+            };
+            if (best >= far) continue;
+            const chain = findings[k].chain;
+            k += 1;
+            try eq(best + 1, chain.len);
+            try std.testing.expectEqualStrings(paths[v], chain[0]);
+            try eq('b', chain[chain.len - 1][0]);
+            for (chain[0 .. chain.len - 1], chain[1..]) |from, to| try std.testing.expect(direct[from[1] - '0' + @as(usize, if (from[0] == 'b') 5 else 0)][to[1] - '0' + @as(usize, if (to[0] == 'b') 5 else 0)]);
+        }
+        try eq(k, findings.len);
+    }
+}

@@ -64,8 +64,9 @@ pub const Graph = enum(usize) {
         return @enumFromInt(@intFromPtr(try @import("analyze.zig").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
     /// Findings borrow graph storage, rule names and required-path strings.
-    /// Keep the graph and those caller strings alive until findings are freed.
-    /// Free only the returned slice with gpa.free. A token rule the graph
+    /// Keep the graph and those caller strings alive until findings are freed
+    /// with `rules.free`, which also frees transitive findings' chains;
+    /// gpa.free alone frees them when no rule is transitive. A token rule the graph
     /// was not scanned for is `error.UnscannedToken`, never a silent pass.
     pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules_check.zig").Rules) ![]const @import("rules_check.zig").Violation {
         for (rules.tokens) |rule| if (!store.get(g.*).scannedFor(rule)) return error.UnscannedToken;

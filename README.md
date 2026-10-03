@@ -49,7 +49,9 @@ bytes need to survive processing until the next read. Graph, analysis, import an
 results retain their allocator and own their storage. Move these handles and call
 `deinit` once; their slices last until release. Analysis and aggregation results are
 independent of the original graph. Rule findings borrow the graph, rule names and
-required-path strings; keep those alive and free only the returned findings slice.
+required-path strings; keep those alive and free the findings with `rules.free`, which
+also frees the chains of transitive findings (`gpa.free` alone suffices when no rule is
+transitive).
 
 Preprocessing copies names directly into returned references; recovery records stay in the scan workspace, and file scratch is released after each file.
 
@@ -167,6 +169,16 @@ Rules restrict ordered layers, source/target patterns, raw references, required 
 and cycles. Exceptions apply to a named restriction. Path patterns use `*` and `?`
 within a component and `**` across components. Every matching restriction reports in
 rule order. These rules operate on the recovered graph.
+
+A `transitive` forbidden rule restricts chains of any length, as import-linter's
+forbidden contracts and dependency-cruiser's `reachable` rules do: each file matching
+`from` from which edges lead, through any files, to a file matching `to` reports the
+shortest such chain in `chain`, from that file to the first target it meets, choosing
+the first path at each position among chains of that length. An allowance for the rule
+takes its edges out of the chains, so `.{ .rule = "ui to db", .kind = .type_only }` lets
+type-only chains through. Transitive ordered layers work as import-linter's layers
+contract: a file no layer names has no layer, chains pass through it, and each layered
+file reports the shortest chain through unlayered files to each higher layer it reaches.
 
 A token rule names an identifier, or a string literal's value after its escapes, that
 only its owners' files may spell: `.{ .name = "console", .token = "CreateFileW", .owners =

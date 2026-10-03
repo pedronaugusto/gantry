@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Transitive forbidden rules and ordered layers: a file that reaches a forbidden one through any chain reports the shortest chain as its witness; `rules.free` frees findings with their chains.
+
 - `Analysis.coupling` and `directoryCoupling`: fan-in, fan-out and instability (Ce / (Ca + Ce)) for each file and for every directory above one.
 
 - `Analysis.direct`, `reach`, `affected` and `chain`: what a file depends on or what depends on it, directly or through any chain, the files a change affects, and the shortest chain between two files, in memory linear in the graph.

@@ -13,6 +13,8 @@ pub const Rules = engine.Rules;
 pub const Violation = engine.Violation;
 pub const matches = engine.matches;
 pub const matchesToken = engine.matchesToken;
+/// Frees `check`'s findings with the chains of transitive ones.
+pub const free = engine.free;
 
 pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Violation {
     return g.check(a, rules);
