@@ -34,9 +34,20 @@ fn json(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
         while (it.next()) |entry| {
             if (entry.value_ptr.* != .string) return error.InvalidManifest;
             const requirement = entry.value_ptr.string;
-            try out.append(a, .{ .manifest = path, .name = entry.key_ptr.*, .requirement = requirement, .source = if (place(requirement)) requirement else "", .group = group });
+            try out.append(a, .{ .manifest = path, .name = entry.key_ptr.*, .requirement = requirement, .source = if (place(requirement)) requirement else "", .group = group, .origin = npmOrigin(requirement) });
         }
     }
+}
+/// npm's specifier forms (`npm help package-spec`): a version or range or
+/// `npm:` alias is the registry's; anything else names a place.
+fn npmOrigin(s: []const u8) t.Dependency.Origin {
+    if (std.mem.startsWith(u8, s, "workspace:")) return .workspace;
+    if (std.mem.startsWith(u8, s, "npm:")) return .registry;
+    for ([_][]const u8{ "file:", "link:", "./", "../", "/", "~/" }) |prefix| if (std.mem.startsWith(u8, s, prefix)) return .local;
+    if (std.mem.indexOf(u8, s, "://") != null or std.mem.startsWith(u8, s, "git") or std.mem.indexOfScalar(u8, s, ':') != null) return .remote;
+    // `owner/repo`, GitHub's shorthand
+    if (std.mem.indexOfScalar(u8, s, '/') != null) return .remote;
+    return .registry;
 }
 fn place(s: []const u8) bool {
     return std.mem.indexOfScalar(u8, s, '/') != null or std.mem.startsWith(u8, s, "git") or std.mem.startsWith(u8, s, "file:") or std.mem.startsWith(u8, s, "github:") or std.mem.startsWith(u8, s, "workspace:");
@@ -68,6 +79,7 @@ fn zon(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Array
             .name = try a.dupe(u8, name.get(zoir)),
             .source = try a.dupe(u8, url orelse local orelse ""),
             .requirement = try a.dupe(u8, hash orelse ""),
+            .origin = if (url != null) .remote else if (local != null) .local else .registry,
         });
     }
 }
@@ -114,7 +126,7 @@ fn goMod(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arr
             continue;
         }
         const version = words.next() orelse return error.InvalidManifest;
-        try out.append(a, .{ .manifest = path, .name = std.mem.trim(u8, name, "\"`"), .source = std.mem.trim(u8, name, "\"`"), .requirement = version, .group = "require" });
+        try out.append(a, .{ .manifest = path, .name = std.mem.trim(u8, name, "\"`"), .source = std.mem.trim(u8, name, "\"`"), .requirement = version, .group = "require", .origin = .remote });
     }
     if (block) return error.InvalidManifest;
 }
@@ -174,8 +186,11 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
                 }
                 if (value[0].kind == .string) {
                     if (std.mem.eql(u8, key, "version")) entry.?.requirement = try string(a, text, value[0]);
-                    if (std.mem.eql(u8, key, "path") or std.mem.eql(u8, key, "git")) entry.?.source = try string(a, text, value[0]);
-                }
+                    if (std.mem.eql(u8, key, "path") or std.mem.eql(u8, key, "git")) {
+                        entry.?.source = try string(a, text, value[0]);
+                        entry.?.origin = if (std.mem.eql(u8, key, "path")) .local else .remote;
+                    }
+                } else if (std.mem.eql(u8, key, "workspace") and value[0].is("true")) entry.?.origin = .workspace;
             } else {
                 var dep: t.Dependency = .{ .manifest = path, .name = key, .group = group };
                 if (value[0].kind == .string) dep.requirement = try string(a, text, value[0]) else if (value[0].is("{")) {
@@ -184,8 +199,14 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
                         if (value[j + 2].kind == .string) {
                             const v = try string(a, text, value[j + 2]);
                             if (token.is("version")) dep.requirement = v;
-                            if (token.is("path") or token.is("git")) dep.source = v;
-                        } else if (token.is("workspace") and value[j + 2].is("true")) dep.source = "workspace";
+                            if (token.is("path") or token.is("git")) {
+                                dep.source = v;
+                                dep.origin = if (token.is("path")) .local else .remote;
+                            }
+                        } else if (token.is("workspace") and value[j + 2].is("true")) {
+                            dep.source = "workspace";
+                            dep.origin = .workspace;
+                        }
                     }
                 } else return error.InvalidManifest;
                 try out.append(a, dep);
@@ -205,7 +226,10 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
                 if (j + 2 < value.len and value[j + 1].is("=") and value[j + 2].kind == .string) {
                     const v = try string(a, text, value[j + 2]);
                     if (token.is("version")) dep.requirement = v;
-                    if (token.is("git") or token.is("path") or token.is("url")) dep.source = v;
+                    if (token.is("git") or token.is("path") or token.is("url")) {
+                        dep.source = v;
+                        dep.origin = if (token.is("path")) .local else .remote;
+                    }
                 }
             }
             try out.append(a, dep);
@@ -227,7 +251,8 @@ fn pythonDep(a: std.mem.Allocator, path: []const u8, group: []const u8, requirem
     if (end == 0) return error.InvalidManifest;
     const url = std.mem.indexOf(u8, raw, " @ ");
     const source = if (url) |u| std.mem.trim(u8, raw[u + 3 .. std.mem.indexOfScalarPos(u8, raw, u + 3, ';') orelse raw.len], " ") else "";
-    try out.append(a, .{ .manifest = path, .name = raw[0..end], .requirement = raw, .source = source, .group = group });
+    const origin: t.Dependency.Origin = if (source.len == 0) .registry else if (std.mem.startsWith(u8, source, "file:")) .local else .remote;
+    try out.append(a, .{ .manifest = path, .name = raw[0..end], .requirement = raw, .source = source, .group = group, .origin = origin });
 }
 
 fn string(a: std.mem.Allocator, text: []const u8, token: l.Token) ![]const u8 {

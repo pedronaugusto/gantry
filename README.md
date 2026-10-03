@@ -112,7 +112,9 @@ excluding fenced code and comments. Asset recovery matches path tokens in suppor
 files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
 `go.mod` and `pyproject.toml` (`manifests.names`) remain separate from file edges.
 A declaration's `scope()` is runtime, development, optional or build, read from its
-manifest's own groups. The TOML and Go
+manifest's own groups. Its `origin` is registry, local, remote or workspace, taken from
+the key or form that named its `source` (a ZON `.path` is local however it is written),
+and `revision()` is a pin the remote source spells in its own text. The TOML and Go
 declaration readers do not validate their entire formats.
 
 ## Graphs and rules

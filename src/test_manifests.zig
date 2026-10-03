@@ -276,20 +276,104 @@ fn zonAllocations(alloc: std.mem.Allocator) !void {
 test "ZON declarations outlive source and parser storage and release every failed allocation" {
     try std.testing.checkAllAllocationFailures(a, zonAllocations, .{});
 }
-test "the manifest names are the ones parse reads" {
-    var arena: std.heap.ArenaAllocator = .init(a);
-    defer arena.deinit();
-    for (g.manifests.names) |name| {
-        try std.testing.expect(g.manifests.supported(name));
-        const nested = try std.fmt.allocPrint(arena.allocator(), "sub/{s}", .{name});
-        try std.testing.expect(g.manifests.supported(nested));
-        _ = g.manifests.parse(arena.allocator(), name, "") catch |err| try std.testing.expect(err != error.UnsupportedManifest);
-    }
-    try std.testing.expect(!g.manifests.supported("requirements.txt"));
-}
 fn find(deps: []const g.Dependency, name: []const u8) !g.Dependency {
     for (deps) |d| if (std.mem.eql(u8, d.name, name)) return d;
     return error.TestMissingDependency;
+}
+test "each declaration says where it comes from by the key or form that named it" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const zon = try g.manifests.parse(aa, "build.zig.zon",
+        \\.{
+        \\ .dependencies = .{
+        \\  .strand = .{ .url = "git+https://github.com/me/strand#abc", .hash = "strand-0.7.0-x" },
+        \\  .up = .{ .path = "../up" },
+        \\  .here = .{ .path = "./vendor/here" },
+        \\  .bare = .{ .path = "vendor/bare" },
+        \\  .abs = .{ .path = "/opt/abs" },
+        \\ },
+        \\}
+    );
+    try eq(g.Dependency.Origin.remote, (try find(zon, "strand")).origin);
+    // a path is a folder however it is written, never a place elsewhere
+    for ([_][]const u8{ "up", "here", "bare", "abs" }) |name| try eq(g.Dependency.Origin.local, (try find(zon, name)).origin);
+
+    const npm = try g.manifests.parse(aa, "package.json",
+        \\{"dependencies":{"astro":"^5.0.0","tag":"latest","alias":"npm:@scope/x@^1","kit":"github:me/kit#v2","short":"me/short","url":"https://host/x.tgz","git":"git+ssh://git@host/x.git","file":"file:../file","link":"link:../link","rel":"./rel","ws":"workspace:*"}}
+    );
+    for ([_][]const u8{ "astro", "tag", "alias" }) |name| try eq(g.Dependency.Origin.registry, (try find(npm, name)).origin);
+    for ([_][]const u8{ "kit", "short", "url", "git" }) |name| try eq(g.Dependency.Origin.remote, (try find(npm, name)).origin);
+    for ([_][]const u8{ "file", "link", "rel" }) |name| try eq(g.Dependency.Origin.local, (try find(npm, name)).origin);
+    try eq(g.Dependency.Origin.workspace, (try find(npm, "ws")).origin);
+
+    const cargo = try g.manifests.parse(aa, "Cargo.toml",
+        \\[dependencies]
+        \\serde = "1"
+        \\engine = { git = "https://github.com/me/engine", branch = "main" }
+        \\near = { path = "../near" }
+        \\shared = { workspace = true }
+        \\[dependencies.long]
+        \\git = "https://x/long"
+        \\[dependencies.inner]
+        \\path = "inner"
+        \\[dependencies.member]
+        \\workspace = true
+    );
+    try eq(g.Dependency.Origin.registry, (try find(cargo, "serde")).origin);
+    try eq(g.Dependency.Origin.remote, (try find(cargo, "engine")).origin);
+    try eq(g.Dependency.Origin.remote, (try find(cargo, "long")).origin);
+    try eq(g.Dependency.Origin.local, (try find(cargo, "near")).origin);
+    try eq(g.Dependency.Origin.local, (try find(cargo, "inner")).origin);
+    try eq(g.Dependency.Origin.workspace, (try find(cargo, "shared")).origin);
+    try eq(g.Dependency.Origin.workspace, (try find(cargo, "member")).origin);
+
+    const py = try g.manifests.parse(aa, "pyproject.toml",
+        \\[project]
+        \\dependencies = ["requests>=2", "lib @ git+https://github.com/me/lib.git@v1", "disk @ file:///opt/disk"]
+        \\[tool.poetry.dependencies]
+        \\near = { path = "../near" }
+        \\far = { git = "https://x/far" }
+    );
+    try eq(g.Dependency.Origin.registry, (try find(py, "requests")).origin);
+    try eq(g.Dependency.Origin.remote, (try find(py, "lib")).origin);
+    try eq(g.Dependency.Origin.local, (try find(py, "disk")).origin);
+    try eq(g.Dependency.Origin.local, (try find(py, "near")).origin);
+    try eq(g.Dependency.Origin.remote, (try find(py, "far")).origin);
+
+    const go = try g.manifests.parse(aa, "go.mod", "module m\nrequire github.com/me/core v1.2.0\n");
+    try eq(g.Dependency.Origin.remote, go[0].origin);
+}
+test "a revision is the pin a remote source spells in its own text" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const zon = try g.manifests.parse(aa, "build.zig.zon",
+        \\.{ .dependencies = .{
+        \\  .pinned = .{ .url = "git+https://github.com/me/strand#0123abc" },
+        \\  .archive = .{ .url = "https://host/archive.tar.gz" },
+        \\  .near = .{ .path = "../near#not-a-pin" },
+        \\} }
+    );
+    try std.testing.expectEqualStrings("0123abc", (try find(zon, "pinned")).revision());
+    try std.testing.expectEqualStrings("", (try find(zon, "archive")).revision());
+    try std.testing.expectEqualStrings("", (try find(zon, "near")).revision());
+    const npm = try g.manifests.parse(aa, "web/package.json",
+        \\{"dependencies":{"kit":"github:me/kit#v2","git":"git+ssh://git@host/x.git#main","plain":"^1.0.0"}}
+    );
+    try std.testing.expectEqualStrings("v2", (try find(npm, "kit")).revision());
+    try std.testing.expectEqualStrings("main", (try find(npm, "git")).revision());
+    try std.testing.expectEqualStrings("", (try find(npm, "plain")).revision());
+    const py = try g.manifests.parse(aa, "pyproject.toml",
+        \\[project]
+        \\dependencies = ["lib @ git+https://github.com/me/lib.git@v1#egg=lib", "ssh @ git+ssh://git@github.com/me/ssh.git", "wheel @ https://host/x-1.0.whl"]
+    );
+    try std.testing.expectEqualStrings("v1", (try find(py, "lib")).revision());
+    // the user before the host is no revision
+    try std.testing.expectEqualStrings("", (try find(py, "ssh")).revision());
+    try std.testing.expectEqualStrings("", (try find(py, "wheel")).revision());
+    const go = try g.manifests.parse(aa, "go.mod", "module m\nrequire github.com/me/core v1.2.0\n");
+    try std.testing.expectEqualStrings("", go[0].revision());
 }
 test "a declaration's scope follows its manifest's groups" {
     var arena: std.heap.ArenaAllocator = .init(a);
@@ -340,4 +424,15 @@ test "a declaration's scope follows its manifest's groups" {
     try eq(Scope.development, (try find(py, "f")).scope());
     const zon = try g.manifests.parse(aa, "build.zig.zon", ".{ .dependencies = .{ .a = .{ .path = \"a\" } } }");
     try eq(Scope.runtime, zon[0].scope());
+}
+test "the manifest names are the ones parse reads" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    for (g.manifests.names) |name| {
+        try std.testing.expect(g.manifests.supported(name));
+        const nested = try std.fmt.allocPrint(arena.allocator(), "sub/{s}", .{name});
+        try std.testing.expect(g.manifests.supported(nested));
+        _ = g.manifests.parse(arena.allocator(), name, "") catch |err| try std.testing.expect(err != error.UnsupportedManifest);
+    }
+    try std.testing.expect(!g.manifests.supported("requirements.txt"));
 }

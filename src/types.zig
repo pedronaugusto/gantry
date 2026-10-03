@@ -48,6 +48,25 @@ pub const Dependency = struct {
     requirement: []const u8 = "",
     source: []const u8 = "",
     group: []const u8 = "dependencies",
+    /// Where the declaration says the dependency comes from, read from the
+    /// key or form that gave `source` rather than guessed from its text.
+    origin: Origin = .registry,
+
+    pub const Origin = enum {
+        /// No place of its own: a name the ecosystem's registry or module
+        /// proxy resolves. A Go requirement's module path is a `remote`.
+        registry,
+        /// A folder on this machine: a ZON `.path`, a Cargo or Poetry
+        /// `path`, an npm `file:`, `link:` or path, a PEP 508 `file:` URL.
+        local,
+        /// A repository or archive elsewhere: a ZON `.url`, a Cargo or
+        /// Poetry `git` or `url`, an npm git, URL or `owner/repo`
+        /// shorthand, a PEP 508 URL, a Go module path.
+        remote,
+        /// Another member of the same workspace: npm `workspace:`, Cargo
+        /// `workspace = true`.
+        workspace,
+    };
 
     /// What the dependency is needed for, by its manifest's own groups.
     pub const Scope = enum {
@@ -89,6 +108,33 @@ pub const Dependency = struct {
             }
         }
         return .runtime;
+    }
+
+    /// The revision a remote source pins in its own text, as a slice of
+    /// `source`: what follows `#` in a git URL (`git+https://host/x#v1`,
+    /// `github:owner/x#main`), or what follows the path's `@` in a PEP 508
+    /// VCS URL (`git+https://host/x.git@v1`). Empty when it names none, for
+    /// every other origin, and for a revision a manifest keeps under a key
+    /// of its own (Cargo's and Poetry's `rev`, `tag`, `branch`), which is
+    /// not read. A Go requirement's version is its `requirement`.
+    pub fn revision(dep: Dependency) []const u8 {
+        if (dep.origin != .remote) return "";
+        const manifest = baseName(dep.manifest);
+        if (std.mem.eql(u8, manifest, "go.mod")) return "";
+        if (std.mem.eql(u8, manifest, "pyproject.toml")) return vcsRevision(dep.source);
+        const hash = std.mem.lastIndexOfScalar(u8, dep.source, '#') orelse return "";
+        return dep.source[hash + 1 ..];
+    }
+
+    /// `git+https://host/owner/x.git@v1#egg=x` → `v1`.
+    fn vcsRevision(source: []const u8) []const u8 {
+        const plus = std.mem.indexOfScalar(u8, source, '+') orelse return "";
+        const scheme = std.mem.indexOf(u8, source, "://") orelse return "";
+        if (plus > scheme) return "";
+        const url = source[0 .. std.mem.indexOfScalar(u8, source, '#') orelse source.len];
+        const path = std.mem.indexOfScalarPos(u8, url, scheme + 3, '/') orelse return "";
+        const at = std.mem.lastIndexOfScalar(u8, url[path..], '@') orelse return "";
+        return url[path + at + 1 ..];
     }
 
     fn baseName(manifest: []const u8) []const u8 {

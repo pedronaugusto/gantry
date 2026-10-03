@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `Dependency.origin` records whether a declaration comes from a registry, a local folder, a remote or the workspace, from the key or form that named it; `Dependency.revision` is the pin a remote source spells.
+
 - `Dependency.scope` says whether a declaration is for running, development, an optional extra or building, from its manifest's groups.
 
 - `kindsOf` says which reference kinds a scan reads from a path, and the scan selects files by it.
