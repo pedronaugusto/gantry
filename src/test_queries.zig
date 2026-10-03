@@ -56,6 +56,24 @@ test "coupling counts distinct dependencies per file and across each directory's
     try eq(0, (g.Coupling{ .path = "lone", .fan_in = 0, .fan_out = 0 }).instability());
 }
 
+test "directories interleaved in path order each count once" {
+    // `a/b-c` sorts between `a/b.zig` and `a/b/`, and `a` holds them all.
+    var analysis = try g.Analysis.init(a, &.{ "a/b-c/d.zig", "a/b.zig", "a/b/c.zig", "a/c.zig", "z.zig" }, &.{
+        .{ .from = "a/b/c.zig", .to = "a/b-c/d.zig" },
+        .{ .from = "z.zig", .to = "a/b/c.zig" },
+        .{ .from = "a/c.zig", .to = "z.zig" },
+    });
+    defer analysis.deinit();
+    const dirs = analysis.directoryCoupling();
+    try eq(3, dirs.len);
+    try std.testing.expectEqualStrings("a", dirs[0].path);
+    try counts(dirs[0], 4, 1, 1);
+    try std.testing.expectEqualStrings("a/b", dirs[1].path);
+    try counts(dirs[1], 1, 1, 1);
+    try std.testing.expectEqualStrings("a/b-c", dirs[2].path);
+    try counts(dirs[2], 1, 1, 0);
+}
+
 test "queries list direct and transitive neighbours, affected files and shortest chains" {
     var analysis = try g.Analysis.init(a, files, edges);
     defer analysis.deinit();

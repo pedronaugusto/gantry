@@ -197,22 +197,30 @@ fn fileCoupling(a: std.mem.Allocator, paths: []const []const u8, from: []const u
 /// the dependencies that cross its boundary: a pair counts for each
 /// directory that holds one end and not the other.
 fn directoryCoupling(a: std.mem.Allocator, s: std.mem.Allocator, paths: []const []const u8, from: []const u32, to: []const u32) ![]const t.Coupling {
-    var ids: std.StringHashMapUnmanaged(u32) = .empty;
     var names: std.ArrayList([]const u8) = .empty;
     // Each node's directories, outermost first, as one list with offsets.
+    // Paths are sorted, so a directory's nodes are one run: the previous
+    // node's directories, as a stack, give every directory its number once.
     const offsets = try s.alloc(u32, paths.len + 1);
     var chains: std.ArrayList(u32) = .empty;
+    var stack: std.ArrayList(u32) = .empty;
     offsets[0] = 0;
     for (paths, 0..) |path, v| {
+        var depth: usize = 0;
         var at: usize = 0;
         while (std.mem.indexOfScalarPos(u8, path, at, '/')) |slash| : (at = slash + 1) {
-            const entry = try ids.getOrPut(s, path[0..slash]);
-            if (!entry.found_existing) {
-                entry.value_ptr.* = @intCast(names.items.len);
-                try names.append(s, path[0..slash]);
+            const name = path[0..slash];
+            if (depth < stack.items.len and std.mem.eql(u8, names.items[stack.items[depth]], name)) {
+                depth += 1;
+                continue;
             }
-            try chains.append(s, entry.value_ptr.*);
+            stack.shrinkRetainingCapacity(depth);
+            try stack.append(s, @intCast(names.items.len));
+            try names.append(s, name);
+            depth += 1;
         }
+        stack.shrinkRetainingCapacity(depth);
+        try chains.appendSlice(s, stack.items);
         offsets[v + 1] = @intCast(chains.items.len);
     }
     const counts = try s.alloc(t.Coupling, names.items.len);
