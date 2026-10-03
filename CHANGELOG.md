@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Keep the quiet benchmark worktree outside Zig’s disposable cache.
+
+- Recover Java imports and package declarations, resolved through the packages selected files declare; `Class.forName` and `loadClass` calls are unsupported.
+
+- Read `pom.xml` dependencies with their scope through the file's own properties, and literal `build.gradle` and `build.gradle.kts` declarations; computed declarations are unsupported.
+
+- Recover Nim `import`, `include` and `from` modules, resolved beside the importer and on the literal search paths of selected Nim configs.
+
+- Read `.nimble` requirements, named in `manifests.extensions`. `manifests.read` also returns the declarations a manifest spells in a form it cannot read, and scans record them as unsupported.
+
+- `Dependency.origin` records whether a declaration comes from a registry, a local folder, a remote or the workspace, from the key or form that named it; `Dependency.revision` is the pin a remote source spells.
+
+- `Dependency.scope` says whether a declaration is for running, development, an optional extra or building, from its manifest's groups.
+
+- `kindsOf` says which reference kinds a scan reads from a path, and the scan selects files by it.
+
+- `manifests.names` lists the manifest file names `manifests.parse` reads.
+
+- Store recovered reference names once and index scan recovery by selected file.
+
+- Reuse Python recovery for literal reexports and imports without retaining source buffers.
+
+- Read and lex Go sources once for build constraints and import recovery.
+
+- Reuse Rust recovery for test classification and imports, reading each source once.
+
 - Reject undeclared dependencies, duplicate layer membership and imports of source executables.
 
 - Keep owner conversions, graph analysis, rule evaluation and scan inputs below their public facades, and assemble tests above them.

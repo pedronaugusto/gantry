@@ -24,6 +24,13 @@ fn lexical(language: g.Language, source: []const u8, count: usize) !void {
             .python_import => "__import__",
             .rust_include => "include!",
             .rust_path => "#[path",
+            .nim_import => if (std.mem.startsWith(u8, rest, "from")) "from" else "import",
+            .nim_include => "include",
+            .nimble_requires => if (std.mem.startsWith(u8, rest, "task")) "taskRequires" else "requires",
+            .java_for_name => "Class.forName",
+            .java_load_class => "loadClass",
+            .maven_dependency => "<dependency",
+            .gradle_dependency => "",
         };
         try std.testing.expect(std.mem.startsWith(u8, rest, spelling));
     }
@@ -100,6 +107,43 @@ test "unsupported Rust imports expose include macros and path attributes" {
         \\mod child; use crate::child;
         \\// include!(name)
         \\const TEXT: &str = "include!(name)";
+    , 4);
+}
+
+test "unsupported Nim imports keep no module from a statement they cannot read" {
+    try lexical(.nim,
+        \\import $name
+        \\import a, b & "c"
+        \\include (name)
+        \\from strutils & x import y
+        \\import a/[b, $c]
+        \\import a/
+        \\import std/[os, strutils], ../lib/x as y, "z/w"
+        \\from a/b import c, d
+        \\when defined(x): import e except f
+        \\# import $bad
+        \\let text = "import $bad"
+        \\proc p() {.importc.}
+    , 6);
+    var result = try g.imports(a, .nim, "import a, b & \"c\"\nimport d");
+    defer result.deinit();
+    try std.testing.expectEqual(1, result.items().len);
+    try std.testing.expectEqualStrings("d", result.items()[0].name);
+}
+
+test "unsupported Java class loading names exact spellings, not members or text" {
+    try lexical(.java,
+        \\import a.B;
+        \\class A {
+        \\  Object x = Class.forName(name);
+        \\  Object y = Class.forName("a.B", true, loader);
+        \\  Object z = getClass().getClassLoader().loadClass(name);
+        \\  Object w = loader.loadClass("a.B");
+        \\  Object v = other.Class.forName(name);
+        \\  // Class.forName(name)
+        \\  String s = "loader.loadClass(name)";
+        \\  void loadClass(String n) {}
+        \\}
     , 4);
 }
 
@@ -206,6 +250,8 @@ test "unsupported strict diagnostics cover every detecting language and survive 
         .{ .path = "pkg/a.py", .source = "\nimportlib.import_module(name)", .offset = 1 },
         .{ .path = "src/a.cpp", .source = "\n#include HEADER", .offset = 1 },
         .{ .path = "src/a.rs", .source = "\ninclude!(name);", .offset = 1 },
+        .{ .path = "src/a.nim", .source = "\ninclude $name", .offset = 1 },
+        .{ .path = "src/A.java", .source = "\nClass.forName(name);", .offset = 1 },
     }) |case| {
         var inputs: std.heap.ArenaAllocator = .init(a);
         const path = try inputs.allocator().dupe(u8, case.path);
@@ -279,6 +325,8 @@ fn lexicalAllocations(alloc: std.mem.Allocator) !void {
             .python => "importlib.import_module(name)\nimport literal",
             .go => "package a\nimport \"literal\"",
             .rust => "include!(name); mod literal;",
+            .nim => "import $name\nimport literal",
+            .java => "import a.b.Literal; class A { Object x = Class.forName(name); }",
         };
         var result = try g.imports(alloc, language, source);
         defer result.deinit();

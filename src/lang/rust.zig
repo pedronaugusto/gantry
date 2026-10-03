@@ -4,6 +4,9 @@ const types = @import("../types.zig");
 const Spec = types.Spec;
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     const ts = try l.compact(a, try l.lex(.rust, a, source));
+    return recoverTokens(a, ts);
+}
+pub fn recoverTokens(a: std.mem.Allocator, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     const Frame = struct { test_item: bool, scope: []const u8 };
@@ -136,8 +139,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
 }
 pub const extensions = &[_][]const u8{".rs"};
 
-pub fn testFile(a: std.mem.Allocator, source: []const u8) !bool {
-    const ts = try l.compact(a, try l.lex(.rust, a, source));
+pub fn testFileTokens(ts: []const l.Token) bool {
     var depth: usize = 0;
     for (ts, 0..) |t, i| {
         if (t.is("{")) depth += 1;

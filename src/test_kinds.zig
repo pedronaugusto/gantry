@@ -61,3 +61,32 @@ test "Rust inner cfg test marks the file including incoming edges" {
     try f.edge(&graph, "src/lib.rs", "src/helper.rs", .@"test", 1);
     try f.edge(&graph, "src/helper.rs", "src/util.rs", .@"test", 1);
 }
+
+test "Rust test propagation reads each source once and releases reader scratch" {
+    const Reader = struct {
+        calls: usize = 0,
+        fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {
+            self.calls += 1;
+            return try scratch.dupe(u8, if (std.mem.eql(u8, name, "src/lib.rs")) "#[cfg(test)] mod helper;" else if (std.mem.eql(u8, name, "src/helper.rs")) "mod child; use crate::util;" else if (std.mem.eql(u8, name, "src/helper/child.rs")) "use crate::util;" else "");
+        }
+    };
+    var reader: Reader = .{};
+    var graph = try g.scan(a, &.{ "src/lib.rs", "src/helper.rs", "src/helper/child.rs", "src/util.rs" }, &reader, Reader.read, .{});
+    defer graph.deinit();
+    try f.edge(&graph, "src/helper.rs", "src/util.rs", .@"test", 1);
+    try f.edge(&graph, "src/helper/child.rs", "src/util.rs", .@"test", 1);
+    try std.testing.expectEqual(4, reader.calls);
+}
+test "kindsOf says which references a scan reads from a path by its name" {
+    const K = g.Kind;
+    const zig = g.kindsOf("src/main.zig");
+    try std.testing.expect(zig.contains(K.import) and zig.contains(K.@"test") and !zig.contains(K.link) and !zig.contains(K.asset));
+    const md = g.kindsOf("notes/a.md");
+    try std.testing.expect(md.contains(K.link) and md.contains(K.asset) and !md.contains(K.import));
+    const json = g.kindsOf("data/x.json");
+    try std.testing.expect(json.contains(K.asset) and !json.contains(K.link) and !json.contains(K.import));
+    const nim = g.kindsOf("src/app.nim");
+    try std.testing.expect(nim.contains(K.import) and nim.contains(K.@"test") and !nim.contains(K.asset));
+    try std.testing.expectEqual(@as(usize, 0), g.kindsOf("config.nims").count());
+    try std.testing.expectEqual(@as(usize, 0), g.kindsOf("image.png").count());
+}

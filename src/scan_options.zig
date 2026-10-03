@@ -13,8 +13,9 @@ const languages = @import("languages.zig");
 pub const Options = struct {
     kinds: []const Kind = &.{ .import, .@"test" },
     manifests: bool = true,
-    /// Reject detectable unsupported imports in participating source files.
-    /// This also extracts code when import and test edges are disabled.
+    /// Reject detectable unsupported imports in participating source files,
+    /// and declarations read manifests cannot read. This also extracts code
+    /// when import and test edges are disabled.
     strict_imports: bool = false,
     named_modules: []const NamedModule = &.{},
     include_roots: []const []const u8 = &.{},

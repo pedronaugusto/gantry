@@ -276,3 +276,409 @@ fn zonAllocations(alloc: std.mem.Allocator) !void {
 test "ZON declarations outlive source and parser storage and release every failed allocation" {
     try std.testing.checkAllAllocationFailures(a, zonAllocations, .{});
 }
+fn find(deps: []const g.Dependency, name: []const u8) !g.Dependency {
+    for (deps) |d| if (std.mem.eql(u8, d.name, name)) return d;
+    return error.TestMissingDependency;
+}
+test "each declaration says where it comes from by the key or form that named it" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const zon = try g.manifests.parse(aa, "build.zig.zon",
+        \\.{
+        \\ .dependencies = .{
+        \\  .strand = .{ .url = "git+https://github.com/me/strand#abc", .hash = "strand-0.7.0-x" },
+        \\  .up = .{ .path = "../up" },
+        \\  .here = .{ .path = "./vendor/here" },
+        \\  .bare = .{ .path = "vendor/bare" },
+        \\  .abs = .{ .path = "/opt/abs" },
+        \\ },
+        \\}
+    );
+    try eq(g.Dependency.Origin.remote, (try find(zon, "strand")).origin);
+    // a path is a folder however it is written, never a place elsewhere
+    for ([_][]const u8{ "up", "here", "bare", "abs" }) |name| try eq(g.Dependency.Origin.local, (try find(zon, name)).origin);
+
+    const npm = try g.manifests.parse(aa, "package.json",
+        \\{"dependencies":{"astro":"^5.0.0","tag":"latest","alias":"npm:@scope/x@^1","kit":"github:me/kit#v2","short":"me/short","url":"https://host/x.tgz","git":"git+ssh://git@host/x.git","file":"file:../file","link":"link:../link","rel":"./rel","ws":"workspace:*"}}
+    );
+    for ([_][]const u8{ "astro", "tag", "alias" }) |name| try eq(g.Dependency.Origin.registry, (try find(npm, name)).origin);
+    for ([_][]const u8{ "kit", "short", "url", "git" }) |name| try eq(g.Dependency.Origin.remote, (try find(npm, name)).origin);
+    for ([_][]const u8{ "file", "link", "rel" }) |name| try eq(g.Dependency.Origin.local, (try find(npm, name)).origin);
+    try eq(g.Dependency.Origin.workspace, (try find(npm, "ws")).origin);
+
+    const cargo = try g.manifests.parse(aa, "Cargo.toml",
+        \\[dependencies]
+        \\serde = "1"
+        \\engine = { git = "https://github.com/me/engine", branch = "main" }
+        \\near = { path = "../near" }
+        \\shared = { workspace = true }
+        \\[dependencies.long]
+        \\git = "https://x/long"
+        \\[dependencies.inner]
+        \\path = "inner"
+        \\[dependencies.member]
+        \\workspace = true
+    );
+    try eq(g.Dependency.Origin.registry, (try find(cargo, "serde")).origin);
+    try eq(g.Dependency.Origin.remote, (try find(cargo, "engine")).origin);
+    try eq(g.Dependency.Origin.remote, (try find(cargo, "long")).origin);
+    try eq(g.Dependency.Origin.local, (try find(cargo, "near")).origin);
+    try eq(g.Dependency.Origin.local, (try find(cargo, "inner")).origin);
+    try eq(g.Dependency.Origin.workspace, (try find(cargo, "shared")).origin);
+    try eq(g.Dependency.Origin.workspace, (try find(cargo, "member")).origin);
+
+    const py = try g.manifests.parse(aa, "pyproject.toml",
+        \\[project]
+        \\dependencies = ["requests>=2", "lib @ git+https://github.com/me/lib.git@v1", "disk @ file:///opt/disk"]
+        \\[tool.poetry.dependencies]
+        \\near = { path = "../near" }
+        \\far = { git = "https://x/far" }
+    );
+    try eq(g.Dependency.Origin.registry, (try find(py, "requests")).origin);
+    try eq(g.Dependency.Origin.remote, (try find(py, "lib")).origin);
+    try eq(g.Dependency.Origin.local, (try find(py, "disk")).origin);
+    try eq(g.Dependency.Origin.local, (try find(py, "near")).origin);
+    try eq(g.Dependency.Origin.remote, (try find(py, "far")).origin);
+
+    const go = try g.manifests.parse(aa, "go.mod", "module m\nrequire github.com/me/core v1.2.0\n");
+    try eq(g.Dependency.Origin.remote, go[0].origin);
+}
+test "a revision is the pin a remote source spells in its own text" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const zon = try g.manifests.parse(aa, "build.zig.zon",
+        \\.{ .dependencies = .{
+        \\  .pinned = .{ .url = "git+https://github.com/me/strand#0123abc" },
+        \\  .archive = .{ .url = "https://host/archive.tar.gz" },
+        \\  .near = .{ .path = "../near#not-a-pin" },
+        \\} }
+    );
+    try std.testing.expectEqualStrings("0123abc", (try find(zon, "pinned")).revision());
+    try std.testing.expectEqualStrings("", (try find(zon, "archive")).revision());
+    try std.testing.expectEqualStrings("", (try find(zon, "near")).revision());
+    const npm = try g.manifests.parse(aa, "web/package.json",
+        \\{"dependencies":{"kit":"github:me/kit#v2","git":"git+ssh://git@host/x.git#main","plain":"^1.0.0"}}
+    );
+    try std.testing.expectEqualStrings("v2", (try find(npm, "kit")).revision());
+    try std.testing.expectEqualStrings("main", (try find(npm, "git")).revision());
+    try std.testing.expectEqualStrings("", (try find(npm, "plain")).revision());
+    const py = try g.manifests.parse(aa, "pyproject.toml",
+        \\[project]
+        \\dependencies = ["lib @ git+https://github.com/me/lib.git@v1#egg=lib", "ssh @ git+ssh://git@github.com/me/ssh.git", "wheel @ https://host/x-1.0.whl"]
+    );
+    try std.testing.expectEqualStrings("v1", (try find(py, "lib")).revision());
+    // the user before the host is no revision
+    try std.testing.expectEqualStrings("", (try find(py, "ssh")).revision());
+    try std.testing.expectEqualStrings("", (try find(py, "wheel")).revision());
+    const go = try g.manifests.parse(aa, "go.mod", "module m\nrequire github.com/me/core v1.2.0\n");
+    try std.testing.expectEqualStrings("", go[0].revision());
+}
+test "a declaration's scope follows its manifest's groups" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const Scope = g.Dependency.Scope;
+    const npm = try g.manifests.parse(aa, "web/package.json", "{\"dependencies\":{\"a\":\"1\"},\"devDependencies\":{\"b\":\"2\"},\"peerDependencies\":{\"c\":\"*\"},\"optionalDependencies\":{\"d\":\"1\"}}");
+    try eq(Scope.runtime, (try find(npm, "a")).scope());
+    try eq(Scope.development, (try find(npm, "b")).scope());
+    try eq(Scope.runtime, (try find(npm, "c")).scope());
+    try eq(Scope.optional, (try find(npm, "d")).scope());
+    const cargo = try g.manifests.parse(aa, "Cargo.toml",
+        \\[dependencies]
+        \\a = "1"
+        \\[dev-dependencies]
+        \\b = "1"
+        \\[build-dependencies]
+        \\c = "1"
+        \\[target.'cfg(unix)'.dev-dependencies]
+        \\d = "1"
+        \\[workspace.dependencies]
+        \\e = "1"
+    );
+    try eq(Scope.runtime, (try find(cargo, "a")).scope());
+    try eq(Scope.development, (try find(cargo, "b")).scope());
+    try eq(Scope.build, (try find(cargo, "c")).scope());
+    try eq(Scope.development, (try find(cargo, "d")).scope());
+    try eq(Scope.runtime, (try find(cargo, "e")).scope());
+    const py = try g.manifests.parse(aa, "pyproject.toml",
+        \\[project]
+        \\dependencies = ["a"]
+        \\[project.optional-dependencies]
+        \\extra = ["b"]
+        \\[dependency-groups]
+        \\lint = ["c"]
+        \\[tool.poetry.dependencies]
+        \\d = "1"
+        \\[tool.poetry.group.dev.dependencies]
+        \\e = "1"
+        \\[tool.poetry.dev-dependencies]
+        \\f = "1"
+    );
+    try eq(Scope.runtime, (try find(py, "a")).scope());
+    try eq(Scope.optional, (try find(py, "b")).scope());
+    try eq(Scope.development, (try find(py, "c")).scope());
+    try eq(Scope.runtime, (try find(py, "d")).scope());
+    try eq(Scope.development, (try find(py, "e")).scope());
+    try eq(Scope.development, (try find(py, "f")).scope());
+    const zon = try g.manifests.parse(aa, "build.zig.zon", ".{ .dependencies = .{ .a = .{ .path = \"a\" } } }");
+    try eq(Scope.runtime, zon[0].scope());
+}
+test "the manifest names are the ones parse reads" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    for (g.manifests.names) |name| {
+        try std.testing.expect(g.manifests.supported(name));
+        const nested = try std.fmt.allocPrint(arena.allocator(), "sub/{s}", .{name});
+        try std.testing.expect(g.manifests.supported(nested));
+        _ = g.manifests.parse(arena.allocator(), name, "") catch |err| try std.testing.expect(err != error.UnsupportedManifest);
+    }
+    for (g.manifests.extensions) |extension| {
+        const named = try std.fmt.allocPrint(arena.allocator(), "pkg/app{s}", .{extension});
+        try std.testing.expect(g.manifests.supported(named));
+        _ = g.manifests.parse(arena.allocator(), named, "") catch |err| try std.testing.expect(err != error.UnsupportedManifest);
+        try std.testing.expect(!g.manifests.supported(extension));
+    }
+    try std.testing.expect(!g.manifests.supported("requirements.txt"));
+    try std.testing.expect(!g.manifests.supported("app.nimble.bak"));
+}
+test "Maven dependencies interpolate this file's properties and map their scope" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const text =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<!-- <dependency><groupId>fake</groupId></dependency> -->
+        \\<project xmlns="http://maven.apache.org/POM/4.0.0">
+        \\  <parent><groupId>org.acme</groupId><version>2.0</version></parent>
+        \\  <artifactId>app</artifactId>
+        \\  <dependencies>
+        \\    <dependency>
+        \\      <groupId>org.junit.jupiter</groupId>
+        \\      <artifactId>junit-jupiter</artifactId>
+        \\      <version>${junit.version}</version>
+        \\      <scope>test</scope>
+        \\    </dependency>
+        \\    <dependency><groupId>${project.groupId}</groupId><artifactId>core</artifactId><version>${project.version}</version></dependency>
+        \\    <dependency><groupId>javax.servlet</groupId><artifactId>servlet-api</artifactId><scope>provided</scope></dependency>
+        \\    <dependency><groupId>com.x</groupId><artifactId>native</artifactId><version>1</version><scope>system</scope><systemPath>${basedir}/lib/native.jar</systemPath></dependency>
+        \\    <dependency><groupId>a&amp;b</groupId><artifactId><![CDATA[c]]></artifactId><optional>true</optional></dependency>
+        \\    <dependency><groupId>com.y</groupId><artifactId>lib</artifactId><version>${elsewhere.version}</version></dependency>
+        \\  </dependencies>
+        \\  <dependencyManagement><dependencies><dependency><groupId>managed</groupId><artifactId>m</artifactId></dependency></dependencies></dependencyManagement>
+        \\  <build><plugins><plugin><dependencies><dependency><groupId>plugin</groupId><artifactId>p</artifactId></dependency></dependencies></plugin></plugins></build>
+        \\  <properties>
+        \\    <junit.version>${junit.major}.10.2</junit.version>
+        \\    <junit.major>5</junit.major>
+        \\  </properties>
+        \\</project>
+    ;
+    const declared = try g.manifests.read(arena.allocator(), "app/pom.xml", text);
+    const deps = declared.dependencies;
+    try eq(5, deps.len);
+    const Scope = g.Dependency.Scope;
+    const junit = try find(deps, "org.junit.jupiter:junit-jupiter");
+    try std.testing.expectEqualStrings("5.10.2", junit.requirement);
+    try eq(Scope.development, junit.scope());
+    const core = try find(deps, "org.acme:core");
+    try std.testing.expectEqualStrings("2.0", core.requirement);
+    try eq(Scope.runtime, core.scope());
+    try std.testing.expectEqualStrings("compile", core.group);
+    try eq(Scope.build, (try find(deps, "javax.servlet:servlet-api")).scope());
+    const native = try find(deps, "com.x:native");
+    try eq(g.Dependency.Origin.local, native.origin);
+    try std.testing.expectEqualStrings("./lib/native.jar", native.source);
+    try eq(g.Dependency.Origin.registry, (try find(deps, "a&b:c")).origin);
+    try eq(1, declared.unsupported.len);
+    try eq(g.ImportExpression.maven_dependency, declared.unsupported[0].expression);
+    try std.testing.expect(std.mem.startsWith(u8, text[declared.unsupported[0].offset..], "<dependency><groupId>com.y"));
+}
+test "malformed Maven documents and dependencies fail rather than reporting part of them" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    for ([_][]const u8{
+        "<project><dependencies>",
+        "<project></dependencies>",
+        "<project><!-- unterminated </project>",
+        "<project><dependencies><dependency><artifactId>x</artifactId></dependency></dependencies></project>",
+        "<project attr=\"x>",
+    }) |text| try std.testing.expectError(error.InvalidManifest, g.manifests.parse(arena.allocator(), "pom.xml", text));
+    try eq(0, (try g.manifests.parse(arena.allocator(), "pom.xml", "<settings><dependencies><dependency><groupId>a</groupId><artifactId>b</artifactId></dependency></dependencies></settings>")).len);
+}
+test "Gradle Groovy declarations keep literal notations and their configuration's scope" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const text =
+        \\buildscript {
+        \\    dependencies { classpath 'com.android.tools.build:gradle:8.5.0' }
+        \\}
+        \\plugins { id 'java' }
+        \\// implementation 'fake:commented:1'
+        \\dependencies {
+        \\    implementation 'com.google.guava:guava:33.0.0-jre'
+        \\    api("org.slf4j:slf4j-api:2.0.13") {
+        \\        exclude group: 'x'
+        \\    }
+        \\    implementation 'a:one:1', 'a:two:2:jdk8',
+        \\        'a:three'
+        \\    testImplementation group: 'junit', name: 'junit', version: '4.13.2', transitive: false
+        \\    compileOnly 'org.projectlombok:lombok:1.18.32'
+        \\    annotationProcessor 'org.projectlombok:lombok:1.18.32'
+        \\    implementation project(':core')
+        \\    implementation platform('org.springframework.boot:spring-boot-dependencies:3.3.0')
+        \\    runtimeOnly 'com.h2database:h2:2.2.224@jar'
+        \\    implementation 'literal:dollar:$notInterpolated'
+        \\    constraints {
+        \\        implementation 'managed:constraint:1.0'
+        \\    }
+        \\    implementation "org.x:y:$version"
+        \\    implementation libs.guava
+        \\    implementation fileTree(dir: 'libs', include: ['*.jar'])
+        \\    if (useFast) {
+        \\        implementation 'fast:lib:1'
+        \\    }
+        \\    testImplementation "org.junit:junit-bom:${junitVersion}"
+        \\    implementation 'after:computed:1'
+        \\}
+        \\task copy { from '''implementation 'fake:block:1' ''' }
+    ;
+    const declared = try g.manifests.read(arena.allocator(), "app/build.gradle", text);
+    const deps = declared.dependencies;
+    const Scope = g.Dependency.Scope;
+    try eq(14, deps.len);
+    try eq(Scope.build, (try find(deps, "com.android.tools.build:gradle")).scope());
+    const guava = try find(deps, "com.google.guava:guava");
+    try std.testing.expectEqualStrings("33.0.0-jre", guava.requirement);
+    try std.testing.expectEqualStrings("implementation", guava.group);
+    try eq(Scope.runtime, guava.scope());
+    try eq(Scope.runtime, (try find(deps, "org.slf4j:slf4j-api")).scope());
+    try std.testing.expectEqualStrings("2:jdk8", (try find(deps, "a:two")).requirement);
+    try std.testing.expectEqualStrings("", (try find(deps, "a:three")).requirement);
+    const junit = try find(deps, "junit:junit");
+    try std.testing.expectEqualStrings("4.13.2", junit.requirement);
+    try eq(Scope.development, junit.scope());
+    try eq(Scope.build, (try find(deps, "org.projectlombok:lombok")).scope());
+    const core = try find(deps, ":core");
+    try eq(g.Dependency.Origin.workspace, core.origin);
+    try std.testing.expectEqualStrings("3.3.0", (try find(deps, "org.springframework.boot:spring-boot-dependencies")).requirement);
+    try std.testing.expectEqualStrings("2.2.224@jar", (try find(deps, "com.h2database:h2")).requirement);
+    try std.testing.expectEqualStrings("$notInterpolated", (try find(deps, "literal:dollar")).requirement);
+    _ = try find(deps, "after:computed");
+    try std.testing.expectError(error.TestMissingDependency, find(deps, "managed:constraint"));
+    try std.testing.expectError(error.TestMissingDependency, find(deps, "fast:lib"));
+    try eq(5, declared.unsupported.len);
+    for (declared.unsupported, [_][]const u8{ "implementation \"org.x", "implementation libs", "implementation fileTree", "if (useFast)", "testImplementation \"org.junit" }) |record, spelling| {
+        try eq(g.ImportExpression.gradle_dependency, record.expression);
+        try std.testing.expect(std.mem.startsWith(u8, text[record.offset..], spelling));
+    }
+}
+test "Gradle Kotlin declarations read string templates and helpers as computed" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const declared = try g.manifests.read(arena.allocator(), "build.gradle.kts",
+        \\#!/usr/bin/env kotlin
+        \\/* dependencies { implementation("fake:nested:1") /* nested */ } */
+        \\dependencies {
+        \\    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+        \\    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+        \\    testRuntimeOnly(group = "org.junit.platform", name = "junit-platform-launcher")
+        \\    "integrationTestImplementation"("org.assertj:assertj-core:3.26.0")
+        \\    add("ksp", "com.google.dagger:dagger-compiler:2.51")
+        \\    implementation(project(":lib")) { isTransitive = false }
+        \\    implementation(project(path = ":other"))
+        \\    implementation("org.x:y:${'$'}{v}")
+        \\    implementation("org.x:z:$v")
+        \\    testImplementation(kotlin("test"))
+        \\    implementation(libs.bundles.ktor)
+        \\    implementation(projects.core)
+        \\    val x = "a:b:1"
+        \\}
+    );
+    const deps = declared.dependencies;
+    const Scope = g.Dependency.Scope;
+    try eq(7, deps.len);
+    try eq(Scope.runtime, (try find(deps, "com.squareup.okhttp3:okhttp")).scope());
+    try eq(Scope.development, (try find(deps, "org.junit:junit-bom")).scope());
+    try std.testing.expectEqualStrings("", (try find(deps, "org.junit.platform:junit-platform-launcher")).requirement);
+    try eq(Scope.development, (try find(deps, "org.assertj:assertj-core")).scope());
+    try eq(Scope.build, (try find(deps, "com.google.dagger:dagger-compiler")).scope());
+    try eq(g.Dependency.Origin.workspace, (try find(deps, ":lib")).origin);
+    _ = try find(deps, ":other");
+    try eq(6, declared.unsupported.len);
+}
+test "Nimble requirements keep their constraint, origin, revision and scope" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const declared = try g.manifests.read(arena.allocator(), "app.nimble",
+        \\# requires "commented"
+        \\version = "0.1.0"
+        \\requires "nim >= 2.0.0", "jester >= 0.6",
+        \\  "karax#head"
+        \\requires("https://github.com/me/lib.git#v1.2 >= 1.0")
+        \\when defined(windows):
+        \\  requires "winim"
+        \\taskRequires "test", "unittest2 ~= 0.2"
+        \\feature "web":
+        \\  requires "prologue"
+        \\requires "after"
+        \\let s = "requires \"fake\""
+    );
+    const deps = declared.dependencies;
+    try eq(0, declared.unsupported.len);
+    try eq(7, deps.len);
+    const Scope = g.Dependency.Scope;
+    const jester = try find(deps, "jester");
+    try std.testing.expectEqualStrings(">= 0.6", jester.requirement);
+    try eq(g.Dependency.Origin.registry, jester.origin);
+    try eq(Scope.runtime, jester.scope());
+    const karax = try find(deps, "karax");
+    try std.testing.expectEqualStrings("#head", karax.requirement);
+    try std.testing.expectEqualStrings("head", karax.revision());
+    const lib = try find(deps, "https://github.com/me/lib.git");
+    try eq(g.Dependency.Origin.remote, lib.origin);
+    try std.testing.expectEqualStrings("https://github.com/me/lib.git#v1.2", lib.source);
+    try std.testing.expectEqualStrings("v1.2", lib.revision());
+    try std.testing.expectEqualStrings(">= 1.0", lib.requirement);
+    try eq(Scope.runtime, (try find(deps, "winim")).scope());
+    const unittest = try find(deps, "unittest2");
+    try std.testing.expectEqualStrings("taskRequires.test", unittest.group);
+    try eq(Scope.development, unittest.scope());
+    try eq(Scope.optional, (try find(deps, "prologue")).scope());
+    try eq(Scope.runtime, (try find(deps, "after")).scope());
+}
+test "Nimble requirements that are not string literals declare nothing and are kept unsupported" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const text =
+        \\const ver = "1.0"
+        \\requires "a", "b >= " & ver
+        \\requires someList
+        \\taskRequires taskName, "c"
+        \\requires "d"
+    ;
+    const declared = try g.manifests.read(arena.allocator(), "x.nimble", text);
+    try eq(1, declared.dependencies.len);
+    try std.testing.expectEqualStrings("d", declared.dependencies[0].name);
+    try eq(3, declared.unsupported.len);
+    for (declared.unsupported) |record| {
+        try eq(g.ImportExpression.nimble_requires, record.expression);
+        const rest = text[record.offset..];
+        try std.testing.expect(std.mem.startsWith(u8, rest, "requires") or std.mem.startsWith(u8, rest, "taskRequires"));
+    }
+    const fixture: f.Fixture = .{ .items = &.{
+        .{ .path = "x.nimble", .text = text },
+        .{ .path = "a.nim", .text = "import $name" },
+    } };
+    var graph = try fixture.scan(a, .{});
+    defer graph.deinit();
+    try eq(4, graph.unsupported().len);
+    try std.testing.expectEqualStrings("a.nim", graph.unsupported()[0].from.?);
+    try std.testing.expectEqualStrings("x.nimble", graph.unsupported()[1].from.?);
+    var options: g.Options = .{ .strict_imports = true };
+    options.kinds = &.{};
+    var diagnostic = g.ScanDiagnostic.init(a);
+    defer diagnostic.deinit();
+    try std.testing.expectError(error.UnsupportedImport, g.scanWithDiagnostic(a, &.{"x.nimble"}, fixture, f.Fixture.read, options, &diagnostic));
+    try std.testing.expectEqual(g.ScanDiagnostic.Phase.manifests, diagnostic.failure.?.phase);
+    try std.testing.expectEqual(@as(?usize, std.mem.indexOf(u8, text, "requires \"a\"")), diagnostic.failure.?.offset);
+}

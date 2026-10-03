@@ -51,6 +51,8 @@ results retain their allocator and own their storage. Move these handles and cal
 independent of the original graph. Rule findings borrow the graph, rule names and
 required-path strings; keep those alive and free only the returned findings slice.
 
+Preprocessing copies names directly into returned references; recovery records stay in the scan workspace, and file scratch is released after each file.
+
 Paths are relative to one logical root and use `/` on every host. Normalization resolves
 `.` and `..` within that root, merges duplicate paths and refuses absolute paths,
 drives, backslashes, NUL and traversal above the root. Comparisons are byte and case
@@ -84,12 +86,31 @@ return gantry.scanWithDiagnostic(gpa, paths, {}, read, .{}, &diagnostic) catch |
 
 ## Recovery
 
-Import recovery uses byte lexers for Zig, C/C++, JavaScript/TypeScript, Python, Go and
-Rust. Resolution stays within selected files. Zig named modules and C include roots are
+Import recovery uses byte lexers for Zig, C/C++, JavaScript/TypeScript, Python, Go,
+Rust, Nim and Java. Resolution stays within selected files. Zig named modules and C include roots are
 caller inputs; JS/TS aliases come from selected local configs; Python initializer and
 literal star-reexport handling are selectable; Go uses selected module/workspace routing
 and optional target constraints. Rust resolves file modules and crate-relative use paths
 without macro expansion.
+
+Rust test classification propagates through file modules; owned recovered operands let it share each available source read with import resolution.
+
+Go workspace routing keeps local module edges, and recorded build constraints let caller targets select files; constraint parsing and imports share a source read and token stream.
+
+Python literal `__all__` reexports retain selected implementation edges; owned recovered operands let export indexing and imports share a source read and token stream.
+
+Nim `import`, `include` and `from` modules resolve as the compiler finds them: beside the
+importing file, then on the literal `--path` entries of selected `nim.cfg`, `config.nims`
+and project configs above it, nearest and latest first. `std/` names stay with the standard
+library and `pkg/` names use only search paths. Every `when` branch counts, and a path with
+a `$` substitution is not read.
+
+Java imports resolve through the `package` each selected file declares, wherever the file
+sits: `a.b.C` is `C.java` in package `a.b`, a nested or static member falls back to its
+enclosing type's file, and `a.b.*` is every file of the package. A type that several
+selected files declare resolves to each of them. Types of the importer's own package and
+fully qualified names need no import, so they give no edge. Sources are read once for
+their package and imports. `Class.forName` and `loadClass` calls are unsupported.
 
 `graph.references()` keeps import spellings, offsets, kinds and resolution status.
 Detectable unsupported constructs appear in `graph.unsupported()` without guessed edges.
@@ -99,10 +120,19 @@ unsupported construct. Loader aliases, generated imports and other runtime seman
 remain undetected.
 
 Import and test edges are enabled by default; links and assets require explicit kind
-selection. Markdown recovery handles inline relative links and wiki links while
+selection. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and wiki links while
 excluding fenced code and comments. Asset recovery matches path tokens in supported text
 files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
-`go.mod` and `pyproject.toml` remain separate from file edges. The TOML and Go
+`go.mod`, `pyproject.toml`, `pom.xml`, `build.gradle`, `build.gradle.kts`
+(`manifests.names`) and `.nimble` files (`manifests.extensions`) remain separate from file
+edges. A Maven `${property}` resolves through the same file's literal properties and
+project coordinates. Gradle declarations are read when literal. A declaration a reader
+cannot read, such as a Gradle version catalog entry, an interpolated coordinate or a
+`requires` with a computed argument, declares nothing and appears in `graph.unsupported()`.
+A declaration's `scope()` is runtime, development, optional or build, read from its
+manifest's own groups. Its `origin` is registry, local, remote or workspace, taken from
+the key or form that named its `source` (a ZON `.path` is local however it is written),
+and `revision()` is a pin the remote source spells in its own text. The TOML and Go
 declaration readers do not validate their entire formats.
 
 ## Graphs and rules
@@ -121,9 +151,11 @@ rule order. These rules operate on the recovered graph.
 ## Scope
 
 - It does not discover a repository, apply gitignore rules or select files for the caller.
-- It does not invoke a compiler, preprocess source or evaluate build scripts and macros.
+- It does not invoke a compiler, preprocess source or evaluate build scripts, macros, Nim
+  `when` conditions or config substitutions.
 - It does not construct symbol, call or runtime dependency graphs.
-- It does not install packages or solve transitive external versions.
+- It does not install packages, follow Maven parents or Gradle catalogs, or solve
+  transitive external versions.
 - It does not implement complete language, CommonMark, TOML or asset-format grammars.
 - It does not render a graph or provide a command-line linter.
 

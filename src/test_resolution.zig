@@ -287,10 +287,11 @@ test "DirReader and walk use a temp directory and caller pruning" {
 
 test "language extensions are explicit and unsupported files stay unread" {
     var buffer: [32]u8 = undefined;
-    for ([_][]const u8{ ".zig", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts", ".py", ".go", ".rs" }) |ext| try expect(g.languageOf(try std.fmt.bufPrint(&buffer, "file{s}", .{ext})) != null);
+    for ([_][]const u8{ ".zig", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts", ".py", ".go", ".rs", ".nim", ".java" }) |ext| try expect(g.languageOf(try std.fmt.bufPrint(&buffer, "file{s}", .{ext})) != null);
     try expect(g.languageOf(".zig") == null);
     try expect(g.languageOf("a.ZIG") == null);
-    try expect(g.languageOf("a.java") == null);
+    try expect(g.languageOf("a.kt") == null);
+    try expect(g.languageOf("config.nims") == null);
     try expect(g.languageOf("a.php") == null);
     var graph = try g.scan(a, &.{"a.bin"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{});
     defer graph.deinit();

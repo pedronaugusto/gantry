@@ -7,9 +7,10 @@ const Export = struct { name: []const u8, base: Spec, child: Spec };
 fn top(text: []const u8, offset: usize) bool {
     return offset == 0 or text[offset - 1] == '\n';
 }
-fn targets(a: std.mem.Allocator, source: []const u8, from: []const u8, ctx: anytype) ![]const []const u8 {
-    const ts = try l.lex(.python, a, source);
-    const specs = (try python.recover(a, source)).specs;
+fn targets(a: std.mem.Allocator, source: []const u8, from: []const u8, ctx: anytype, ts: []const l.Token, specs: []const Spec) ![]const []const u8 {
+    // No literal export list is possible without this spelling. Imports still
+    // use the same recovered tokens regardless of whether exports are present.
+    if (std.mem.indexOf(u8, source, "__all__") == null) return &.{};
     var names: std.ArrayList([]const u8) = .empty;
     var exports: std.ArrayList(Export) = .empty;
     var literal = false;
@@ -85,21 +86,24 @@ fn targets(a: std.mem.Allocator, source: []const u8, from: []const u8, ctx: anyt
     }
     return out.toOwnedSlice(a);
 }
-pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, progress: *@import("scan_diagnostic.zig").Progress) !std.StringHashMapUnmanaged([]const []const u8) {
+pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?@import("types.zig").Recovery, strings: std.mem.Allocator, progress: *@import("scan_diagnostic.zig").Progress) !std.StringHashMapUnmanaged([]const []const u8) {
     progress.at(.python_exports, null);
     var out: std.StringHashMapUnmanaged([]const []const u8) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
-    for (paths) |file| {
+    for (paths, 0..) |file, file_index| {
         if (!std.mem.endsWith(u8, file, ".py")) continue;
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
         const source = (try read(context, file, s)) orelse continue;
         progress.at(.python_exports, file);
+        const tokens = try l.lex(.python, s, source);
+        const recovery = try python.recoverTokens(s, tokens);
+        if (cached.len > 0) cached[file_index] = try recovery.clone(a, strings);
         var resolver = ctx;
         resolver.allocator = s;
         resolver.python_initializers = .explicit;
-        const found = try targets(s, source, file, resolver);
+        const found = try targets(s, source, file, resolver, tokens, recovery.specs);
         if (found.len > 0) {
             const owned = try a.alloc([]const u8, found.len);
             for (found, owned) |target, *dest| dest.* = try a.dupe(u8, target);

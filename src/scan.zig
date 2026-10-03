@@ -34,6 +34,20 @@ fn extract(a: std.mem.Allocator, language: Language, source: []const u8) !t.Reco
         inline else => |lang| @field(languages, @tagName(lang)).recover(a, source),
     };
 }
+/// The reference kinds `scan` reads from `file`, by its name alone:
+/// `import` and `test` from source in a supported language (`languageOf`),
+/// `link` from Markdown, `asset` from text that can name other files. Which of
+/// them a scan collects is still `Options.kinds`.
+pub fn kindsOf(file: []const u8) std.EnumSet(Kind) {
+    var kinds: std.EnumSet(Kind) = .initEmpty();
+    if (languageOf(file) != null) {
+        kinds.insert(.import);
+        kinds.insert(.@"test");
+    }
+    if (std.mem.endsWith(u8, file, ".md")) kinds.insert(.link);
+    if (recover.assetText(file)) kinds.insert(.asset);
+    return kinds;
+}
 fn enabled(options: Options, kind: Kind) bool {
     for (options.kinds) |k| if (k == kind) return true;
     return false;
@@ -70,17 +84,34 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     defer scratch.deinit();
     // Runs before any path-owning storage is destroyed.
     errdefer |cause| progress.fail(cause);
+    const code_enabled = options.strict_imports or enabled(options, .import) or enabled(options, .@"test");
+    const needs_cache = blk: {
+        if (code_enabled) for (g.paths) |p| {
+            const language = languageOf(p);
+            if (language == .go or language == .rust or language == .java or (language == .python and options.python_star_reexports)) break :blk true;
+        };
+        break :blk false;
+    };
+    const cached: []?t.Recovery = if (needs_cache) try w.alloc(?t.Recovery, g.paths.len) else &.{};
+    @memset(cached, null);
     var go_files: std.ArrayList(GoFile) = .empty;
     var inactive: std.StringHashMapUnmanaged(void) = .empty;
-    for (g.paths) |p| if (languageOf(p) == .go) {
+    for (g.paths, 0..) |p, file_index| if (languageOf(p) == .go) {
         const s = scratch.allocator();
         if (try reader.readFile(p, s)) |text| {
             progress.at(.go_constraints, p);
-            var info = try @import("go_build.zig").parse(s, p, text, options.go_target);
+            const lexer = @import("lexer.zig");
+            const tokens = try lexer.lex(.go, s, text);
+            var info = try @import("go_build.zig").parseTokens(s, p, text, options.go_target, tokens);
             info.package = try a.dupe(u8, info.package);
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
             try go_files.append(a, info);
             if (!info.selected) try inactive.put(w, p, {});
+            if (info.selected and code_enabled) {
+                progress.at(.imports, p);
+                const recovery = try @import("lang/go.zig").recoverTokens(s, text, try lexer.compact(s, tokens));
+                cached[file_index] = try recovery.clone(w, a);
+            }
         }
         _ = scratch.reset(.retain_capacity);
     };
@@ -96,6 +127,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     var modules: std.ArrayList(resolver.GoModule) = .empty;
     var workspaces: std.ArrayList(@import("go_config.zig").Workspace) = .empty;
     var deps: std.ArrayList(Dependency) = .empty;
+    var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     // Read manifests first: Go imports need the module identity even when
     // manifest dependencies have been disabled.
     for (g.paths) |p| {
@@ -112,40 +144,50 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                 };
                 if (is_work) try workspaces.append(w, .{ .root = path.dir(p), .uses = parsed.uses, .replacements = parsed.replacements });
             }
-            if (options.manifests and manifests.supported(p)) for (try manifests.parse(s, p, text)) |dep| {
-                try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group) });
-            };
+            if (options.manifests and manifests.supported(p)) {
+                const declared = try manifests.read(s, p, text);
+                if (options.strict_imports and declared.unsupported.len > 0) {
+                    progress.offset = declared.unsupported[0].offset;
+                    return error.UnsupportedImport;
+                }
+                for (declared.unsupported) |record| try unsupported.append(a, .{ .from = p, .offset = record.offset, .expression = record.expression });
+                for (declared.dependencies) |dep| try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group), .origin = dep.origin });
+            }
         }
         _ = scratch.reset(.retain_capacity);
     }
     const configs = try @import("tsconfig.zig").load(w, gpa, g.paths, &g.files, &reader, Reader.readFile, &progress);
+    const nim_configs = try @import("nim_config.zig").load(w, gpa, g.paths, &reader, Reader.readFile, &progress);
     progress.at(.resolution, null);
     const index = try recover.names(w, g.paths);
-    const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
-    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &progress);
-    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
+    const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs, .nim_configs = nim_configs };
+    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress);
+    const java_packages = if (code_enabled) try @import("java_packages.zig").index(w, gpa, g.paths, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
+    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
-    var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
-    for (g.paths) |p| {
+    for (g.paths, 0..) |p, file_index| {
         if (inactive.contains(p)) continue;
         const language = languageOf(p);
-        const code = (options.strict_imports or enabled(options, .import) or enabled(options, .@"test")) and language != null;
-        const links = enabled(options, .link) and std.mem.endsWith(u8, p, ".md");
-        const assets = enabled(options, .asset) and recover.assetText(p);
+        const readable = kindsOf(p);
+        const code = code_enabled and readable.contains(.import);
+        const links = enabled(options, .link) and readable.contains(.link);
+        const assets = enabled(options, .asset) and readable.contains(.asset);
         if (!code and !links and !assets) continue;
         const s = scratch.allocator();
-        const text = (try reader.readFile(p, s)) orelse {
+        const prior = if (cached.len > 0) cached[file_index] else null;
+        const text = (if (prior != null) "" else try reader.readFile(p, s)) orelse {
             _ = scratch.reset(.retain_capacity);
             continue;
         };
         var ctx = base_ctx;
         ctx.allocator = s;
         ctx.python_reexports = &reexports;
+        ctx.java_packages = &java_packages;
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
             progress.at(.imports, p);
-            const recovery = try extract(s, language.?, text);
+            const recovery = prior orelse try extract(s, language.?, text);
             if (options.strict_imports and recovery.unsupported.len > 0) {
                 progress.offset = recovery.unsupported[0].offset;
                 return error.UnsupportedImport;
@@ -160,7 +202,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                 progress.at(.resolution, p);
                 const kind: Kind = if (spec.kind == .@"test" or test_files.contains(p) or @import("code_kind.zig").file(language.?, p)) .@"test" else .import;
                 const targets = try ctx.targets(p, language.?, spec);
-                try refs.append(a, .{ .from = p, .name = try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| try a.dupe(u8, member) else null, .resolved = targets.len > 0, .kind = kind });
+                try refs.append(a, .{ .from = p, .name = if (prior != null) spec.name else try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| (if (prior != null) member else try a.dupe(u8, member)) else null, .resolved = targets.len > 0, .kind = kind });
                 if (spec.member != null) continue;
                 if (language == .python and options.python_initializers == .explicit and spec.python_base and !spec.star) {
                     var children: usize = 0;
@@ -220,7 +262,13 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
             return std.mem.order(u8, x.source, y.source) == .lt;
         }
     }.less);
-    // Selected paths and each extractor are already in source order.
+    // Each extractor is in source order; manifests are read before sources.
+    std.mem.sort(t.UnsupportedReference, unsupported.items, {}, struct {
+        fn less(_: void, x: t.UnsupportedReference, y: t.UnsupportedReference) bool {
+            const from = std.mem.order(u8, x.from.?, y.from.?);
+            return from == .lt or (from == .eq and x.offset < y.offset);
+        }
+    }.less);
     g.unsupported = try unsupported.toOwnedSlice(a);
     g.references = try refs.toOwnedSlice(a);
     g.dependencies = try deps.toOwnedSlice(a);

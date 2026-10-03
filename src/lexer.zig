@@ -1,8 +1,15 @@
 //! Shared byte machinery, instantiated separately by each language module.
 //! Tokens retain source offsets. Comments and character literals never emit words.
 const std = @import("std");
-const Language = @import("types.zig").Language;
+/// The rules a text is read with: each source language by its own name.
+/// Manifests borrow the nearest rules (TOML reads as Python, go.mod as Go),
+/// and Gradle build scripts are Groovy or Kotlin.
+pub const Syntax = enum { zig, c, javascript, python, go, rust, nim, java, groovy, kotlin };
 pub const Token = struct {
+    /// A template is an opaque string: a JS template boundary, or a whole
+    /// string literal whose text is not a plain value (a Nim raw string with a
+    /// prefix, which can be a formatting call, or a Groovy or Kotlin string
+    /// that interpolates `$name` or `${code}`).
     kind: enum { word, string, template, punctuation, newline },
     text: []const u8,
     offset: usize,
@@ -11,13 +18,14 @@ pub const Token = struct {
         return (t.kind == .word or t.kind == .punctuation) and std.mem.eql(u8, t.text, s);
     }
 };
-pub fn lex(comptime lang: Language, a: std.mem.Allocator, text: []const u8) ![]const Token {
+pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]const Token {
     var out: std.ArrayList(Token) = .empty;
     var i: usize = 0;
     var regex_allowed = true;
     var control_pending = false;
     var controls: std.ArrayList(bool) = .empty;
     var templates: std.ArrayList(usize) = .empty;
+    if ((lang == .groovy or lang == .kotlin) and std.mem.startsWith(u8, text, "#!")) i = lineEnd(text, 0);
     while (i < text.len) {
         const start = i;
         const c = text[i];
@@ -59,22 +67,27 @@ pub fn lex(comptime lang: Language, a: std.mem.Allocator, text: []const u8) ![]c
             i += 1;
             continue;
         }
-        if (lang == .python and c == '#') {
+        if (lang == .nim and c == '#' and (std.mem.startsWith(u8, text[i..], "#[") or std.mem.startsWith(u8, text[i..], "##["))) {
+            i = nimComment(text, i);
+            continue;
+        }
+        if ((lang == .python or lang == .nim) and c == '#') {
             i = lineEnd(text, i);
             continue;
         }
-        if (lang != .python and i + 1 < text.len and c == '/' and text[i + 1] == '/') {
+        const slashes = lang != .python and lang != .nim;
+        if (slashes and i + 1 < text.len and c == '/' and text[i + 1] == '/') {
             i = lineEnd(text, i);
             continue;
         }
-        if (lang != .python and lang != .zig and i + 1 < text.len and c == '/' and text[i + 1] == '*') {
+        if (slashes and lang != .zig and i + 1 < text.len and c == '/' and text[i + 1] == '*') {
             i += 2;
             var depth: usize = 1;
             while (i < text.len and depth > 0) {
                 if (i + 1 < text.len and text[i] == '*' and text[i + 1] == '/') {
                     depth -= 1;
                     i += 2;
-                } else if (lang == .rust and i + 1 < text.len and text[i] == '/' and text[i + 1] == '*') {
+                } else if ((lang == .rust or lang == .kotlin) and i + 1 < text.len and text[i] == '/' and text[i + 1] == '*') {
                     depth += 1;
                     i += 2;
                 } else {
@@ -145,7 +158,46 @@ pub fn lex(comptime lang: Language, a: std.mem.Allocator, text: []const u8) ![]c
             regex_allowed = false;
             continue;
         }
-        if (c == '"' or c == '\'' or ((lang == .go or lang == .javascript) and c == '`')) {
+        if (lang == .nim and c == '"' and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (i > 0 and ident(text[i - 1])))) {
+            // Triple-quoted and prefixed strings are raw: `\` is a byte and a
+            // prefixed one doubles its quote. A prefix like `fmt` makes a call.
+            const triple = std.mem.startsWith(u8, text[i..], "\"\"\"");
+            i = if (triple) tripleEnd(text, i + 3, "\"\"\"") else nimRawEnd(text, i + 1);
+            if (!triple) try out.append(a, .{ .kind = .template, .text = text[start..i], .offset = start, .end = i });
+            regex_allowed = false;
+            continue;
+        }
+        if ((lang == .java or lang == .groovy or lang == .kotlin) and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (lang == .groovy and std.mem.startsWith(u8, text[i..], "'''")))) {
+            // Text blocks and triple-quoted strings are never plain operands.
+            i = blockEnd(text, i + 3, text[i .. i + 3], lang != .kotlin);
+            regex_allowed = false;
+            continue;
+        }
+        if ((lang == .groovy or lang == .kotlin) and c == '"') {
+            const scanned = try interpolation(a, text, i + 1);
+            i = scanned.end;
+            if (scanned.closed) try out.append(a, .{ .kind = if (scanned.code) .template else .string, .text = text[start + 1 .. i - 1], .offset = start, .end = i });
+            regex_allowed = false;
+            continue;
+        }
+        if (lang == .kotlin and c == '`') {
+            // A backquoted Kotlin name is a word.
+            const close = std.mem.indexOfAnyPos(u8, text, i + 1, "`\n") orelse text.len;
+            if (close < text.len and text[close] == '`') {
+                try out.append(a, .{ .kind = .word, .text = text[i + 1 .. close], .offset = start, .end = close + 1 });
+                i = close + 1;
+                regex_allowed = false;
+                continue;
+            }
+        }
+        if (lang == .nim and c == '\'') {
+            // A quote after a number starts a type suffix (`1'i8`), not a character.
+            if (nimCharEnd(text, i)) |end| {
+                i = end;
+                continue;
+            }
+        }
+        if (c == '"' or (c == '\'' and lang != .nim) or ((lang == .go or lang == .javascript) and c == '`')) {
             // A Rust lifetime is an identifier, not a character literal.
             if (lang == .rust and c == '\'' and i + 1 < text.len and ident(text[i + 1])) {
                 var end = i + 2;
@@ -170,14 +222,15 @@ pub fn lex(comptime lang: Language, a: std.mem.Allocator, text: []const u8) ![]c
             const end = i;
             const closed = i < text.len;
             i = @min(i + width, text.len);
-            if (closed and !triple and !(lang == .javascript and c == '`') and !(lang == .zig and c == '\'') and !(lang == .c and c == '\'') and !(lang == .rust and c == '\''))
+            const character = c == '\'' and (lang == .zig or lang == .c or lang == .rust or lang == .java or lang == .kotlin);
+            if (closed and !triple and !character and !(lang == .javascript and c == '`'))
                 try out.append(a, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
             regex_allowed = false;
             continue;
         }
-        if (ident(c)) {
+        if (identIn(lang, c)) {
             i += 1;
-            while (i < text.len and ident(text[i])) : (i += 1) {}
+            while (i < text.len and identIn(lang, text[i])) : (i += 1) {}
             const word = text[start..i];
             try out.append(a, .{ .kind = .word, .text = word, .offset = start, .end = i });
             control_pending = std.mem.eql(u8, word, "if") or std.mem.eql(u8, word, "while") or std.mem.eql(u8, word, "for") or std.mem.eql(u8, word, "with") or std.mem.eql(u8, word, "switch") or std.mem.eql(u8, word, "catch");
@@ -204,8 +257,123 @@ pub fn lex(comptime lang: Language, a: std.mem.Allocator, text: []const u8) ![]c
 fn ident(c: u8) bool {
     return std.ascii.isAlphanumeric(c) or c == '_' or c == '$' or c >= 128;
 }
+/// `$` is an operator in Nim, not part of a name.
+fn identIn(comptime lang: Syntax, c: u8) bool {
+    return ident(c) and !(lang == .nim and c == '$');
+}
 fn lineEnd(t: []const u8, i: usize) usize {
     return std.mem.indexOfScalarPos(u8, t, i, '\n') orelse t.len;
+}
+/// Nim block comments `#[ ]#` and `##[ ]##` nest.
+fn nimComment(t: []const u8, start: usize) usize {
+    var i = start + (if (t[start + 1] == '#') @as(usize, 3) else 2);
+    var depth: usize = 1;
+    while (i < t.len) {
+        if (std.mem.startsWith(u8, t[i..], "#[")) {
+            depth += 1;
+            i += 2;
+        } else if (std.mem.startsWith(u8, t[i..], "]#")) {
+            depth -= 1;
+            i += 2;
+            if (depth == 0) return i;
+        } else i += 1;
+    }
+    return t.len;
+}
+/// The end of a Java text block or a Groovy or Kotlin triple-quoted string.
+fn blockEnd(t: []const u8, from: usize, quote: []const u8, escapes: bool) usize {
+    var i = from;
+    while (i < t.len) {
+        if (escapes and t[i] == '\\') {
+            i += 2;
+            continue;
+        }
+        if (std.mem.startsWith(u8, t[i..], quote)) return i + quote.len;
+        i += 1;
+    }
+    return t.len;
+}
+const Scanned = struct { end: usize, closed: bool, code: bool };
+/// A Groovy or Kotlin double-quoted string, whose `${…}` code can hold
+/// braces and further strings. Nesting is kept on an explicit stack, so
+/// source depth never consumes the call stack.
+fn interpolation(a: std.mem.Allocator, t: []const u8, from: usize) !Scanned {
+    const Frame = union(enum) { string, code: usize };
+    var frames: std.ArrayList(Frame) = .empty;
+    defer frames.deinit(a);
+    try frames.append(a, .string);
+    var code = false;
+    var i = from;
+    while (i < t.len) {
+        const c = t[i];
+        switch (frames.items[frames.items.len - 1]) {
+            .string => {
+                if (c == '\\') {
+                    i += 2;
+                    continue;
+                }
+                if (c == '\n' and frames.items.len == 1) break;
+                if (c == '"') {
+                    _ = frames.pop();
+                    i += 1;
+                    if (frames.items.len == 0) return .{ .end = i, .closed = true, .code = code };
+                    continue;
+                }
+                if (c == '$' and i + 1 < t.len and t[i + 1] == '{') {
+                    code = true;
+                    try frames.append(a, .{ .code = 1 });
+                    i += 2;
+                    continue;
+                }
+                if (c == '$' and i + 1 < t.len and (std.ascii.isAlphabetic(t[i + 1]) or t[i + 1] == '_')) code = true;
+                i += 1;
+            },
+            .code => |*depth| {
+                if (c == '{') depth.* += 1;
+                if (c == '}') {
+                    depth.* -= 1;
+                    if (depth.* == 0) _ = frames.pop();
+                } else if (c == '"') {
+                    try frames.append(a, .string);
+                } else if (c == '\'') {
+                    // A Kotlin character or a Groovy single-quoted string.
+                    i += 1;
+                    while (i < t.len and t[i] != '\'' and t[i] != '\n') : (i += if (t[i] == '\\') 2 else 1) {}
+                }
+                i += 1;
+            },
+        }
+    }
+    return .{ .end = @min(i, t.len), .closed = false, .code = code };
+}
+fn tripleEnd(t: []const u8, from: usize, quote: []const u8) usize {
+    const close = std.mem.indexOfPos(u8, t, from, quote) orelse return t.len;
+    var end = close + quote.len;
+    // Nim keeps extra quotes before the closing three inside the string.
+    while (end < t.len and t[end] == quote[0]) : (end += 1) {}
+    return end;
+}
+fn nimRawEnd(t: []const u8, from: usize) usize {
+    var i = from;
+    while (i < t.len and t[i] != '\n') : (i += 1) {
+        if (t[i] != '"') continue;
+        if (i + 1 < t.len and t[i + 1] == '"') {
+            i += 1;
+            continue;
+        }
+        return i + 1;
+    }
+    return i;
+}
+fn nimCharEnd(t: []const u8, i: usize) ?usize {
+    if (i > 0 and std.ascii.isAlphanumeric(t[i - 1])) return null;
+    if (i + 1 < t.len and t[i + 1] == '\\') {
+        var end = i + 3;
+        while (end < t.len and end < i + 12 and t[end] != '\'' and t[end] != '\n') : (end += 1) {}
+        return if (end < t.len and t[end] == '\'') end + 1 else null;
+    }
+    if (i + 2 < t.len and t[i + 1] != '\n' and t[i + 2] == '\'') return i + 3;
+    return null;
 }
 /// Drop newlines for languages where a declaration freely spans lines.
 pub fn compact(a: std.mem.Allocator, tokens: []const Token) ![]const Token {

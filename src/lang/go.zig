@@ -6,6 +6,9 @@ const Spec = types.Spec;
 // import expression to detect without adding a syntax-validation contract.
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     const ts = try l.compact(a, try l.lex(.go, a, source));
+    return recoverTokens(a, source, ts);
+}
+pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     for (ts, 0..) |t, i| {
         if (!t.is("import") or i + 1 >= ts.len) continue;
