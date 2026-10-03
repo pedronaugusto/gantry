@@ -137,3 +137,22 @@ test "invalid config shapes abort rather than silently disabling resolution opti
         } else |err| try std.testing.expectEqual(error.InvalidConfig, err);
     }
 }
+
+test "TS path aliases reach type-only imports and import types in declaration files" {
+    // VS Code's `vs/*` alias from src/tsconfig.base.json and the import forms
+    // its bootstrap and webview declaration files use.
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "src/tsconfig.json", .text = "{\"extends\": \"./tsconfig.base.json\"}" },
+        .{ .path = "src/tsconfig.base.json", .text = "{\"compilerOptions\": {\"baseUrl\": \".\", \"paths\": {\"vs/*\": [\"./vs/*\"]}}}" },
+        .{ .path = "src/bootstrap-window.ts", .text = "(function () {\n\ttype C = import('vs/base/common/sandboxTypes.js').C;\n\ttype W = import('vs/window/common/window.ts').W;\n}());" },
+        .{ .path = "src/vs/webview/webviewMessages.d.ts", .text = "import type { E } from 'vs/base/browser/mouseEvent';\n" },
+        .{ .path = "src/vs/base/common/sandboxTypes.ts" },
+        .{ .path = "src/vs/window/common/window.ts" },
+        .{ .path = "src/vs/base/browser/mouseEvent.ts" },
+    } }).scan(a, .{ .manifests = false });
+    defer graph.deinit();
+    try f.edge(&graph, "src/bootstrap-window.ts", "src/vs/base/common/sandboxTypes.ts", .import, 1);
+    try f.edge(&graph, "src/bootstrap-window.ts", "src/vs/window/common/window.ts", .import, 1);
+    try f.edge(&graph, "src/vs/webview/webviewMessages.d.ts", "src/vs/base/browser/mouseEvent.ts", .import, 1);
+    try std.testing.expectEqual(3, graph.edges().len);
+}
