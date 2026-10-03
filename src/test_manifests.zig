@@ -572,6 +572,21 @@ test "Gradle Groovy declarations keep literal notations and their configuration'
         try std.testing.expect(std.mem.startsWith(u8, text[record.offset..], spelling));
     }
 }
+test "Gradle statements that are not declarations, even malformed ones, end where they stop" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    for ([_][]const u8{
+        "dependencies {\n )\n ] implementation 'a:b:1'\n}",
+        "dependencies { implementation(",
+        "dependencies { implementation 'a:b:1' {",
+        "dependencies {\n implementation 'a:b:1',\n}",
+        "dependencies { constraints {",
+        "}}} dependencies { add(\"x\", ) }",
+    }) |text| {
+        const declared = try g.manifests.read(arena.allocator(), "build.gradle", text);
+        try std.testing.expect(declared.unsupported.len > 0 or declared.dependencies.len > 0 or std.mem.indexOf(u8, text, "constraints") != null);
+    }
+}
 test "Gradle Kotlin declarations read string templates and helpers as computed" {
     var arena: std.heap.ArenaAllocator = .init(a);
     defer arena.deinit();
