@@ -26,6 +26,7 @@ test {
     _ = @import("test_rules.zig");
     _ = @import("test_manifests.zig");
     _ = @import("test_nim.zig");
+    _ = @import("test_java.zig");
     _ = @import("test_recovery.zig");
     _ = @import("test_properties.zig");
 }

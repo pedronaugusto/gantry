@@ -22,6 +22,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/go_build.zig",
         "src/go_config.zig",
         "src/lang/c.zig",
+        "src/lang/java.zig",
         "src/lang/nim.zig",
         "src/lang/python.zig",
         "src/lang/rust.zig",
@@ -34,6 +35,7 @@ pub const layers: []const gantry.rules.Layer = &.{
     .{ .name = "graph storage and language policy", .patterns = &.{
         "src/code_kind.zig",
         "src/graph_store.zig",
+        "src/java_packages.zig",
         "src/lang/go.zig",
         "src/lang/javascript.zig",
         "src/python_exports.zig",
@@ -68,6 +70,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/test_constraints.zig",
         "src/test_go_modules.zig",
         "src/test_graph.zig",
+        "src/test_java.zig",
         "src/test_kinds.zig",
         "src/test_manifests.zig",
         "src/test_nim.zig",

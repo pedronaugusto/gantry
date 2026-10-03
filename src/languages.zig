@@ -6,3 +6,4 @@ pub const python = @import("lang/python.zig");
 pub const go = @import("lang/go.zig");
 pub const rust = @import("lang/rust.zig");
 pub const nim = @import("lang/nim.zig");
+pub const java = @import("lang/java.zig");

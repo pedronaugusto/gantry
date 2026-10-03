@@ -1,8 +1,8 @@
 const std = @import("std");
-pub const Language = enum { zig, c, javascript, python, go, rust, nim };
+pub const Language = enum { zig, c, javascript, python, go, rust, nim, java };
 pub const Kind = enum { import, link, asset, @"test" };
 pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: usize = 1 };
-pub const Form = enum { literal, python, rust_mod, rust_use };
+pub const Form = enum { literal, python, rust_mod, rust_use, java_static };
 /// Raw references borrow the source or the allocator passed to the lexer.
 pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false };
 pub const Reference = struct { from: []const u8, name: []const u8, offset: usize, member: ?[]const u8 = null, resolved: bool = false, kind: Kind = .import };
@@ -23,6 +23,10 @@ pub const ImportExpression = enum {
     nim_include,
     /// A `.nimble` `requires` or `taskRequires` argument that is not a string literal.
     nimble_requires,
+    /// `Class.forName(`, which loads a class by a name known at run time.
+    java_for_name,
+    /// A `.loadClass(` call on a class loader.
+    java_load_class,
 };
 /// Owned by Imports or Graph, with a byte offset at the construct's start.
 pub const UnsupportedReference = struct {
@@ -35,6 +39,8 @@ pub const UnsupportedReference = struct {
 pub const Recovery = struct {
     specs: []const Spec = &.{},
     unsupported: []const UnsupportedReference = &.{},
+    /// The package a Java file declares, empty for none.
+    package: []const u8 = "",
 
     /// Records and scopes belong to the workspace. Names and members belong to
     /// returned references, so copy them directly into graph storage once.
@@ -45,7 +51,7 @@ pub const Recovery = struct {
             if (spec.member) |member| spec.member = try strings.dupe(u8, member);
             spec.scope = try a.dupe(u8, spec.scope);
         }
-        return .{ .specs = specs, .unsupported = try a.dupe(UnsupportedReference, self.unsupported) };
+        return .{ .specs = specs, .unsupported = try a.dupe(UnsupportedReference, self.unsupported), .package = try a.dupe(u8, self.package) };
     }
 };
 /// One declared dependency, as its manifest spells it.

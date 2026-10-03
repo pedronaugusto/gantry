@@ -133,6 +133,35 @@ test "Nim imports groups prefixes strings and pragmas ignore comments strings an
         \\obj.import
     , &.{ "std/os", "std/strutils", "../lib/a", "c", "std/times", "pkg/d", "n/o", "../q/r", "../q/t", "./l", "./m", "e/f", "./g", "h", "k" });
 }
+test "Java package and imports ignore comments strings text blocks characters and members" {
+    var parsed = try g.imports(std.testing.allocator, .java,
+        \\// import bad.One;
+        \\/* import bad.Two; */
+        \\package com.acme
+        \\  .app;
+        \\import java.util.List;
+        \\import static java.util.Map.entry;
+        \\import com.acme.model.*;
+        \\import static com.acme.Util.*;
+        \\class A {
+        \\  String s = "import bad.Three;";
+        \\  String t = """
+        \\    import bad.Four;
+        \\    \"""; import bad.Five;
+        \\    """;
+        \\  char q = '"';
+        \\  void m() { obj.import(); }
+        \\}
+        \\import after.Body;
+    );
+    defer parsed.deinit();
+    const specs = parsed.items();
+    try std.testing.expectEqual(5, specs.len);
+    for (specs, [_][]const u8{ "java.util.List", "java.util.Map.entry", "com.acme.model.*", "com.acme.Util.*", "after.Body" }) |spec, name| try eq(name, spec.name);
+    try expect(specs[1].form == .java_static and !specs[1].star);
+    try expect(specs[2].form == .literal and specs[2].star);
+    try expect(specs[3].form == .java_static and specs[3].star);
+}
 test "Go aliased dot blank block raw imports ignore comments and raw text" {
     try check(.go,
         \\package main

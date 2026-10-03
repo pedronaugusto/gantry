@@ -2,12 +2,14 @@
 //! Tokens retain source offsets. Comments and character literals never emit words.
 const std = @import("std");
 /// The rules a text is read with: each source language by its own name.
-/// Manifests borrow the nearest rules (TOML reads as Python, go.mod as Go).
-pub const Syntax = enum { zig, c, javascript, python, go, rust, nim };
+/// Manifests borrow the nearest rules (TOML reads as Python, go.mod as Go),
+/// and Gradle build scripts are Groovy or Kotlin.
+pub const Syntax = enum { zig, c, javascript, python, go, rust, nim, java, groovy, kotlin };
 pub const Token = struct {
     /// A template is an opaque string: a JS template boundary, or a whole
     /// string literal whose text is not a plain value (a Nim raw string with a
-    /// prefix, which can be a formatting call).
+    /// prefix, which can be a formatting call, or a Groovy or Kotlin string
+    /// that interpolates `$name` or `${code}`).
     kind: enum { word, string, template, punctuation, newline },
     text: []const u8,
     offset: usize,
@@ -23,6 +25,7 @@ pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]con
     var control_pending = false;
     var controls: std.ArrayList(bool) = .empty;
     var templates: std.ArrayList(usize) = .empty;
+    if ((lang == .groovy or lang == .kotlin) and std.mem.startsWith(u8, text, "#!")) i = lineEnd(text, 0);
     while (i < text.len) {
         const start = i;
         const c = text[i];
@@ -84,7 +87,7 @@ pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]con
                 if (i + 1 < text.len and text[i] == '*' and text[i + 1] == '/') {
                     depth -= 1;
                     i += 2;
-                } else if (lang == .rust and i + 1 < text.len and text[i] == '/' and text[i + 1] == '*') {
+                } else if ((lang == .rust or lang == .kotlin) and i + 1 < text.len and text[i] == '/' and text[i + 1] == '*') {
                     depth += 1;
                     i += 2;
                 } else {
@@ -164,6 +167,29 @@ pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]con
             regex_allowed = false;
             continue;
         }
+        if ((lang == .java or lang == .groovy or lang == .kotlin) and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (lang == .groovy and std.mem.startsWith(u8, text[i..], "'''")))) {
+            // Text blocks and triple-quoted strings are never plain operands.
+            i = blockEnd(text, i + 3, text[i .. i + 3], lang != .kotlin);
+            regex_allowed = false;
+            continue;
+        }
+        if ((lang == .groovy or lang == .kotlin) and c == '"') {
+            const scanned = try interpolation(a, text, i + 1);
+            i = scanned.end;
+            if (scanned.closed) try out.append(a, .{ .kind = if (scanned.code) .template else .string, .text = text[start + 1 .. i - 1], .offset = start, .end = i });
+            regex_allowed = false;
+            continue;
+        }
+        if (lang == .kotlin and c == '`') {
+            // A backquoted Kotlin name is a word.
+            const close = std.mem.indexOfAnyPos(u8, text, i + 1, "`\n") orelse text.len;
+            if (close < text.len and text[close] == '`') {
+                try out.append(a, .{ .kind = .word, .text = text[i + 1 .. close], .offset = start, .end = close + 1 });
+                i = close + 1;
+                regex_allowed = false;
+                continue;
+            }
+        }
         if (lang == .nim and c == '\'') {
             // A quote after a number starts a type suffix (`1'i8`), not a character.
             if (nimCharEnd(text, i)) |end| {
@@ -196,7 +222,8 @@ pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]con
             const end = i;
             const closed = i < text.len;
             i = @min(i + width, text.len);
-            if (closed and !triple and !(lang == .javascript and c == '`') and !(lang == .zig and c == '\'') and !(lang == .c and c == '\'') and !(lang == .rust and c == '\''))
+            const character = c == '\'' and (lang == .zig or lang == .c or lang == .rust or lang == .java or lang == .kotlin);
+            if (closed and !triple and !character and !(lang == .javascript and c == '`'))
                 try out.append(a, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
             regex_allowed = false;
             continue;
@@ -252,6 +279,72 @@ fn nimComment(t: []const u8, start: usize) usize {
         } else i += 1;
     }
     return t.len;
+}
+/// The end of a Java text block or a Groovy or Kotlin triple-quoted string.
+fn blockEnd(t: []const u8, from: usize, quote: []const u8, escapes: bool) usize {
+    var i = from;
+    while (i < t.len) {
+        if (escapes and t[i] == '\\') {
+            i += 2;
+            continue;
+        }
+        if (std.mem.startsWith(u8, t[i..], quote)) return i + quote.len;
+        i += 1;
+    }
+    return t.len;
+}
+const Scanned = struct { end: usize, closed: bool, code: bool };
+/// A Groovy or Kotlin double-quoted string, whose `${…}` code can hold
+/// braces and further strings. Nesting is kept on an explicit stack, so
+/// source depth never consumes the call stack.
+fn interpolation(a: std.mem.Allocator, t: []const u8, from: usize) !Scanned {
+    const Frame = union(enum) { string, code: usize };
+    var frames: std.ArrayList(Frame) = .empty;
+    defer frames.deinit(a);
+    try frames.append(a, .string);
+    var code = false;
+    var i = from;
+    while (i < t.len) {
+        const c = t[i];
+        switch (frames.items[frames.items.len - 1]) {
+            .string => {
+                if (c == '\\') {
+                    i += 2;
+                    continue;
+                }
+                if (c == '\n' and frames.items.len == 1) break;
+                if (c == '"') {
+                    _ = frames.pop();
+                    i += 1;
+                    if (frames.items.len == 0) return .{ .end = i, .closed = true, .code = code };
+                    continue;
+                }
+                if (c == '$' and i + 1 < t.len and t[i + 1] == '{') {
+                    code = true;
+                    try frames.append(a, .{ .code = 1 });
+                    i += 2;
+                    continue;
+                }
+                if (c == '$' and i + 1 < t.len and (std.ascii.isAlphabetic(t[i + 1]) or t[i + 1] == '_')) code = true;
+                i += 1;
+            },
+            .code => |*depth| {
+                if (c == '{') depth.* += 1;
+                if (c == '}') {
+                    depth.* -= 1;
+                    if (depth.* == 0) _ = frames.pop();
+                } else if (c == '"') {
+                    try frames.append(a, .string);
+                } else if (c == '\'') {
+                    // A Kotlin character or a Groovy single-quoted string.
+                    i += 1;
+                    while (i < t.len and t[i] != '\'' and t[i] != '\n') : (i += if (t[i] == '\\') 2 else 1) {}
+                }
+                i += 1;
+            },
+        }
+    }
+    return .{ .end = @min(i, t.len), .closed = false, .code = code };
 }
 fn tripleEnd(t: []const u8, from: usize, quote: []const u8) usize {
     const close = std.mem.indexOfPos(u8, t, from, quote) orelse return t.len;

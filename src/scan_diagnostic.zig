@@ -26,6 +26,8 @@ pub const ScanDiagnostic = struct {
         rust_tests,
         /// Index Python star reexports.
         python_exports,
+        /// Index Java files by their declared packages.
+        java_packages,
         /// Extract lexical source references.
         imports,
         /// Build resolution indexes, resolve references and collect edges.

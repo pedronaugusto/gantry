@@ -88,7 +88,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     const needs_cache = blk: {
         if (code_enabled) for (g.paths) |p| {
             const language = languageOf(p);
-            if (language == .go or language == .rust or (language == .python and options.python_star_reexports)) break :blk true;
+            if (language == .go or language == .rust or language == .java or (language == .python and options.python_star_reexports)) break :blk true;
         };
         break :blk false;
     };
@@ -162,6 +162,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     const index = try recover.names(w, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs, .nim_configs = nim_configs };
     const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress);
+    const java_packages = if (code_enabled) try @import("java_packages.zig").index(w, gpa, g.paths, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
     const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
@@ -182,6 +183,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         var ctx = base_ctx;
         ctx.allocator = s;
         ctx.python_reexports = &reexports;
+        ctx.java_packages = &java_packages;
         if (code) {
             var seen: std.StringHashMapUnmanaged(void) = .empty;
             progress.at(.imports, p);

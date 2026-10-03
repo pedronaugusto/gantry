@@ -14,6 +14,17 @@ pub fn file(language: t.Language, name: []const u8) bool {
             const stem = base[0 .. base.len - std.fs.path.extension(base).len];
             break :blk std.mem.endsWith(u8, stem, ".test") or std.mem.endsWith(u8, stem, ".spec");
         },
+        // Maven and Gradle source sets: `src/test`, `src/testFixtures`,
+        // `src/integrationTest`, `src/androidTest`.
+        .java => blk: {
+            var dirs = std.mem.splitScalar(u8, p.dir(name), '/');
+            var after_src = false;
+            while (dirs.next()) |dir| {
+                if (after_src and (std.mem.startsWith(u8, dir, "test") or std.mem.endsWith(u8, dir, "Test"))) break :blk true;
+                after_src = std.mem.eql(u8, dir, "src");
+            }
+            break :blk false;
+        },
         else => false,
     };
 }
