@@ -24,7 +24,7 @@ pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []cons
         defer _ = scratch.reset(.retain_capacity);
         const source = (try read(context, file, s)) orelse continue;
         progress.at(.java_packages, file);
-        const recovery = try java.recoverTokens(s, try l.compact(s, try l.lex(.java, s, source)));
+        const recovery = try java.recoverTokens(s, l.compact(try l.lex(.java, s, source)));
         cached[file_index] = try recovery.clone(a, strings);
         if (recovery.package.len == 0 or descriptor) continue;
         const entry = try out.getOrPut(a, cached[file_index].?.package);

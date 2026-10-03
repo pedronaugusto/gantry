@@ -104,7 +104,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         if (try reader.readFile(p, s)) |text| {
             progress.at(.go_constraints, p);
             const lexer = @import("lexer.zig");
-            const tokens = try lexer.lex(.go, s, text);
+            const tokens = lexer.compact(try lexer.lex(.go, s, text));
             var info = try @import("go_build.zig").parseTokens(s, p, text, options.go_target, tokens);
             info.package = try a.dupe(u8, info.package);
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
@@ -112,7 +112,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
             if (!info.selected) try inactive.put(w, p, {});
             if (info.selected and code_enabled) {
                 progress.at(.imports, p);
-                const recovery = try @import("lang/go.zig").recoverTokens(s, text, try lexer.compact(s, tokens));
+                const recovery = try @import("lang/go.zig").recoverTokens(s, text, tokens);
                 cached[file_index] = try recovery.clone(w, a);
             }
         }

@@ -3,7 +3,7 @@ const l = @import("../lexer.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    const ts = try l.compact(a, try l.lex(.javascript, a, source));
+    const ts = l.compact(try l.lex(.javascript, a, source));
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     for (ts, 0..) |t, i| {
