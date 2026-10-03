@@ -148,6 +148,15 @@ Aggregation keeps self edges within directories. Analysis collapses strongly con
 components for layer calculation; depth is the longest path from a root, and each cycle
 has one closed witness path. An isolated file has depth zero.
 
+An analysis also answers queries over the graph it was made from: `direct(path,
+direction)` lists what a file depends on or what depends on it, `reach(starts,
+direction)` everything a chain of one edge or more leads to or from, `affected(changed)`
+the changed files and everything that depends on one of them (a path the analysis does
+not hold, such as a deleted file, is skipped), and `chain(from, to)` the shortest chain
+between two files. Results are path-ordered slices the caller frees; their paths belong to
+the analysis. A query holds one mark and one queue entry per node, whatever the closure.
+To follow some edge kinds only, analyse a graph of those edges (`Analysis.init`).
+
 Rules restrict ordered layers, source/target patterns, raw references, required paths
 and cycles. Exceptions apply to a named restriction. Path patterns use `*` and `?`
 within a component and `**` across components. Every matching restriction reports in

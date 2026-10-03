@@ -7,6 +7,12 @@ arena: std.heap.ArenaAllocator,
 layers: []const t.Layer = &.{},
 cycles: []const t.Cycle = &.{},
 components: []const []const []const u8 = &.{},
+/// Sorted node paths; positions in them number the adjacency.
+paths: []const []const u8 = &.{},
+forward: Adjacency = empty,
+backward: Adjacency = empty,
+const Adjacency = @import("reach.zig").Adjacency;
+const empty: Adjacency = .{ .offsets = &.{}, .targets = &.{} };
 
 pub fn init(gpa: std.mem.Allocator) !*State {
     const self = try gpa.create(State);

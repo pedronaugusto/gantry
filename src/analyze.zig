@@ -2,27 +2,7 @@
 const std = @import("std");
 const t = @import("types.zig");
 const Graph = @import("graph_store.zig");
-const Adjacency = struct {
-    offsets: []usize,
-    targets: []usize,
-    fn init(a: std.mem.Allocator, n: usize, from: []const usize, to: []const usize) !Adjacency {
-        const offsets = try a.alloc(usize, n + 1);
-        @memset(offsets, 0);
-        for (from) |v| offsets[v + 1] += 1;
-        for (1..n + 1) |i| offsets[i] += offsets[i - 1];
-        const cursor = try a.dupe(usize, offsets);
-        const targets = try a.alloc(usize, to.len);
-        for (from, to) |v, w| {
-            targets[cursor[v]] = w;
-            cursor[v] += 1;
-        }
-        // Input edges are already ordered; reverse adjacency need not be.
-        return .{ .offsets = offsets, .targets = targets };
-    }
-    fn children(self: Adjacency, v: usize) []const usize {
-        return self.targets[self.offsets[v]..self.offsets[v + 1]];
-    }
-};
+const Adjacency = @import("reach.zig").Adjacency;
 const Frame = struct { node: usize, next: usize };
 /// The graph supplies unique sorted paths and validated, coalesced edges.
 pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*@import("analysis_store.zig") {
@@ -35,20 +15,32 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
     defer scratch.deinit();
     const s = scratch.allocator();
     const n = paths.len;
+    if (n >= std.math.maxInt(u32)) return error.OutOfMemory;
     const owned = try a.alloc([]const u8, n);
-    var ids: std.StringHashMapUnmanaged(usize) = .empty;
+    var ids: std.StringHashMapUnmanaged(u32) = .empty;
+    try ids.ensureTotalCapacity(s, @intCast(n));
     for (paths, owned, 0..) |path, *dest, i| {
         dest.* = try a.dupe(u8, path);
-        try ids.put(s, path, i);
+        ids.putAssumeCapacity(path, @intCast(i));
     }
-    const from = try s.alloc(usize, edges.len);
-    const to = try s.alloc(usize, edges.len);
-    for (edges, from, to) |edge, *v, *w| {
-        v.* = ids.get(edge.from).?;
-        w.* = ids.get(edge.to).?;
+    // One pair per importer and dependency: edges of several kinds between
+    // the same files are one dependency here. Edges are sorted by path.
+    var from: std.ArrayList(u32) = .empty;
+    var to: std.ArrayList(u32) = .empty;
+    try from.ensureTotalCapacity(s, edges.len);
+    try to.ensureTotalCapacity(s, edges.len);
+    for (edges) |edge| {
+        const v = ids.get(edge.from).?;
+        const w = ids.get(edge.to).?;
+        if (from.items.len > 0 and from.items[from.items.len - 1] == v and to.items[to.items.len - 1] == w) continue;
+        from.appendAssumeCapacity(v);
+        to.appendAssumeCapacity(w);
     }
-    const adj = try Adjacency.init(s, n, from, to);
-    const rev = try Adjacency.init(s, n, to, from);
+    const adj = try Adjacency.init(a, n, from.items, to.items, false);
+    const rev = try Adjacency.init(a, n, to.items, from.items, false);
+    self.paths = owned;
+    self.forward = adj;
+    self.backward = rev;
     const seen = try s.alloc(bool, n);
     @memset(seen, false);
     var frames: std.ArrayList(Frame) = .empty;
@@ -160,14 +152,14 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
     const depth = try s.alloc(usize, m);
     @memset(indegree, 0);
     @memset(depth, 0);
-    var cf: std.ArrayList(usize) = .empty;
-    var ct: std.ArrayList(usize) = .empty;
-    for (from, to) |v, w| if (component[v] != component[w]) {
-        try cf.append(s, component[v]);
-        try ct.append(s, component[w]);
+    var cf: std.ArrayList(u32) = .empty;
+    var ct: std.ArrayList(u32) = .empty;
+    for (from.items, to.items) |v, w| if (component[v] != component[w]) {
+        try cf.append(s, @intCast(component[v]));
+        try ct.append(s, @intCast(component[w]));
         indegree[component[w]] += 1;
     };
-    const dag = try Adjacency.init(s, m, cf.items, ct.items);
+    const dag = try Adjacency.init(s, m, cf.items, ct.items, false);
     var queue: std.ArrayList(usize) = .empty;
     for (indegree, 0..) |d, id| if (d == 0) {
         try queue.append(s, id);
@@ -188,3 +180,4 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
     self.cycles = try cycles.toOwnedSlice(a);
     return self;
 }
+
