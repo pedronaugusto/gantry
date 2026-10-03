@@ -20,13 +20,25 @@ pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
 pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
-    const loaders = l.compact(try a.dupe(l.Token, ts));
-    for (loaders, 0..) |token, i| {
+    // Loader calls are read across line breaks, as if the stream had none.
+    var previous: ?l.Token = null;
+    for (ts, 0..) |token, i| {
+        if (token.kind == .newline) continue;
+        defer previous = token;
         // Recognize exact loader spellings, without resolving bindings or aliases.
-        if (i > 0 and loaders[i - 1].is(".")) continue;
-        if (token.is("importlib") and i + 3 < loaders.len and loaders[i + 1].is(".") and loaders[i + 2].is("import_module") and loaders[i + 3].is("("))
+        if (previous != null and previous.?.is(".")) continue;
+        const importlib = token.is("importlib");
+        if (!importlib and !token.is("__import__")) continue;
+        var ahead: [3]l.Token = undefined;
+        var n: usize = 0;
+        for (ts[i + 1 ..]) |next| if (next.kind != .newline) {
+            ahead[n] = next;
+            n += 1;
+            if (n == ahead.len) break;
+        };
+        if (importlib and n == 3 and ahead[0].is(".") and ahead[1].is("import_module") and ahead[2].is("("))
             try unsupported.append(a, .{ .offset = token.offset, .expression = .python_importlib });
-        if (token.is("__import__") and i + 1 < loaders.len and loaders[i + 1].is("("))
+        if (!importlib and n >= 1 and ahead[0].is("("))
             try unsupported.append(a, .{ .offset = token.offset, .expression = .python_import });
     }
     var i: usize = 0;

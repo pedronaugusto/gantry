@@ -86,6 +86,15 @@ test "unsupported Python imports expose direct runtime loaders without guessing 
     , 5);
 }
 
+test "Python loader calls are read across line breaks" {
+    const source = "m = (importlib\n    .import_module(name))\nn = (other.\n    __import__(name))\n";
+    var result = try g.imports(a, .python, source);
+    defer result.deinit();
+    try std.testing.expectEqual(1, result.unsupported().len);
+    try std.testing.expectEqual(.python_importlib, result.unsupported()[0].expression);
+    try std.testing.expectEqual(5, result.unsupported()[0].offset);
+}
+
 test "unsupported C includes expose macro operands and ignore directive text" {
     try lexical(.c,
         \\#include HEADER
