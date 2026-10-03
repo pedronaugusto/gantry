@@ -267,16 +267,16 @@ pub fn check(g: anytype, a: std.mem.Allocator, rule: engine.DependencyRule, out:
         // Once per file and package: a `from` import spells several names.
         const key = try std.fmt.allocPrint(a, "{s}\x00{s}", .{ ref.from, package });
         if ((try reported.getOrPut(a, key)).found_existing) continue;
-        try out.append(.{ .rule = rule.name, .reason = .undeclared, .reference = ref, .package = package, .path = manifests[0] });
+        try out.items.append(out.a, .{ .rule = rule.name, .reason = .undeclared, .reference = ref, .package = package, .path = manifests[0] });
     }
-    for (deps, used) |dep, is_used| {
+    for (deps, used) |*dep, is_used| {
         if (is_used or !active.contains(dep.manifest)) continue;
         const scope = dep.scope();
         for (rule.unused) |wanted| {
             if (wanted == scope) break;
         } else continue;
-        if (ignored(rule, dep.name) or ignored(rule, dep.shortName()) or quiet(dep)) continue;
-        try out.append(.{ .rule = rule.name, .reason = .unused, .dependency = dep, .path = dep.manifest });
+        if (ignored(rule, dep.name) or ignored(rule, dep.shortName()) or quiet(dep.*)) continue;
+        try out.items.append(out.a, .{ .rule = rule.name, .reason = .unused, .dependency = dep, .path = dep.manifest });
     }
 }
 /// Declarations no import can name: a Go module only other modules

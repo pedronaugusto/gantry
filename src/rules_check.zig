@@ -119,8 +119,8 @@ pub const Violation = struct {
     /// A missing required path, an unreachable file, the file a chain
     /// ends in, or the manifest an undeclared import was looked up in.
     path: ?[]const u8 = null,
-    /// An unused declaration.
-    dependency: ?t.Dependency = null,
+    /// An unused declaration, in the graph's storage.
+    dependency: ?*const t.Dependency = null,
     /// The package an undeclared import names, as a slice of its spelling.
     package: ?[]const u8 = null,
     /// A transitive rule's witness, its first file to its last; empty for
@@ -165,7 +165,7 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
             if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
             try walks.?.layers(&out, g.edges(), rules, r);
         } else for (g.edges()) |e| {
-            if (layer(r, e.to) > layer(r, e.from) and !allowed(rules, r.name, e)) try out.append(.{ .rule = r.name, .reason = .upward, .edge = e });
+            if (layer(r, e.to) > layer(r, e.from) and !allowed(rules, r.name, e)) try out.items.append(out.a, .{ .rule = r.name, .reason = .upward, .edge = e });
         }
     }
     for (rules.forbidden) |r| {
@@ -173,11 +173,11 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
             if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
             try walks.?.forbidden(&out, g.edges(), rules, r);
         } else for (g.edges()) |e| {
-            if (matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.append(.{ .rule = r.name, .reason = .forbidden, .edge = e });
+            if (matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.items.append(out.a, .{ .rule = r.name, .reason = .forbidden, .edge = e });
         }
     }
     for (rules.nothing_imports) |r| for (g.edges()) |e| {
-        if (matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.append(.{ .rule = r.name, .reason = .entry, .edge = e });
+        if (matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.items.append(out.a, .{ .rule = r.name, .reason = .entry, .edge = e });
     };
     for (rules.references) |r| for (g.references()) |ref| {
         if (!matches(r.from, ref.from) or (r.unresolved_only and ref.resolved) or (r.kind != null and r.kind.? != ref.kind)) continue;
@@ -205,16 +205,16 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
         for (r.except_from) |from| if (matches(from, ref.from)) {
             except = true;
         };
-        if (!except) try out.append(.{ .rule = r.name, .reason = .reference, .reference = ref });
+        if (!except) try out.items.append(out.a, .{ .rule = r.name, .reason = .reference, .reference = ref });
     };
     for (rules.tokens) |r| for (g.tokens()) |token| {
         if (token.kind != r.kind or !matchesToken(r.token, token.text)) continue;
         for (r.owners) |owner| {
             if (matches(owner, token.path)) break;
-        } else try out.append(.{ .rule = r.name, .reason = .token, .token = token });
+        } else try out.items.append(out.a, .{ .rule = r.name, .reason = .token, .token = token });
     };
     for (rules.required) |r| for (r.paths) |path| if (!g.contains(path)) {
-        try out.append(.{ .rule = r.name, .reason = .missing, .path = path });
+        try out.items.append(out.a, .{ .rule = r.name, .reason = .missing, .path = path });
     };
     if (rules.no_cycles) |name| {
         var analysis = try g.analyze(a);
@@ -228,7 +228,7 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
                 const mid = low + (high - low) / 2;
                 if (t.edgesLess({}, g.edges()[mid], key)) low = mid + 1 else high = mid;
             }
-            try out.append(.{ .rule = name, .reason = .cycle, .edge = g.edges()[low] });
+            try out.items.append(out.a, .{ .rule = name, .reason = .cycle, .edge = g.edges()[low] });
         }
     }
     for (rules.reachable) |r| {
@@ -238,22 +238,21 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
     for (rules.dependencies) |r| try dependencies.check(g, scratch.allocator(), r, &out);
     return out.finish();
 }
-/// Findings, and their chains gathered into one block for `free`.
+/// Findings, appended in place to `items`, and their chains gathered
+/// into one block for `free`.
 pub const Findings = struct {
     a: std.mem.Allocator,
     items: std.ArrayList(Violation) = .empty,
     chains: std.ArrayList([]const u8) = .empty,
     /// Where each chain lies in `chains`, by finding.
     spans: std.ArrayList(struct { finding: usize, start: usize, len: usize }) = .empty,
-    pub fn append(f: *Findings, v: Violation) !void {
-        try f.items.append(f.a, v);
-    }
     fn appendChain(f: *Findings, v: Violation, paths: []const []const u8, nodes: []const u32) !void {
         try f.spans.append(f.a, .{ .finding = f.items.items.len, .start = f.chains.items.len, .len = nodes.len });
         for (nodes) |node| try f.chains.append(f.a, paths[node]);
         try f.items.append(f.a, v);
     }
     fn finish(f: *Findings) ![]const Violation {
+        if (f.spans.items.len == 0) return f.items.toOwnedSlice(f.a);
         const block = try f.chains.toOwnedSlice(f.a);
         errdefer f.a.free(block);
         const items = try f.items.toOwnedSlice(f.a);
@@ -350,7 +349,7 @@ const Walks = struct {
                 try queue.append(w.a, next);
             }
         }
-        for (w.paths, marks) |path, mark| if (!mark and matches(r.files, path)) try out.append(.{ .rule = r.name, .reason = .unreached, .path = path });
+        for (w.paths, marks) |path, mark| if (!mark and matches(r.files, path)) try out.items.append(out.a, .{ .rule = r.name, .reason = .unreached, .path = path });
     }
 };
 /// Slash-separated globs: * and ? within components, ** as a complete
