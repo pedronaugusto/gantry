@@ -88,8 +88,8 @@ not a claim to cover every workspace crate. The Go command uses the pinned
 Gantry sees all tracked Go files in those discovered package directories,
 including tests and inactive variants, plus selected go.mod identities.
 External/vendor edges are excluded from both normalized graphs. Kubernetes'
-staging workspace packages remain repository-internal nodes, exposing the
-documented absence of replacement/workspace resolution in gantry.
+staging packages resolve through `go.work` and `replace` as the compiler
+resolves them, and stay repository-internal nodes in both graphs.
 
 ## Graph agreement
 
@@ -142,7 +142,7 @@ Known differences in the checked-in agreement report:
   as its witness.
 - Python package initializer bookkeeping; pydeps additionally skips migration
   discovery and follows star re-exported symbols.
-- Go test files, inactive build variants, and workspace/replacement imports.
+- Go test files and inactive build variants.
 - Rust test modules versus `cfg`, and semantic definitions/re-exports/types
   versus gantry's documented lexical module resolution.
 
