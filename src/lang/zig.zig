@@ -19,7 +19,9 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
             try unsupported.append(a, .{ .offset = t.offset, .expression = .zig_import });
             continue;
         }
-        const name = try std.zig.string_literal.parseAlloc(a, source[ts[i + 3].offset..ts[i + 3].end]);
+        // Without an escape or a line break a literal is its own value.
+        const plain = std.mem.indexOfAny(u8, ts[i + 3].text, "\\\n") == null;
+        const name = if (plain) ts[i + 3].text else try std.zig.string_literal.parseAlloc(a, source[ts[i + 3].offset..ts[i + 3].end]);
         try out.append(a, .{ .name = name, .offset = t.offset });
         if (i + 6 < ts.len and ts[i + 5].is(".") and ts[i + 6].kind == .word)
             try out.append(a, .{ .name = name, .member = ts[i + 6].text, .offset = t.offset });
@@ -31,11 +33,11 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
                 try aliases.put(a, ts[j + 1].text, name);
         }
     }
-    for (ts, 0..) |t, i| {
+    if (aliases.count() > 0) for (ts, 0..) |t, i| {
         if (t.kind != .word or i + 2 >= ts.len or !ts[i + 1].is(".") or ts[i + 2].kind != .word) continue;
         if (i > 0 and ts[i - 1].is(".")) continue;
         if (aliases.get(t.text)) |name| try out.append(a, .{ .name = name, .member = ts[i + 2].text, .offset = t.offset });
-    }
+    };
     return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
 

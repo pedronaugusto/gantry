@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Take a Zig import path as written when it has no escape, and look for alias members only in files that declare an alias.
+
 - Find Python loader calls across line breaks without copying the token stream.
 
 - Look up the JavaScript keywords that decide regular expressions in one table, and only when lexing JavaScript.
