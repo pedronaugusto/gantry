@@ -51,6 +51,8 @@ results retain their allocator and own their storage. Move these handles and cal
 independent of the original graph. Rule findings borrow the graph, rule names and
 required-path strings; keep those alive and free only the returned findings slice.
 
+Preprocessing copies names directly into returned references; recovery records stay in the scan workspace, and file scratch is released after each file.
+
 Paths are relative to one logical root and use `/` on every host. Normalization resolves
 `.` and `..` within that root, merges duplicate paths and refuses absolute paths,
 drives, backslashes, NUL and traversal above the root. Comparisons are byte and case

@@ -70,10 +70,19 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     defer scratch.deinit();
     // Runs before any path-owning storage is destroyed.
     errdefer |cause| progress.fail(cause);
-    var cached: std.StringHashMapUnmanaged(t.Recovery) = .empty;
+    const code_enabled = options.strict_imports or enabled(options, .import) or enabled(options, .@"test");
+    const needs_cache = blk: {
+        if (code_enabled) for (g.paths) |p| {
+            const language = languageOf(p);
+            if (language == .go or language == .rust or (language == .python and options.python_star_reexports)) break :blk true;
+        };
+        break :blk false;
+    };
+    const cached: []?t.Recovery = if (needs_cache) try w.alloc(?t.Recovery, g.paths.len) else &.{};
+    @memset(cached, null);
     var go_files: std.ArrayList(GoFile) = .empty;
     var inactive: std.StringHashMapUnmanaged(void) = .empty;
-    for (g.paths) |p| if (languageOf(p) == .go) {
+    for (g.paths, 0..) |p, file_index| if (languageOf(p) == .go) {
         const s = scratch.allocator();
         if (try reader.readFile(p, s)) |text| {
             progress.at(.go_constraints, p);
@@ -84,10 +93,10 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
             try go_files.append(a, info);
             if (!info.selected) try inactive.put(w, p, {});
-            if (info.selected and (options.strict_imports or enabled(options, .import) or enabled(options, .@"test"))) {
+            if (info.selected and code_enabled) {
                 progress.at(.imports, p);
                 const recovery = try @import("lang/go.zig").recoverTokens(s, text, try lexer.compact(s, tokens));
-                try cached.put(w, p, try recovery.clone(w));
+                cached[file_index] = try recovery.clone(w, a);
             }
         }
         _ = scratch.reset(.retain_capacity);
@@ -130,20 +139,20 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     progress.at(.resolution, null);
     const index = try recover.names(w, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs };
-    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &cached, &progress);
-    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, &cached, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
+    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress);
+    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
     var edges: std.ArrayList(Edge) = .empty;
     var refs: std.ArrayList(Reference) = .empty;
     var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
-    for (g.paths) |p| {
+    for (g.paths, 0..) |p, file_index| {
         if (inactive.contains(p)) continue;
         const language = languageOf(p);
-        const code = (options.strict_imports or enabled(options, .import) or enabled(options, .@"test")) and language != null;
+        const code = code_enabled and language != null;
         const links = enabled(options, .link) and std.mem.endsWith(u8, p, ".md");
         const assets = enabled(options, .asset) and recover.assetText(p);
         if (!code and !links and !assets) continue;
         const s = scratch.allocator();
-        const prior = cached.get(p);
+        const prior = if (cached.len > 0) cached[file_index] else null;
         const text = (if (prior != null) "" else try reader.readFile(p, s)) orelse {
             _ = scratch.reset(.retain_capacity);
             continue;
@@ -169,7 +178,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                 progress.at(.resolution, p);
                 const kind: Kind = if (spec.kind == .@"test" or test_files.contains(p) or @import("code_kind.zig").file(language.?, p)) .@"test" else .import;
                 const targets = try ctx.targets(p, language.?, spec);
-                try refs.append(a, .{ .from = p, .name = try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| try a.dupe(u8, member) else null, .resolved = targets.len > 0, .kind = kind });
+                try refs.append(a, .{ .from = p, .name = if (prior != null) spec.name else try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| (if (prior != null) member else try a.dupe(u8, member)) else null, .resolved = targets.len > 0, .kind = kind });
                 if (spec.member != null) continue;
                 if (language == .python and options.python_initializers == .explicit and spec.python_base and !spec.star) {
                     var children: usize = 0;

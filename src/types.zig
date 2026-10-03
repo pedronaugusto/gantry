@@ -29,12 +29,13 @@ pub const Recovery = struct {
     specs: []const Spec = &.{},
     unsupported: []const UnsupportedReference = &.{},
 
-    /// Keep recovered operands, never the source or lexer scratch, between scan phases.
-    pub fn clone(self: Recovery, a: std.mem.Allocator) !Recovery {
+    /// Records and scopes belong to the workspace. Names and members belong to
+    /// returned references, so copy them directly into graph storage once.
+    pub fn clone(self: Recovery, a: std.mem.Allocator, strings: std.mem.Allocator) !Recovery {
         const specs = try a.dupe(Spec, self.specs);
         for (specs) |*spec| {
-            spec.name = try a.dupe(u8, spec.name);
-            if (spec.member) |member| spec.member = try a.dupe(u8, member);
+            spec.name = try strings.dupe(u8, spec.name);
+            if (spec.member) |member| spec.member = try strings.dupe(u8, member);
             spec.scope = try a.dupe(u8, spec.scope);
         }
         return .{ .specs = specs, .unsupported = try a.dupe(UnsupportedReference, self.unsupported) };

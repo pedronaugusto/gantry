@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Store recovered reference names once and index scan recovery by selected file.
+
 - Reuse Python recovery for literal reexports and imports without retaining source buffers.
 
 - Read and lex Go sources once for build constraints and import recovery.

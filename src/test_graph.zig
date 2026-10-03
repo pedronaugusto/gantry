@@ -267,3 +267,28 @@ test "graph construction owns edge normalization" {
     edges[0].count = 99;
     try f.edge(&graph, "b", "a", .import, 1);
 }
+
+test "scan retains large recovered operands within a bounded allocator" {
+    const storage = try a.alloc(u8, 256 * 1024);
+    defer a.free(storage);
+    var fixed: std.heap.FixedBufferAllocator = .init(storage);
+    var graph = blk: {
+        const name = try a.alloc(u8, 128 * 1024);
+        defer a.free(name);
+        @memset(name, 'x');
+        const source = try std.mem.concat(a, u8, &.{ "package app\nimport \"", name, "\"" });
+        defer a.free(source);
+        // Memory readers may lend bytes. The graph must keep only its owned copy.
+        const Reader = struct {
+            fn read(text: []const u8, _: []const u8, _: std.mem.Allocator) !?[]const u8 {
+                return text;
+            }
+        };
+        break :blk try g.scan(fixed.allocator(), &.{"app.go"}, source, Reader.read, .{});
+    };
+    defer graph.deinit();
+    try eq(1, graph.references().len);
+    try eq(128 * 1024, graph.references()[0].name.len);
+    for (graph.references()[0].name) |byte| try eq(@as(u8, 'x'), byte);
+    try expect(!graph.references()[0].resolved);
+}

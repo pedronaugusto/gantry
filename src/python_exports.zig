@@ -86,12 +86,12 @@ fn targets(a: std.mem.Allocator, source: []const u8, from: []const u8, ctx: anyt
     }
     return out.toOwnedSlice(a);
 }
-pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: *std.StringHashMapUnmanaged(@import("types.zig").Recovery), progress: *@import("scan_diagnostic.zig").Progress) !std.StringHashMapUnmanaged([]const []const u8) {
+pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?@import("types.zig").Recovery, strings: std.mem.Allocator, progress: *@import("scan_diagnostic.zig").Progress) !std.StringHashMapUnmanaged([]const []const u8) {
     progress.at(.python_exports, null);
     var out: std.StringHashMapUnmanaged([]const []const u8) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
-    for (paths) |file| {
+    for (paths, 0..) |file, file_index| {
         if (!std.mem.endsWith(u8, file, ".py")) continue;
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
@@ -99,7 +99,7 @@ pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []cons
         progress.at(.python_exports, file);
         const tokens = try l.lex(.python, s, source);
         const recovery = try python.recoverTokens(s, tokens);
-        try cached.put(a, file, try recovery.clone(a));
+        if (cached.len > 0) cached[file_index] = try recovery.clone(a, strings);
         var resolver = ctx;
         resolver.allocator = s;
         resolver.python_initializers = .explicit;
