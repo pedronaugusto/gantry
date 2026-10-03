@@ -242,7 +242,7 @@ pub fn check(g: anytype, a: std.mem.Allocator, rule: engine.DependencyRule, out:
         const e = Ecosystem.of(language) orelse continue;
         for (Lookup.find(governing, e, path) orelse continue) |manifest| try active.put(a, manifest, {});
     };
-    for (g.references()) |ref| {
+    for (g.references()) |*ref| {
         if (ref.resolved or !engine.matches(rule.from, ref.from)) continue;
         const e = Ecosystem.of(languageOf(ref.from) orelse continue) orelse continue;
         const package = packageOf(e, ref.name) orelse continue;

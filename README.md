@@ -48,8 +48,8 @@ The library uses only `std`. Scan scratch storage is released between files; rea
 bytes need to survive processing until the next read. Graph, analysis, import and path
 results retain their allocator and own their storage. Move these handles and call
 `deinit` once; their slices last until release. Analysis and aggregation results are
-independent of the original graph. Rule findings borrow the graph, rule names and
-required-path strings; keep those alive and free the findings with `rules.free`, which
+independent of the original graph. Rule findings point into the graph's edges, references,
+tokens and declarations and borrow rule names and required-path strings; keep those alive and free the findings with `rules.free`, which
 also frees the chains of transitive findings (`gpa.free` alone suffices when no rule is
 transitive).
 

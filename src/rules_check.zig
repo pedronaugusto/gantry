@@ -109,17 +109,22 @@ pub const Rules = struct {
     /// null permits cycles; a name enables and identifies the rule.
     no_cycles: ?[]const u8 = null,
 };
+/// A finding. Its evidence points into the graph's own records, so a
+/// finding stays small whichever rule made it; field access reads the
+/// same through the pointers.
 pub const Violation = struct {
     rule: []const u8,
     reason: enum { upward, forbidden, entry, reference, missing, cycle, token, unreached, undeclared, unused },
     /// The edge a direct rule restricts, or a chain's first edge.
-    edge: ?t.Edge = null,
-    reference: ?t.Reference = null,
-    token: ?t.Token = null,
+    edge: ?*const t.Edge = null,
+    /// A restricted reference, or an undeclared import.
+    reference: ?*const t.Reference = null,
+    /// A token outside its owners' files.
+    token: ?*const t.Token = null,
     /// A missing required path, an unreachable file, the file a chain
     /// ends in, or the manifest an undeclared import was looked up in.
     path: ?[]const u8 = null,
-    /// An unused declaration, in the graph's storage.
+    /// An unused declaration.
     dependency: ?*const t.Dependency = null,
     /// The package an undeclared import names, as a slice of its spelling.
     package: ?[]const u8 = null,
@@ -164,22 +169,22 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
         if (r.transitive) {
             if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
             try walks.?.layers(&out, g.edges(), rules, r);
-        } else for (g.edges()) |e| {
-            if (layer(r, e.to) > layer(r, e.from) and !allowed(rules, r.name, e)) try out.items.append(out.a, .{ .rule = r.name, .reason = .upward, .edge = e });
+        } else for (g.edges()) |*e| {
+            if (layer(r, e.to) > layer(r, e.from) and !allowed(rules, r.name, e.*)) try out.items.append(out.a, .{ .rule = r.name, .reason = .upward, .edge = e });
         }
     }
     for (rules.forbidden) |r| {
         if (r.transitive) {
             if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
             try walks.?.forbidden(&out, g.edges(), rules, r);
-        } else for (g.edges()) |e| {
-            if (matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.items.append(out.a, .{ .rule = r.name, .reason = .forbidden, .edge = e });
+        } else for (g.edges()) |*e| {
+            if (matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e.*)) try out.items.append(out.a, .{ .rule = r.name, .reason = .forbidden, .edge = e });
         }
     }
-    for (rules.nothing_imports) |r| for (g.edges()) |e| {
-        if (matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e)) try out.items.append(out.a, .{ .rule = r.name, .reason = .entry, .edge = e });
+    for (rules.nothing_imports) |r| for (g.edges()) |*e| {
+        if (matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e.*)) try out.items.append(out.a, .{ .rule = r.name, .reason = .entry, .edge = e });
     };
-    for (rules.references) |r| for (g.references()) |ref| {
+    for (rules.references) |r| for (g.references()) |*ref| {
         if (!matches(r.from, ref.from) or (r.unresolved_only and ref.resolved) or (r.kind != null and r.kind.? != ref.kind)) continue;
         if (r.suffix) |suffix| if (!std.mem.endsWith(u8, ref.name, suffix)) continue;
         var normalized: ?[]const u8 = null;
@@ -207,7 +212,7 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
         };
         if (!except) try out.items.append(out.a, .{ .rule = r.name, .reason = .reference, .reference = ref });
     };
-    for (rules.tokens) |r| for (g.tokens()) |token| {
+    for (rules.tokens) |r| for (g.tokens()) |*token| {
         if (token.kind != r.kind or !matchesToken(r.token, token.text)) continue;
         for (r.owners) |owner| {
             if (matches(owner, token.path)) break;
@@ -228,7 +233,7 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
                 const mid = low + (high - low) / 2;
                 if (t.edgesLess({}, g.edges()[mid], key)) low = mid + 1 else high = mid;
             }
-            try out.items.append(out.a, .{ .rule = name, .reason = .cycle, .edge = g.edges()[low] });
+            try out.items.append(out.a, .{ .rule = name, .reason = .cycle, .edge = &g.edges()[low] });
         }
     }
     for (rules.reachable) |r| {
@@ -303,7 +308,7 @@ const Walks = struct {
         for (w.paths, 0..) |path, v| if (matches(r.from, path)) {
             nodes.clearRetainingCapacity();
             const first = try walk.chain(w.a, w.forward, dist, filter, @intCast(v), &nodes) orelse continue;
-            try out.appendChain(.{ .rule = r.name, .reason = .forbidden, .edge = edges[first], .path = w.paths[nodes.items[nodes.items.len - 1]] }, w.paths, nodes.items);
+            try out.appendChain(.{ .rule = r.name, .reason = .forbidden, .edge = &edges[first], .path = w.paths[nodes.items[nodes.items.len - 1]] }, w.paths, nodes.items);
         };
     }
     fn layers(w: Walks, out: *Findings, edges: []const t.Edge, rules: Rules, r: OrderedLayers) !void {
@@ -327,7 +332,7 @@ const Walks = struct {
         for (place, 0..) |at, v| if (at) |low| for (low + 1..r.layers.len) |j| {
             nodes.clearRetainingCapacity();
             const first = try walk.chain(w.a, w.forward, dist[j], filter, @intCast(v), &nodes) orelse continue;
-            try out.appendChain(.{ .rule = r.name, .reason = .upward, .edge = edges[first], .path = w.paths[nodes.items[nodes.items.len - 1]] }, w.paths, nodes.items);
+            try out.appendChain(.{ .rule = r.name, .reason = .upward, .edge = &edges[first], .path = w.paths[nodes.items[nodes.items.len - 1]] }, w.paths, nodes.items);
         };
     }
     fn unreached(w: Walks, out: *Findings, edges: []const t.Edge, r: Reachable) !void {
