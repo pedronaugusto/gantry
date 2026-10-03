@@ -235,9 +235,11 @@ Local build scripts clear `.zig-cache/{o,h,z,tmp}` above the measured cap in `ci
 
 `zig build test` runs the suite and usage example in Debug by default. Fixtures cover
 lexical exclusions, resolvers, manifests, diagnostics, strict imports and rules.
-Generated graphs are checked against independent reachability and depth calculations;
-allocation-failure tests check cleanup. Every lexer and every manifest and config reader
-has a `std.testing.fuzz` property (no panic or leak, only documented errors, output bounded
+Generated graphs are checked against independent reachability, depth, closure,
+shortest-chain, coupling and nearest-target calculations; allocation-failure tests check
+cleanup, and a 50,000-file graph bounds a query's memory. Every lexer, every manifest and
+config reader, and the package names dependency rules read from import spellings have a
+`std.testing.fuzz` property (no panic or leak, only documented errors, output bounded
 by the input, the same result twice): `zig build test` runs their seeds and `zig build test
 --fuzz` searches from them. `zig build examples` runs the example
 separately; `zig build check` compiles the tests only. CI also runs `ci/check-docs.sh`.
