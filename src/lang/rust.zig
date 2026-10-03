@@ -18,7 +18,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
     var pending_test = false;
     var pending_path = false;
     var pending_scope: ?[]const u8 = null;
-    const names = try local(a, ts);
+    var names: Names = .{ .ts = ts };
     // A crate a path names once per file and kind.
     var crates: std.StringHashMapUnmanaged(void) = .empty;
     var test_crates: std.StringHashMapUnmanaged(void) = .empty;
@@ -29,7 +29,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         if (t.is("extern") and i + 2 < ts.len and ts[i + 1].is("crate") and ts[i + 2].kind == .word and !ts[i + 2].is("self")) {
             try out.append(a, .{ .name = ts[i + 2].text, .offset = t.offset, .form = .rust_crate, .kind = if (testing) .@"test" else .import, .scope = current.scope });
             try (if (testing) &test_crates else &crates).put(a, ts[i + 2].text, {});
-        } else if (crateRoot(ts, i, names.all)) {
+        } else if (crateRoot(ts, i) and !(try names.get(a)).all.contains(t.text)) {
             try noteCrate(a, t, if (testing) &test_crates else &crates, .{ .name = "", .offset = 0, .kind = if (testing) .@"test" else .import, .scope = current.scope }, &out);
         }
         if (t.is("include") and i + 2 < ts.len and ts[i + 1].is("!") and (ts[i + 2].is("(") or ts[i + 2].is("{") or ts[i + 2].is("[")))
@@ -40,7 +40,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
             while (j < ts.len and !ts[j].is("]")) : (j += 1) {}
             const begin = i + (if (inner) @as(usize, 3) else 2);
             // `#[tokio::main]`, `#[derive(serde::Serialize)]`.
-            for (i + 1..j) |k| if (crateRoot(ts, k, names.all)) try noteCrate(a, ts[k], if (current.test_item) &test_crates else &crates, .{ .name = "", .offset = 0, .kind = if (current.test_item) .@"test" else .import, .scope = current.scope }, &out);
+            for (i + 1..j) |k| if (crateRoot(ts, k) and !(try names.get(a)).all.contains(ts[k].text)) try noteCrate(a, ts[k], if (current.test_item) &test_crates else &crates, .{ .name = "", .offset = 0, .kind = if (current.test_item) .@"test" else .import, .scope = current.scope }, &out);
             if (begin < j and ts[begin].is("path")) {
                 try unsupported.append(a, .{ .offset = t.offset, .expression = .rust_path });
                 pending_path = true;
@@ -60,7 +60,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         } else if (t.is("use") and i + 1 < ts.len) {
             var j = i + 1;
             const start = out.items.len;
-            try tree(a, ts, &j, names.modules, t.offset, &out);
+            try tree(a, ts, &j, &names, t.offset, &out);
             for (out.items[start..]) |*spec| {
                 spec.kind = if (current.test_item or pending_test) .@"test" else .import;
                 spec.scope = current.scope;
@@ -87,7 +87,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
 }
 // Nested use trees are walked on an explicit stack: source nesting never
 // consumes the machine's call stack.
-fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, modules: std.StringHashMapUnmanaged(void), offset: usize, out: *std.ArrayList(Spec)) !void {
+fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, offset: usize, out: *std.ArrayList(Spec)) !void {
     var prefixes: std.ArrayList([]const u8) = .empty;
     var path: std.ArrayList(u8) = .empty;
     while (j.* < ts.len) : (j.* += 1) {
@@ -98,7 +98,7 @@ fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, modules: std.Strin
             continue;
         }
         if (t.is(",") or t.is("}")) {
-            try emit(a, path.items, modules, offset, out);
+            try emit(a, path.items, names, offset, out);
             if (t.is("}") and prefixes.items.len > 0) _ = prefixes.pop();
             path.clearRetainingCapacity();
             if (prefixes.getLastOrNull()) |prefix| try path.appendSlice(a, prefix);
@@ -110,9 +110,9 @@ fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, modules: std.Strin
         }
         if (t.kind == .word or t.is(":") or t.is("*")) try path.appendSlice(a, t.text) else break;
     }
-    try emit(a, path.items, modules, offset, out);
+    try emit(a, path.items, names, offset, out);
 }
-fn emit(a: std.mem.Allocator, raw: []const u8, modules: std.StringHashMapUnmanaged(void), offset: usize, out: *std.ArrayList(Spec)) !void {
+fn emit(a: std.mem.Allocator, raw: []const u8, names: *Names, offset: usize, out: *std.ArrayList(Spec)) !void {
     if (raw.len == 0 or std.mem.endsWith(u8, raw, "::")) return;
     if (std.mem.startsWith(u8, raw, "crate::") or std.mem.startsWith(u8, raw, "super::") or std.mem.startsWith(u8, raw, "self::")) {
         try out.append(a, .{ .name = try a.dupe(u8, raw), .offset = offset, .form = .rust_use });
@@ -122,7 +122,7 @@ fn emit(a: std.mem.Allocator, raw: []const u8, modules: std.StringHashMapUnmanag
     // file, a type or `self` alone is no crate.
     const name = if (std.mem.startsWith(u8, raw, "::")) raw[2..] else raw;
     const root = name[0 .. std.mem.indexOf(u8, name, "::") orelse name.len];
-    if (!crateName(root) or modules.contains(root)) return;
+    if (!crateName(root) or (try names.get(a)).modules.contains(root)) return;
     try out.append(a, .{ .name = try a.dupe(u8, name), .offset = offset, .form = .rust_crate });
 }
 /// A crate a path names, once per file and kind: `like` gives its kind
@@ -138,32 +138,41 @@ fn noteCrate(a: std.mem.Allocator, t: l.Token, seen: *std.StringHashMapUnmanaged
 }
 /// The names a file brings into scope: its modules, every word of its
 /// `use` trees, and `extern crate` aliases. A path rooted at one is local.
-fn local(a: std.mem.Allocator, ts: []const l.Token) !struct { all: std.StringHashMapUnmanaged(void), modules: std.StringHashMapUnmanaged(void) } {
-    var all: std.StringHashMapUnmanaged(void) = .empty;
-    var modules: std.StringHashMapUnmanaged(void) = .empty;
-    var i: usize = 0;
-    while (i < ts.len) : (i += 1) {
-        if (ts[i].is("mod") and i + 1 < ts.len and ts[i + 1].kind == .word) {
-            try modules.put(a, ts[i + 1].text, {});
-            try all.put(a, ts[i + 1].text, {});
-        } else if (ts[i].is("use")) {
-            while (i < ts.len and !ts[i].is(";")) : (i += 1) if (ts[i].kind == .word) try all.put(a, ts[i].text, {});
-        } else if (ts[i].is("as") and i + 1 < ts.len and ts[i + 1].kind == .word and i >= 3 and ts[i - 3].is("extern")) {
-            try all.put(a, ts[i + 1].text, {});
+/// Gathered on the first path that could name a crate.
+const Names = struct {
+    ts: []const l.Token,
+    found: ?Found = null,
+    const Found = struct { all: std.StringHashMapUnmanaged(void), modules: std.StringHashMapUnmanaged(void) };
+    fn get(self: *Names, a: std.mem.Allocator) !*const Found {
+        if (self.found == null) {
+            const ts = self.ts;
+            var all: std.StringHashMapUnmanaged(void) = .empty;
+            var modules: std.StringHashMapUnmanaged(void) = .empty;
+            var i: usize = 0;
+            while (i < ts.len) : (i += 1) {
+                if (ts[i].is("mod") and i + 1 < ts.len and ts[i + 1].kind == .word) {
+                    try modules.put(a, ts[i + 1].text, {});
+                    try all.put(a, ts[i + 1].text, {});
+                } else if (ts[i].is("use")) {
+                    while (i < ts.len and !ts[i].is(";")) : (i += 1) if (ts[i].kind == .word) try all.put(a, ts[i].text, {});
+                } else if (ts[i].is("as") and i + 1 < ts.len and ts[i + 1].kind == .word and i >= 3 and ts[i - 3].is("extern")) {
+                    try all.put(a, ts[i + 1].text, {});
+                }
+            }
+            self.found = .{ .all = all, .modules = modules };
         }
+        return &self.found.?;
     }
-    return .{ .all = all, .modules = modules };
-}
-/// A word a path starts with, `name::`, that no `use`, module or alias of
-/// this file brought in: not after `::`, `.` or `$`, and not a function
-/// called with `::<`.
-fn crateRoot(ts: []const l.Token, i: usize, locals: std.StringHashMapUnmanaged(void)) bool {
+};
+/// A word a path starts with, `name::`, that could name a crate: not
+/// after `::`, `.` or `$`, and not a function called with `::<`. The
+/// caller rules out names the file brought in itself.
+fn crateRoot(ts: []const l.Token, i: usize) bool {
     const t = ts[i];
     if (t.kind != .word or !crateName(t.text) or i + 3 >= ts.len) return false;
     if (!ts[i + 1].is(":") or !ts[i + 2].is(":") or ts[i + 2].offset != ts[i + 1].end or ts[i + 1].offset != t.end) return false;
     if (ts[i + 3].is("<")) return false;
-    if (i > 0 and (ts[i - 1].is(":") or ts[i - 1].is(".") or ts[i - 1].is("$"))) return false;
-    return !locals.contains(t.text);
+    return !(i > 0 and (ts[i - 1].is(":") or ts[i - 1].is(".") or ts[i - 1].is("$")));
 }
 /// A crate's name as code spells it: lower case or `_` first, and not a
 /// keyword a path can start with.
