@@ -12,6 +12,9 @@ const types = @import("../types.zig");
 const Spec = types.Spec;
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     const ts = try l.lex(.python, a, source);
+    return recoverTokens(a, ts);
+}
+pub fn recoverTokens(a: std.mem.Allocator, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     const loaders = try l.compact(a, ts);

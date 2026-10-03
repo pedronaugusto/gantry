@@ -95,6 +95,8 @@ Rust test classification propagates through file modules; owned recovered operan
 
 Go workspace routing keeps local module edges, and recorded build constraints let caller targets select files; constraint parsing and imports share a source read and token stream.
 
+Python literal `__all__` reexports retain selected implementation edges; owned recovered operands let export indexing and imports share a source read and token stream.
+
 `graph.references()` keeps import spellings, offsets, kinds and resolution status.
 Detectable unsupported constructs appear in `graph.unsupported()` without guessed edges.
 `strict_imports` refuses the first such construct with `UnsupportedImport`, even when

@@ -33,7 +33,6 @@ test "scan diagnostics retain reader causes through every read pass" {
         .{ .path = "tsconfig.json" },
         .{ .path = "src/a.rs" },
         .{ .path = "pkg/a.py" },
-        .{ .path = "pkg/a.py", .pass = 2 },
     }) |case| {
         var reader: Reader = .{ .fail_on = case.pass };
         try std.testing.expectError(error.ReaderRefused, g.scanWithDiagnostic(a, &.{case.path}, &reader, Reader.read, .{}, &diagnostic));
