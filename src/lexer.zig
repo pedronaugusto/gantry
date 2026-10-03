@@ -86,8 +86,9 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             if (newlines) try out.push(a, .{ .kind = .newline, .text = text[start..i], .offset = start, .end = i });
             continue;
         }
-        if (std.ascii.isWhitespace(c)) {
+        if (space[c]) {
             i += 1;
+            while (i < text.len and space[text[i]]) : (i += 1) {}
             continue;
         }
         if (lang == .nim and c == '#' and (std.mem.startsWith(u8, text[i..], "#[") or std.mem.startsWith(u8, text[i..], "##["))) {
@@ -305,7 +306,7 @@ const Stream = struct {
     }
 };
 fn ident(c: u8) bool {
-    return std.ascii.isAlphanumeric(c) or c == '_' or c == '$' or c >= 128;
+    return words[c];
 }
 /// JavaScript words that decide whether a following `/` starts a regular
 /// expression: an operand may follow these keywords, and the parenthesis
@@ -317,6 +318,18 @@ const js_words = std.StaticStringMap(enum { control, operand, other }).initCompt
     .{ "await", .operand },  .{ "typeof", .operand },     .{ "void", .operand },   .{ "delete", .operand },
     .{ "in", .operand },     .{ "instanceof", .operand },
 });
+/// Name bytes, and whitespace other than the newline a stream can keep,
+/// by table: the scan loop asks for every byte.
+const words = blk: {
+    var t: [256]bool = undefined;
+    for (&t, 0..) |*v, c| v.* = std.ascii.isAlphanumeric(c) or c == '_' or c == '$' or c >= 128;
+    break :blk t;
+};
+const space = blk: {
+    var t: [256]bool = undefined;
+    for (&t, 0..) |*v, c| v.* = c != '\n' and std.ascii.isWhitespace(c);
+    break :blk t;
+};
 /// `$` is an operator in Nim, not part of a name.
 fn identIn(comptime lang: Syntax, c: u8) bool {
     return ident(c) and !(lang == .nim and c == '$');
