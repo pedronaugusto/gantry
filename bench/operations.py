@@ -59,6 +59,7 @@ def alternatives(workload, arg, after, scratch, here, jdk):
         'process/metrics-js': [('dependency-cruiser', node)],
         'process/reach-js': [('dependency-cruiser', node)],
         'process/reach-python': [('import-linter', py)],
+        'process/type-checking-python': [('grimp', py)],
         'kinds/javascript': [('typescript', node)],
         'graph/direct': [('grimp', py)], 'graph/reach': [('grimp', py)],
         'graph/affected': [('grimp', py)], 'graph/chain': [('grimp', py)],
@@ -106,7 +107,7 @@ def run(p, binary, scratch, env, jdk):
     listed = {s: set(p.run([binary[s] / 'ops', '--list']).split()) for s in binary}
     corpus = {'process/walk': p.build / 'corpus', 'process/check-js': p.build / 'corpus', 'process/tokens': p.build / 'corpus',
               'process/metrics-js': root / 'typescript', 'process/reach-js': p.build / 'corpus',
-              'process/check-python': root / 'python', 'process/reach-python': root / 'python', 'process/links': root / 'markdown'}
+              'process/check-python': root / 'python', 'process/reach-python': root / 'python', 'process/type-checking-python': root / 'typing', 'process/links': root / 'markdown'}
     for workload in sorted(listed['after'], key=lambda w: (w.startswith('process/'), w)):
         kind = workload.split('/')[0]
         if kind in ('imports', 'manifests', 'kinds'):

@@ -130,6 +130,7 @@ corpus, 5,000 Markdown pages, or a 5,501-file Python package.
 | transitive forbidden rules and ordered layers | `rules/{transitive,layers-transitive}/<size>`; end to end `process/reach-js`, `process/reach-python`, after only | in process unavailable (the rule tools check only graphs they build); dependency-cruiser `reachable: true`, import-linter forbidden contract with indirect imports (sources that reach a forbidden module) |
 | reachable rules | `rules/reachable/<size>`, after only | unavailable: dependency-cruiser's `reachable: false` and madge `--orphans` check only graphs they build |
 | dependency rules | `rules/dependencies/<size>`, after only | unavailable: dependency-cruiser `no-non-package-json`, depcheck and deptry judge packages resolved in an installed `node_modules` or environment, and the bench installs none |
+| Python `TYPE_CHECKING` imports as `type_only` | `process/type-checking-python`, after only | Grimp 3.17 `build_graph(exclude_type_checking_imports=True)`, as import-linter builds it (same 4,500 static and 4,500 type-checking imports; gantry ~0.12 s, Grimp ~0.12 s of analysis in a 0.29 s process, diagnostic) |
 | `imports` edge kinds (TS) | `kinds/javascript/<size>`, after only | TypeScript 5.7.3 syntax tree (`isTypeOnly`, `ImportTypeNode`, `import()` calls), as dependency-cruiser reads it |
 
 Skipped as value helpers with no measurable cost: `languageOf`, `kindsOf`,

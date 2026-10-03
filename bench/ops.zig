@@ -21,6 +21,21 @@ const has_reachable = @hasField(gantry.rules.Rules, "reachable");
 const has_dependency_rules = @hasField(gantry.rules.Rules, "dependencies");
 const has_kinds = @hasField(gantry.Kind, "type_only");
 
+/// Whether this revision reads Python `if TYPE_CHECKING:` imports as
+/// type-only edges, by scanning two files.
+fn readsTypeChecking() bool {
+    if (!has_kinds) return false;
+    const Probe = struct {
+        fn read(_: void, p: []const u8, _: std.mem.Allocator) !?[]const u8 {
+            return if (std.mem.eql(u8, p, "a.py")) "if TYPE_CHECKING:\n    import b\n" else "";
+        }
+    };
+    var graph = gantry.scan(std.heap.page_allocator, &.{ "a.py", "b.py" }, {}, Probe.read, .{}) catch return false;
+    defer graph.deinit();
+    for (api.edges(&graph)) |edge| if (edge.kind == .type_only) return true;
+    return false;
+}
+
 /// Findings with any chains a transitive rule gave them.
 fn freeFindings(gpa: std.mem.Allocator, findings: anytype) void {
     if (has_free) gantry.rules.free(gpa, findings) else gpa.free(findings);
@@ -86,6 +101,7 @@ fn list(w: *std.Io.Writer) !void {
     if (has_kinds) try w.writeAll("kinds/javascript\n");
     if (has_coupling) try w.writeAll("process/metrics-js\n");
     if (has_transitive) try w.writeAll("process/reach-js\nprocess/reach-python\n");
+    if (readsTypeChecking()) try w.writeAll("process/type-checking-python\n");
     try w.writeAll("scan/memory\nscan/links\nscan/assets\n");
     if (has_diagnostic) try w.writeAll("scan/diagnostic\n");
     if (has_tokens) try w.writeAll("scan/tokens\n");
@@ -562,6 +578,8 @@ fn processWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u
         rules.forbidden = &.{.{ .name = "far", .from = "js/**/f9.ts", .to = "js/**/f1.ts", .transitive = true }};
     } else if (has_transitive and std.mem.eql(u8, mode, "reach-python")) {
         rules.forbidden = &.{.{ .name = "far", .from = "pkg/*/f9.py", .to = "pkg/*/f1.py", .transitive = true }};
+    } else if (has_kinds and std.mem.eql(u8, mode, "type-checking-python")) {
+        // Below: static and type-only edges between modules, not initializers.
     } else if (!(has_coupling and std.mem.eql(u8, mode, "metrics-js"))) return error.UnknownProcessWorkload;
     var graph = try gantry.scan(gpa, api.items(&paths), gantry.DirReader{ .io = io, .dir = dir }, gantry.DirReader.read, options);
     defer graph.deinit();
@@ -571,6 +589,16 @@ fn processWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u
         var links: usize = 0;
         for (api.edges(&graph)) |e| links += @intFromBool(e.kind == .link);
         return out.count("links", links);
+    }
+    if (has_kinds and std.mem.eql(u8, mode, "type-checking-python")) {
+        var counts: [2]usize = .{ 0, 0 };
+        for (api.edges(&graph)) |edge| {
+            if (std.mem.endsWith(u8, edge.to, "__init__.py") or std.mem.endsWith(u8, edge.from, "__init__.py")) continue;
+            if (edge.kind == .import) counts[0] += 1;
+            if (edge.kind == .type_only) counts[1] += 1;
+        }
+        try out.count("static", counts[0]);
+        return out.count("type_checking", counts[1]);
     }
     if (has_coupling and std.mem.eql(u8, mode, "metrics-js")) {
         var analysis = try graph.analyze(gpa);

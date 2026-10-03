@@ -185,6 +185,25 @@ def importlinter_reach(workload, root):
     row('import-linter', workload, 'findings', len(sources), 'count')
 
 
+def grimp_type_checking(workload, root):
+    """Grimp's graph with `exclude_type_checking_imports`, as import-linter
+    builds it: imports between modules, and those the exclusion dropped."""
+    loaded = time.perf_counter()
+    sys.path.insert(0, str(root))
+    import grimp
+    imported = time.perf_counter()
+    graph = grimp.build_graph('tpkg', exclude_type_checking_imports=True, cache_dir=None)
+    done = time.perf_counter()
+    def pairs(g):
+        modules = [m for m in g.modules if re.fullmatch(r'tpkg\.g\d+\.f\d', m)]
+        return sum(1 for m in modules for t in g.find_modules_directly_imported_by(m) if re.fullmatch(r'tpkg\.g\d+\.f\d', t))
+    static = pairs(graph)
+    every = pairs(grimp.build_graph('tpkg', exclude_type_checking_imports=False, cache_dir=None))
+    phases('grimp', workload, loaded, imported, done)
+    row('grimp', workload, 'static', static, 'count')
+    row('grimp', workload, 'type_checking', every - static, 'count')
+
+
 def phases(side, workload, loaded, imported, done):
     # Interpreter start until this script ran is the remainder of the outer wall time.
     if SMOKE: return
@@ -204,6 +223,8 @@ def main():
         links(workload, arg)
     elif workload == 'process/check-python':
         importlinter(workload, arg)
+    elif workload == 'process/type-checking-python':
+        grimp_type_checking(workload, arg)
     elif workload == 'process/reach-python':
         importlinter_reach(workload, arg)
     elif workload in ('graph/direct', 'graph/reach', 'graph/affected', 'graph/chain'):

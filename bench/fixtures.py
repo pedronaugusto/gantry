@@ -101,6 +101,20 @@ def python_package(root, count, write):
         write(root / f'pkg/g{g}/f{m}.py', body + '# ' + 'comment ' * 16 + '\ntext = "import pkg.fake"\n')
 
 
+def typing_package(root, count, write):
+    """tpkg.gN.fM imports the module before it, and under `if TYPE_CHECKING:`
+    the module after it."""
+    write(root / 'tpkg/__init__.py', '')
+    for i in range(count):
+        g, m = divmod(i, 10)
+        if m == 0:
+            write(root / f'tpkg/g{g}/__init__.py', '')
+        body = 'from typing import TYPE_CHECKING\n'
+        if m: body += f'import tpkg.g{g}.f{m - 1}\n'
+        if m < 9: body += f'if TYPE_CHECKING:\n    import tpkg.g{g}.f{m + 1}\n'
+        write(root / f'tpkg/g{g}/f{m}.py', body + '# ' + 'comment ' * 16 + '\n')
+
+
 def typescript_tree(root, count, write):
     """js/gN/fM.ts imports the file before it in its folder, and each f0 the
     f5 of folder (N - 1) / 2: dependencies inside and across folders, in
@@ -147,6 +161,7 @@ def generate(root, smoke, write=True):
     markdown(root / 'markdown', count, write)
     python_package(root / 'python', count, write)
     typescript_tree(root / 'typescript', 30 if smoke else 5000, write)
+    typing_package(root / 'typing', count, write)
     write(root / 'python.importlinter', '[importlinter]\nroot_package = pkg\n\n[importlinter:contract:forbid]\nname = forbid\n'
           'type = forbidden\nsource_modules =\n    pkg.*.f5\nforbidden_modules =\n    pkg.*.f4\nallow_indirect_imports = True\n')
     write(root / 'python-reach.importlinter', '[importlinter]\nroot_package = pkg\n\n[importlinter:contract:far]\nname = far\n'
