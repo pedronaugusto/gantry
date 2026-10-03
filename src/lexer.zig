@@ -38,8 +38,9 @@ pub fn lexCompact(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8,
 fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator, text: []const u8, seen: ?Observer) ![]Token {
     var out: Stream = .{ .total = text.len };
     // Room at once for a small file: a token in four bytes, up to a few
-    // hundred, which a large sparse file never pays for.
-    try out.list.ensureTotalCapacityPrecise(a, @min(text.len / 4 + 4, 512));
+    // hundred, which a large sparse file never pays for. Under a kilobyte
+    // the stream grows as any list does, in blocks no larger than it needs.
+    if (text.len >= 1024) try out.list.ensureTotalCapacityPrecise(a, @min(text.len / 4 + 4, 512));
     var i: usize = 0;
     var regex_allowed = true;
     var control_pending = false;
@@ -298,6 +299,8 @@ const Stream = struct {
     fn grow(s: *Stream, a: std.mem.Allocator, read: usize) !void {
         @branchHint(.unlikely);
         const n = s.list.items.len;
+        // A short stream has too little behind it to project from.
+        if (n < 512) return s.list.ensureUnusedCapacity(a, 1);
         const projected = @as(u128, n) * s.total / @max(read, 1);
         // Between half again and four times what is held.
         const least = n + n / 2 + 16;
