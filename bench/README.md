@@ -14,8 +14,9 @@ all available workloads once on tiny fixtures, without warmups or saved timing
 values. Smoke is a correctness check, and never evidence for speed. Both
 modes write plain Markdown and JSON to `bench/results/<local-date>/`; generated
 results and build products are ignored. Smoke writes `smoke.md` / `smoke.json`;
-the quiet pass writes `report.md` / `report.json`, so smoke cannot overwrite a
-real pass. Use `--output <directory>` for a separate run on the same day.
+the quiet pass writes `report.md` / `report.json`; preparation and
+`--check-prepared` write `prepared.md` / `prepared.json`. None of them can
+overwrite a real pass. Use `--output <directory>` for a separate run on the same day.
 
 The full pass warms each workload, then repeats A (before), B (after), and the
 comparison tools five times. `--runs N` changes the repetition count. Setup,

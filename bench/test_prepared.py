@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from prepared import Prepared
+from quiet_common import Pass
 
 class PreparedTests(unittest.TestCase):
     def test_missing_and_changed_artifacts_fail_before_measurement(self):
@@ -28,5 +29,19 @@ class PreparedTests(unittest.TestCase):
             with patch.object(prepared, 'identity', return_value='old'): prepared.write()
             with patch.object(prepared, 'identity', return_value='new'):
                 with self.assertRaises(RuntimeError): prepared.check()
+
+    def test_preparation_never_writes_over_a_pass_report(self):
+        with tempfile.TemporaryDirectory() as name:
+            out = Path(name)
+            (out/'report.json').write_text('real pass')
+            (out/'report.md').write_text('real pass')
+            run = Pass.__new__(Pass)
+            run.smoke, run.plan_only, run.complete, run.out = False, True, True, out
+            run.revisions, run.metadata, run.machine, run.rows = {'before':'a','after':'b'}, {}, {}, []
+            with patch.object(Pass, 'git', return_value=''), patch.object(Pass, 'clean', side_effect=lambda value: value):
+                run.save()
+            self.assertEqual((out/'report.json').read_text(), 'real pass')
+            self.assertEqual((out/'report.md').read_text(), 'real pass')
+            self.assertTrue((out/'prepared.json').exists())
 
 if __name__ == '__main__': unittest.main()

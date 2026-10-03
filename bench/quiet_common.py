@@ -157,9 +157,10 @@ class Pass:
                  'order':'A (before), B (after), comparisons; repeated per workload',
                  'samples':self.rows, 'failure':failure,
                  'complete':self.complete, 'timings_recorded':not self.smoke and not self.plan_only})
-        name = 'smoke' if self.smoke else 'report'
+        # Preparation and its check share the day's folder with a real pass: never its report.
+        name = 'smoke' if self.smoke else 'prepared' if self.plan_only else 'report'
         (self.out/(name+'.json')).write_text(json.dumps(report,indent=2)+'\n')
-        lines = ['# '+('Smoke correctness' if self.smoke else 'Quiet benchmark'),'',
+        lines = ['# '+('Smoke correctness' if self.smoke else 'Quiet preparation' if self.plan_only else 'Quiet benchmark'),'',
                  'Before: `'+self.revisions['before']+'`; after: `'+self.revisions['after']+'`.','',
                  report['baseline_note'],'', 'Machine: '+json.dumps(report['machine']), '',
                  'Order: '+report['order']+'.','',
