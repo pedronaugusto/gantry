@@ -77,3 +77,13 @@ test "Rust test propagation reads each source once and releases reader scratch" 
     try f.edge(&graph, "src/helper/child.rs", "src/util.rs", .@"test", 1);
     try std.testing.expectEqual(4, reader.calls);
 }
+test "kindsOf says which references a scan reads from a path by its name" {
+    const K = g.Kind;
+    const zig = g.kindsOf("src/main.zig");
+    try std.testing.expect(zig.contains(K.import) and zig.contains(K.@"test") and !zig.contains(K.link) and !zig.contains(K.asset));
+    const md = g.kindsOf("notes/a.md");
+    try std.testing.expect(md.contains(K.link) and md.contains(K.asset) and !md.contains(K.import));
+    const json = g.kindsOf("data/x.json");
+    try std.testing.expect(json.contains(K.asset) and !json.contains(K.link) and !json.contains(K.import));
+    try std.testing.expectEqual(@as(usize, 0), g.kindsOf("image.png").count());
+}

@@ -25,6 +25,8 @@ pub const manifests = @import("manifests.zig");
 pub const path = @import("path.zig");
 pub const Options = @import("scan_options.zig").Options;
 pub const languageOf = @import("scan_options.zig").languageOf;
+/// The reference kinds a scan reads from a path, by its name alone.
+pub const kindsOf = @import("scan.zig").kindsOf;
 /// Raw lexical recovery, owning source bytes and every slice until deinit.
 pub const Imports = @import("scan.zig").Imports;
 pub const imports = @import("scan.zig").imports;

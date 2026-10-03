@@ -34,6 +34,20 @@ fn extract(a: std.mem.Allocator, language: Language, source: []const u8) !t.Reco
         inline else => |lang| @field(languages, @tagName(lang)).recover(a, source),
     };
 }
+/// The reference kinds `scan` reads from `file`, by its name alone:
+/// `import` and `test` from source in a supported language (`languageOf`),
+/// `link` from Markdown, `asset` from text that can name other files. Which of
+/// them a scan collects is still `Options.kinds`.
+pub fn kindsOf(file: []const u8) std.EnumSet(Kind) {
+    var kinds: std.EnumSet(Kind) = .initEmpty();
+    if (languageOf(file) != null) {
+        kinds.insert(.import);
+        kinds.insert(.@"test");
+    }
+    if (std.mem.endsWith(u8, file, ".md")) kinds.insert(.link);
+    if (recover.assetText(file)) kinds.insert(.asset);
+    return kinds;
+}
 fn enabled(options: Options, kind: Kind) bool {
     for (options.kinds) |k| if (k == kind) return true;
     return false;
@@ -147,9 +161,10 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     for (g.paths, 0..) |p, file_index| {
         if (inactive.contains(p)) continue;
         const language = languageOf(p);
-        const code = code_enabled and language != null;
-        const links = enabled(options, .link) and std.mem.endsWith(u8, p, ".md");
-        const assets = enabled(options, .asset) and recover.assetText(p);
+        const readable = kindsOf(p);
+        const code = code_enabled and readable.contains(.import);
+        const links = enabled(options, .link) and readable.contains(.link);
+        const assets = enabled(options, .asset) and readable.contains(.asset);
         if (!code and !links and !assets) continue;
         const s = scratch.allocator();
         const prior = if (cached.len > 0) cached[file_index] else null;

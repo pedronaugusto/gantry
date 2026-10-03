@@ -107,7 +107,7 @@ unsupported construct. Loader aliases, generated imports and other runtime seman
 remain undetected.
 
 Import and test edges are enabled by default; links and assets require explicit kind
-selection. Markdown recovery handles inline relative links and wiki links while
+selection. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and wiki links while
 excluding fenced code and comments. Asset recovery matches path tokens in supported text
 files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
 `go.mod` and `pyproject.toml` (`manifests.names`) remain separate from file edges. The TOML and Go
