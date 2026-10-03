@@ -85,5 +85,8 @@ test "kindsOf says which references a scan reads from a path by its name" {
     try std.testing.expect(md.contains(K.link) and md.contains(K.asset) and !md.contains(K.import));
     const json = g.kindsOf("data/x.json");
     try std.testing.expect(json.contains(K.asset) and !json.contains(K.link) and !json.contains(K.import));
+    const nim = g.kindsOf("src/app.nim");
+    try std.testing.expect(nim.contains(K.import) and nim.contains(K.@"test") and !nim.contains(K.asset));
+    try std.testing.expectEqual(@as(usize, 0), g.kindsOf("config.nims").count());
     try std.testing.expectEqual(@as(usize, 0), g.kindsOf("image.png").count());
 }

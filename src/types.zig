@@ -1,5 +1,5 @@
 const std = @import("std");
-pub const Language = enum { zig, c, javascript, python, go, rust };
+pub const Language = enum { zig, c, javascript, python, go, rust, nim };
 pub const Kind = enum { import, link, asset, @"test" };
 pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: usize = 1 };
 pub const Form = enum { literal, python, rust_mod, rust_use };
@@ -16,6 +16,10 @@ pub const ImportExpression = enum {
     python_import,
     rust_include,
     rust_path,
+    /// An `import` or `from` operand that is not a module path or string.
+    nim_import,
+    /// An `include` operand that is not a module path or string.
+    nim_include,
 };
 /// Owned by Imports or Graph, with a byte offset at the construct's start.
 pub const UnsupportedReference = struct {

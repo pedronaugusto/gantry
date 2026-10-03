@@ -6,6 +6,8 @@ pub fn file(language: t.Language, name: []const u8) bool {
     return switch (language) {
         .go => std.mem.endsWith(u8, base, "_test.go"),
         .python => std.mem.startsWith(u8, base, "test_") or std.mem.endsWith(u8, base, "_test.py"),
+        // Nimble runs `tests/**/t*.nim`; testament keeps the same layout.
+        .nim => std.mem.startsWith(u8, base, "test") or (base[0] == 't' and (std.mem.startsWith(u8, name, "tests/") or std.mem.indexOf(u8, name, "/tests/") != null)),
         .javascript => blk: {
             var dirs = std.mem.splitScalar(u8, name, '/');
             while (dirs.next()) |dir| if (std.mem.eql(u8, dir, "__tests__")) break :blk true;

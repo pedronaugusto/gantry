@@ -16,6 +16,7 @@ pub const Context = struct {
     python_initializers: PythonInitializers = .ancestors,
     python_reexports: *const std.StringHashMapUnmanaged([]const []const u8) = &.empty,
     ts_configs: []const @import("tsconfig.zig").Config = &.{},
+    nim_configs: []const @import("nim_config.zig").Config = &.{},
     pub fn candidate(c: Context, root: []const u8, name: []const u8, suffixes: []const []const u8) !?[]const u8 {
         for (suffixes) |suffix| {
             const norm = @import("resolve_path.zig").join(c.allocator, root, name, suffix) catch |err| switch (err) {

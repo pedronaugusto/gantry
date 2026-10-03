@@ -105,6 +105,34 @@ test "Python semicolons conditional imports escaped and raw triple docstrings" {
         \\ b
     , &.{ "a", "b", "pkg", "pkg.a", "pkg.b" });
 }
+test "Nim imports groups prefixes strings and pragmas ignore comments strings and characters" {
+    try check(.nim,
+        \\# import bad
+        \\#[ import bad
+        \\   #[ nested ]# import bad
+        \\]#
+        \\##[ import bad ]##
+        \\let s = "import bad"
+        \\let r = r"C:\import\" & "x"
+        \\let t = """
+        \\import bad"""
+        \\let q = '"'
+        \\let n = 1'i8
+        \\import std/[os,
+        \\  strutils], ../lib/a as b, c {.all.}
+        \\import std / times
+        \\from pkg/d {.all.} as dd import nil
+        \\import n.o as p, .. / q / [r as s, t]
+        \\import "."/[l,
+        \\  m,
+        \\]
+        \\include "e/f", ./g
+        \\import h except i, j
+        \\when defined(x): import k
+        \\proc p() {.importc: "import".}
+        \\obj.import
+    , &.{ "std/os", "std/strutils", "../lib/a", "c", "std/times", "pkg/d", "n/o", "../q/r", "../q/t", "./l", "./m", "e/f", "./g", "h", "k" });
+}
 test "Go aliased dot blank block raw imports ignore comments and raw text" {
     try check(.go,
         \\package main

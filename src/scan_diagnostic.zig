@@ -19,7 +19,8 @@ pub const ScanDiagnostic = struct {
         go_constraints,
         /// Read dependency declarations and Go module/workspace identities.
         manifests,
-        /// Parse and inherit selected JS/TS resolution configs.
+        /// Parse and inherit selected JS/TS resolution configs and read
+        /// selected Nim search paths.
         configs,
         /// Index Rust test modules and propagate their test status.
         rust_tests,
