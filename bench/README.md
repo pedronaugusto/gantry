@@ -2,7 +2,7 @@
 
 Keep the `bench` worktree in the workspace’s `.bench/gantry`, outside `.zig-cache`; `bench/quiet.sh` resolves its files from its own directory.
 
-Pinned current main: `2f7672b22ec2e48d3d8f1fc8035d840be14e1387`.
+Pinned after (`perf`): `850023678d05c2f8fcc0d86560a9da7663c212a8`.
 **No main commit exists before the requested cutoff.** The initial main commit,
 `24cc1cec108edf15a60a932ce79a864e811fec35`, is a clearly labelled substitute
 baseline. This pass cannot establish a before/after result for a pre-cutoff
@@ -54,7 +54,7 @@ No new tool was added. See [comparison methodology](compare/README.md) and
 
 Both package revisions participate in each real-repository graph round.
 Within a revision each normalized graph must remain stable; before and after
-may differ as resolution changes. The report compares current-main edges to
+may differ as resolution changes. The report compares pinned-after edges to
 the other tools and retains every difference with its reason and witness.
 Differences requiring review are kept visible rather than treated as success
 or failure of a universal correctness claim. Wall time and per-child peak RSS
