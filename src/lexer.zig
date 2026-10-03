@@ -259,14 +259,17 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             const word = text[start..i];
             try out.push(a, .{ .kind = .word, .text = word, .offset = start, .end = i });
             if (seen) |observer| try observer.token(observer.context, out.list.items);
-            control_pending = std.mem.eql(u8, word, "if") or std.mem.eql(u8, word, "while") or std.mem.eql(u8, word, "for") or std.mem.eql(u8, word, "with") or std.mem.eql(u8, word, "switch") or std.mem.eql(u8, word, "catch");
-            regex_allowed = std.mem.eql(u8, word, "return") or std.mem.eql(u8, word, "throw") or std.mem.eql(u8, word, "case") or std.mem.eql(u8, word, "else") or std.mem.eql(u8, word, "do") or std.mem.eql(u8, word, "yield") or std.mem.eql(u8, word, "await") or std.mem.eql(u8, word, "typeof") or std.mem.eql(u8, word, "void") or std.mem.eql(u8, word, "delete") or std.mem.eql(u8, word, "in") or std.mem.eql(u8, word, "instanceof");
+            if (lang == .javascript) {
+                const class = js_words.get(word) orelse .other;
+                control_pending = class == .control;
+                regex_allowed = class == .operand;
+            }
             continue;
         }
         i += 1;
         try out.push(a, .{ .kind = .punctuation, .text = text[start..i], .offset = start, .end = i });
-        regex_allowed = std.mem.indexOfScalar(u8, "=(:,;!&|?{}", c) != null;
         if (lang == .javascript) {
+            regex_allowed = std.mem.indexOfScalar(u8, "=(:,;!&|?{}", c) != null;
             if (c == '(') {
                 try controls.append(a, control_pending);
                 control_pending = false;
@@ -304,6 +307,16 @@ const Stream = struct {
 fn ident(c: u8) bool {
     return std.ascii.isAlphanumeric(c) or c == '_' or c == '$' or c >= 128;
 }
+/// JavaScript words that decide whether a following `/` starts a regular
+/// expression: an operand may follow these keywords, and the parenthesis
+/// after a control keyword closes a condition.
+const js_words = std.StaticStringMap(enum { control, operand, other }).initComptime(.{
+    .{ "if", .control },     .{ "while", .control },      .{ "for", .control },    .{ "with", .control },
+    .{ "switch", .control }, .{ "catch", .control },      .{ "return", .operand }, .{ "throw", .operand },
+    .{ "case", .operand },   .{ "else", .operand },       .{ "do", .operand },     .{ "yield", .operand },
+    .{ "await", .operand },  .{ "typeof", .operand },     .{ "void", .operand },   .{ "delete", .operand },
+    .{ "in", .operand },     .{ "instanceof", .operand },
+});
 /// `$` is an operator in Nim, not part of a name.
 fn identIn(comptime lang: Syntax, c: u8) bool {
     return ident(c) and !(lang == .nim and c == '$');

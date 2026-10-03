@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Look up the JavaScript keywords that decide regular expressions in one table, and only when lexing JavaScript.
+
 - Grow token streams by the density of the text already read, so a long file's stream moves a few times instead of at every half again.
 
 - Lex Go, Zig, JavaScript, Rust and Java without the newline tokens their recovery drops.
