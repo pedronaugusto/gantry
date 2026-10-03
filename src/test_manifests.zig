@@ -287,3 +287,57 @@ test "the manifest names are the ones parse reads" {
     }
     try std.testing.expect(!g.manifests.supported("requirements.txt"));
 }
+fn find(deps: []const g.Dependency, name: []const u8) !g.Dependency {
+    for (deps) |d| if (std.mem.eql(u8, d.name, name)) return d;
+    return error.TestMissingDependency;
+}
+test "a declaration's scope follows its manifest's groups" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const aa = arena.allocator();
+    const Scope = g.Dependency.Scope;
+    const npm = try g.manifests.parse(aa, "web/package.json", "{\"dependencies\":{\"a\":\"1\"},\"devDependencies\":{\"b\":\"2\"},\"peerDependencies\":{\"c\":\"*\"},\"optionalDependencies\":{\"d\":\"1\"}}");
+    try eq(Scope.runtime, (try find(npm, "a")).scope());
+    try eq(Scope.development, (try find(npm, "b")).scope());
+    try eq(Scope.runtime, (try find(npm, "c")).scope());
+    try eq(Scope.optional, (try find(npm, "d")).scope());
+    const cargo = try g.manifests.parse(aa, "Cargo.toml",
+        \\[dependencies]
+        \\a = "1"
+        \\[dev-dependencies]
+        \\b = "1"
+        \\[build-dependencies]
+        \\c = "1"
+        \\[target.'cfg(unix)'.dev-dependencies]
+        \\d = "1"
+        \\[workspace.dependencies]
+        \\e = "1"
+    );
+    try eq(Scope.runtime, (try find(cargo, "a")).scope());
+    try eq(Scope.development, (try find(cargo, "b")).scope());
+    try eq(Scope.build, (try find(cargo, "c")).scope());
+    try eq(Scope.development, (try find(cargo, "d")).scope());
+    try eq(Scope.runtime, (try find(cargo, "e")).scope());
+    const py = try g.manifests.parse(aa, "pyproject.toml",
+        \\[project]
+        \\dependencies = ["a"]
+        \\[project.optional-dependencies]
+        \\extra = ["b"]
+        \\[dependency-groups]
+        \\lint = ["c"]
+        \\[tool.poetry.dependencies]
+        \\d = "1"
+        \\[tool.poetry.group.dev.dependencies]
+        \\e = "1"
+        \\[tool.poetry.dev-dependencies]
+        \\f = "1"
+    );
+    try eq(Scope.runtime, (try find(py, "a")).scope());
+    try eq(Scope.optional, (try find(py, "b")).scope());
+    try eq(Scope.development, (try find(py, "c")).scope());
+    try eq(Scope.runtime, (try find(py, "d")).scope());
+    try eq(Scope.development, (try find(py, "e")).scope());
+    try eq(Scope.development, (try find(py, "f")).scope());
+    const zon = try g.manifests.parse(aa, "build.zig.zon", ".{ .dependencies = .{ .a = .{ .path = \"a\" } } }");
+    try eq(Scope.runtime, zon[0].scope());
+}

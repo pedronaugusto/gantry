@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `Dependency.scope` says whether a declaration is for running, development, an optional extra or building, from its manifest's groups.
+
 - `kindsOf` says which reference kinds a scan reads from a path, and the scan selects files by it.
 
 - `manifests.names` lists the manifest file names `manifests.parse` reads.

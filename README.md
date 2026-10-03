@@ -110,7 +110,9 @@ Import and test edges are enabled by default; links and assets require explicit 
 selection. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and wiki links while
 excluding fenced code and comments. Asset recovery matches path tokens in supported text
 files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
-`go.mod` and `pyproject.toml` (`manifests.names`) remain separate from file edges. The TOML and Go
+`go.mod` and `pyproject.toml` (`manifests.names`) remain separate from file edges.
+A declaration's `scope()` is runtime, development, optional or build, read from its
+manifest's own groups. The TOML and Go
 declaration readers do not validate their entire formats.
 
 ## Graphs and rules

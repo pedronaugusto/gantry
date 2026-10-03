@@ -41,7 +41,61 @@ pub const Recovery = struct {
         return .{ .specs = specs, .unsupported = try a.dupe(UnsupportedReference, self.unsupported) };
     }
 };
-pub const Dependency = struct { manifest: []const u8, name: []const u8, requirement: []const u8 = "", source: []const u8 = "", group: []const u8 = "dependencies" };
+/// One declared dependency, as its manifest spells it.
+pub const Dependency = struct {
+    manifest: []const u8,
+    name: []const u8,
+    requirement: []const u8 = "",
+    source: []const u8 = "",
+    group: []const u8 = "dependencies",
+
+    /// What the dependency is needed for, by its manifest's own groups.
+    pub const Scope = enum {
+        /// To run: npm `dependencies` and `peerDependencies`, Cargo
+        /// `dependencies`, PEP 621 `project.dependencies`, Poetry's main
+        /// table, every ZON and Go requirement.
+        runtime,
+        /// To develop or test: npm `devDependencies`, Cargo
+        /// `dev-dependencies`, PEP 735 `dependency-groups`, Poetry's
+        /// `dev-dependencies` and named groups.
+        development,
+        /// Only when asked for: npm `optionalDependencies`, PEP 621
+        /// `project.optional-dependencies` (extras).
+        optional,
+        /// To build: Cargo `build-dependencies`.
+        build,
+    };
+
+    /// The scope its group puts it in. A Cargo target table
+    /// (`target.'cfg(unix)'.dev-dependencies`) is the scope of its table.
+    pub fn scope(dep: Dependency) Scope {
+        const manifest = baseName(dep.manifest);
+        if (std.mem.eql(u8, manifest, "package.json")) {
+            if (std.mem.eql(u8, dep.group, "devDependencies")) return .development;
+            if (std.mem.eql(u8, dep.group, "optionalDependencies")) return .optional;
+            return .runtime;
+        }
+        if (std.mem.eql(u8, manifest, "pyproject.toml")) {
+            if (std.mem.eql(u8, dep.group, "project.dependencies") or std.mem.eql(u8, dep.group, "tool.poetry.dependencies")) return .runtime;
+            if (std.mem.startsWith(u8, dep.group, "project.optional-dependencies.")) return .optional;
+            return .development;
+        }
+        if (std.mem.eql(u8, manifest, "Cargo.toml")) {
+            var parts = std.mem.splitScalar(u8, dep.group, '.');
+            while (parts.next()) |part| {
+                if (std.mem.eql(u8, part, "dependencies")) return .runtime;
+                if (std.mem.eql(u8, part, "dev-dependencies")) return .development;
+                if (std.mem.eql(u8, part, "build-dependencies")) return .build;
+            }
+        }
+        return .runtime;
+    }
+
+    fn baseName(manifest: []const u8) []const u8 {
+        const slash = std.mem.lastIndexOfAny(u8, manifest, "/\\") orelse return manifest;
+        return manifest[slash + 1 ..];
+    }
+};
 pub const Layer = struct { path: []const u8, depth: usize };
 pub const Cycle = struct { members: []const []const u8, path: []const []const u8 };
 pub fn stringsLess(_: void, a: []const u8, b: []const u8) bool {
