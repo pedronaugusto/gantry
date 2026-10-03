@@ -276,3 +276,14 @@ fn zonAllocations(alloc: std.mem.Allocator) !void {
 test "ZON declarations outlive source and parser storage and release every failed allocation" {
     try std.testing.checkAllAllocationFailures(a, zonAllocations, .{});
 }
+test "the manifest names are the ones parse reads" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    for (g.manifests.names) |name| {
+        try std.testing.expect(g.manifests.supported(name));
+        const nested = try std.fmt.allocPrint(arena.allocator(), "sub/{s}", .{name});
+        try std.testing.expect(g.manifests.supported(nested));
+        _ = g.manifests.parse(arena.allocator(), name, "") catch |err| try std.testing.expect(err != error.UnsupportedManifest);
+    }
+    try std.testing.expect(!g.manifests.supported("requirements.txt"));
+}

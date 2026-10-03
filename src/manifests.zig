@@ -3,9 +3,12 @@ const std = @import("std");
 const l = @import("lexer.zig");
 const t = @import("types.zig");
 const p = @import("path.zig");
+/// The manifest file names `parse` reads, each the whole base name of a path.
+pub const names = [_][]const u8{ "build.zig.zon", "package.json", "Cargo.toml", "go.mod", "pyproject.toml" };
+/// Whether `path`'s base name is one of `names`.
 pub fn supported(path: []const u8) bool {
     const name = p.base(path);
-    for ([_][]const u8{ "build.zig.zon", "package.json", "Cargo.toml", "go.mod", "pyproject.toml" }) |s| if (std.mem.eql(u8, s, name)) return true;
+    for (names) |s| if (std.mem.eql(u8, s, name)) return true;
     return false;
 }
 /// a must be an arena: parser workspaces and strings share its lifetime.
