@@ -59,7 +59,7 @@ already on PATH. No toolchain is installed globally by this harness.
 `<scratch>/venv`, and cargo-modules with `cargo install --root <scratch>/cargo`.
 `GOPATH`, Go module/build caches, Cargo home/target, npm/pip caches and Zig's
 global cache point inside scratch. There is no Go comparison tool binary to install:
-the selected Go comparison uses `go list -deps -json`, which also underlies
+the selected Go comparison uses `go list -deps -json=<fields>` (only the fields the graph reads, so it skips staleness hashing), which also underlies
 goda. npm user/global config and pip config are disabled; Go's personal env
 file is disabled. Installed Rust toolchain binaries are used directly so
 the corpus's rustup override cannot install another toolchain. The corpus's
@@ -168,6 +168,11 @@ same repository package universe for gantry. Compiler/cargo workspace work
 performed by the comparison tool remains part of its graph command. Gantry has manifest
 declarations disabled, although Go module identities are read for resolution.
 Analysis, visualization, contracts and rule checking are excluded.
+
+Outside smoke, each command writes `PHASE` lines to its stderr (node start,
+module load, analysis, output; Python import and analysis; gantry selection,
+walk, scan, output), and the quiet report keeps them per sample beside the wall
+time, so tool start-up is separate from the analysis.
 
 Wall time uses a monotonic clock. `wait4` reports peak RSS of the command
 (bytes on Darwin, KiB converted to bytes on Linux), including the highest

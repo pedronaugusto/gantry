@@ -196,7 +196,9 @@ def make_case(language, scratch, out, env, binary, smoke):
         files = {p for p in files if Path(p).name in ("lib.rs", "file_structure.rs", "runnables.rs", "hover.rs")}
     if language == "go":
         env["GOWORK"] = str(repo / "go.work")
-        argv = ["go", "list", "-mod=vendor", "-deps", "-json", "./pkg/util/slice" if smoke else "./pkg/..."]
+        # Only the fields the graph and its witnesses read: a bare -json also
+        # computes Stale, hashing every source file against the build cache.
+        argv = ["go", "list", "-mod=vendor", "-deps", "-json=ImportPath,Dir,Imports,GoFiles,CgoFiles,Error,DepsErrors", "./pkg/util/slice" if smoke else "./pkg/..."]
         discovery = out / "go-discovery.json"
         command(argv, repo, env, discovery)
         packages = list(json_stream(discovery.read_text()))
