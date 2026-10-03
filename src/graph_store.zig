@@ -9,6 +9,9 @@ edges: []const t.Edge = &.{},
 dependencies: []const t.Dependency = &.{},
 references: []const t.Reference = &.{},
 unsupported: []const t.UnsupportedReference = &.{},
+tokens: []const t.Token = &.{},
+/// The token rules the scan recorded occurrences for, by kind and text.
+scanned_tokens: []const @import("rules_check.zig").TokenRule = &.{},
 /// Selected files for which the caller returned null; never silently omitted.
 unread: []const []const u8 = &.{},
 go_files: []const @import("go_build.zig").File = &.{},
@@ -34,6 +37,10 @@ pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: 
     std.mem.sort([]const u8, list.items, {}, t.stringsLess);
     g.paths = try list.toOwnedSlice(a);
     return g;
+}
+pub fn scannedFor(g: *const Graph, rule: @import("rules_check.zig").TokenRule) bool {
+    for (g.scanned_tokens) |scanned| if (scanned.kind == rule.kind and std.mem.eql(u8, scanned.token, rule.token)) return true;
+    return false;
 }
 pub fn deinit(g: *Graph) void {
     const gpa = g.allocator;

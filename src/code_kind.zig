@@ -29,7 +29,7 @@ pub fn file(language: t.Language, name: []const u8) bool {
     };
 }
 /// File-module declarations propagate cfg(test) through their descendants.
-pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import("scan_diagnostic.zig").Progress) !std.StringHashMapUnmanaged(void) {
+pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import("scan_diagnostic.zig").Progress, recorder: *@import("tokens.zig").Recorder) !std.StringHashMapUnmanaged(void) {
     progress.at(.rust_tests, null);
     var marked: std.StringHashMapUnmanaged(void) = .empty;
     var declarations: std.ArrayList(t.Edge) = .empty;
@@ -41,11 +41,10 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []
         defer _ = scratch.reset(.retain_capacity);
         const text = (try read(context, from, s)) orelse continue;
         progress.at(.rust_tests, from);
-        const lexer = @import("lexer.zig");
         const rust = @import("lang/rust.zig");
-        const tokens = lexer.compact(try lexer.lex(.rust, s, text));
+        const tokens = try recorder.lex(rust, s, index, from, .rust, text);
         if (rust.testFileTokens(tokens)) try marked.put(a, from, {});
-        const recovery = try rust.recoverTokens(s, tokens);
+        const recovery = try rust.recoverTokens(s, text, tokens);
         if (cached.len > 0) cached[index] = try recovery.clone(a, strings);
         var resolver = ctx;
         resolver.allocator = s;

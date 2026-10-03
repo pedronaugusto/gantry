@@ -2,13 +2,17 @@ const std = @import("std");
 const l = @import("../lexer.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
+/// The token stream recovery reads; `seen` observes it as it grows.
+pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
+    return l.compact(try l.lexSeen(.java, a, source, seen));
+}
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    return recoverTokens(a, l.compact(try l.lex(.java, a, source)));
+    return recoverTokens(a, source, try lex(a, source, null));
 }
 /// The `package` declaration and top-level `import` declarations: single
 /// types, `.*` on demand, and `static` members. Java has no computed import;
 /// the class-loading calls `Class.forName(` and `.loadClass(` are unsupported.
-pub fn recoverTokens(a: std.mem.Allocator, ts: []const l.Token) !types.Recovery {
+pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     var package: []const u8 = "";

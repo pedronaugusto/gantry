@@ -19,6 +19,16 @@ pub const Token = struct {
     }
 };
 pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]Token {
+    return lexSeen(lang, a, text, null);
+}
+/// Called as each word or string joins a stream, with the stream so far.
+pub const Observer = struct {
+    context: *anyopaque,
+    token: *const fn (context: *anyopaque, stream: []const Token) error{OutOfMemory}!void,
+};
+/// `lex`, telling `seen` of each word and string as it is emitted. One
+/// lexer serves both, so a scan without observers runs the same code.
+pub fn lexSeen(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, seen: ?Observer) ![]Token {
     var out: std.ArrayList(Token) = .empty;
     var i: usize = 0;
     var regex_allowed = true;
@@ -223,8 +233,10 @@ pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]Tok
             const closed = i < text.len;
             i = @min(i + width, text.len);
             const character = c == '\'' and (lang == .zig or lang == .c or lang == .rust or lang == .java or lang == .kotlin);
-            if (closed and !triple and !character and !(lang == .javascript and c == '`'))
+            if (closed and !triple and !character and !(lang == .javascript and c == '`')) {
                 try out.append(a, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
+                if (seen) |observer| try observer.token(observer.context, out.items);
+            }
             regex_allowed = false;
             continue;
         }
@@ -233,6 +245,7 @@ pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]Tok
             while (i < text.len and identIn(lang, text[i])) : (i += 1) {}
             const word = text[start..i];
             try out.append(a, .{ .kind = .word, .text = word, .offset = start, .end = i });
+            if (seen) |observer| try observer.token(observer.context, out.items);
             control_pending = std.mem.eql(u8, word, "if") or std.mem.eql(u8, word, "while") or std.mem.eql(u8, word, "for") or std.mem.eql(u8, word, "with") or std.mem.eql(u8, word, "switch") or std.mem.eql(u8, word, "catch");
             regex_allowed = std.mem.eql(u8, word, "return") or std.mem.eql(u8, word, "throw") or std.mem.eql(u8, word, "case") or std.mem.eql(u8, word, "else") or std.mem.eql(u8, word, "do") or std.mem.eql(u8, word, "yield") or std.mem.eql(u8, word, "await") or std.mem.eql(u8, word, "typeof") or std.mem.eql(u8, word, "void") or std.mem.eql(u8, word, "delete") or std.mem.eql(u8, word, "in") or std.mem.eql(u8, word, "instanceof");
             continue;

@@ -4,9 +4,12 @@ const types = @import("../types.zig");
 const Spec = types.Spec;
 // Go import declarations require string literals. There is no computed
 // import expression to detect without adding a syntax-validation contract.
+/// The token stream recovery reads; `seen` observes it as it grows.
+pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
+    return l.compact(try l.lexSeen(.go, a, source, seen));
+}
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    const ts = l.compact(try l.lex(.go, a, source));
-    return recoverTokens(a, source, ts);
+    return recoverTokens(a, source, try lex(a, source, null));
 }
 pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;

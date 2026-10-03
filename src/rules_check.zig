@@ -23,6 +23,18 @@ pub const ReferenceRule = struct {
     except_from: []const []const u8 = &.{},
 };
 pub const Required = struct { name: []const u8, paths: []const []const u8 };
+/// A token only its owners may spell: an identifier, or the value of a
+/// string literal after its escapes. Comments and character literals never
+/// match. `token` is exact, or a pattern where `*` matches any run of bytes
+/// and `?` one byte. A scan records occurrences only for the rules passed
+/// in `Options.tokens`.
+pub const TokenRule = struct {
+    name: []const u8,
+    kind: t.Token.Kind = .identifier,
+    token: []const u8,
+    /// Path patterns, as layers use them, of the files that may spell it.
+    owners: []const []const u8 = &.{},
+};
 pub const Rules = struct {
     ordered: []const OrderedLayers = &.{},
     forbidden: []const EdgeRule = &.{},
@@ -31,14 +43,18 @@ pub const Rules = struct {
     nothing_imports: []const EdgeRule = &.{},
     references: []const ReferenceRule = &.{},
     required: []const Required = &.{},
+    /// Tokens outside their owners' files; the graph must have been scanned
+    /// with the same rules in `Options.tokens`.
+    tokens: []const TokenRule = &.{},
     /// null permits cycles; a name enables and identifies the rule.
     no_cycles: ?[]const u8 = null,
 };
 pub const Violation = struct {
     rule: []const u8,
-    reason: enum { upward, forbidden, entry, reference, missing, cycle },
+    reason: enum { upward, forbidden, entry, reference, missing, cycle, token },
     edge: ?t.Edge = null,
     reference: ?t.Reference = null,
+    token: ?t.Token = null,
     path: ?[]const u8 = null,
 };
 fn allowed(rules: Rules, name: []const u8, e: t.Edge) bool {
@@ -91,6 +107,12 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules) ![]const Violation 
             except = true;
         };
         if (!except) try out.append(a, .{ .rule = r.name, .reason = .reference, .reference = ref });
+    };
+    for (rules.tokens) |r| for (g.tokens()) |token| {
+        if (token.kind != r.kind or !matchesToken(r.token, token.text)) continue;
+        for (r.owners) |owner| {
+            if (matches(owner, token.path)) break;
+        } else try out.append(a, .{ .rule = r.name, .reason = .token, .token = token });
     };
     for (rules.required) |r| for (r.paths) |path| if (!g.contains(path)) {
         try out.append(a, .{ .rule = r.name, .reason = .missing, .path = path });
@@ -150,6 +172,11 @@ fn matchesFull(pattern: []const u8, path: []const u8) bool {
             pi = rp;
         } else return false;
     }
+}
+/// A token rule's text: `*` matches any run of bytes, including `/`, and
+/// `?` one byte; every other byte matches itself.
+pub fn matchesToken(pattern: []const u8, text: []const u8) bool {
+    return component(pattern, text);
 }
 fn end(s: []const u8, i: usize) usize {
     return std.mem.indexOfScalarPos(u8, s, i, '/') orelse s.len;

@@ -6,6 +6,20 @@ pub const Form = enum { literal, python, rust_mod, rust_use, java_static };
 /// Raw references borrow the source or the allocator passed to the lexer.
 pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false };
 pub const Reference = struct { from: []const u8, name: []const u8, offset: usize, member: ?[]const u8 = null, resolved: bool = false, kind: Kind = .import };
+/// An identifier or string literal in a source file that a token rule names.
+pub const Token = struct {
+    pub const Kind = enum { identifier, string };
+    path: []const u8,
+    kind: Token.Kind,
+    /// The identifier, or the string literal's value after its escapes.
+    text: []const u8,
+    /// Byte offset of the token's first byte, or of the opening quote of a
+    /// string or a Zig `@"name"`.
+    offset: usize,
+    /// One-based line and byte column of `offset`.
+    line: usize,
+    column: usize,
+};
 /// The lexical construct that recovery could not turn into a reference, or
 /// a manifest construct it could not turn into a declaration.
 pub const ImportExpression = enum {

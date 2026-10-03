@@ -8,10 +8,12 @@ pub const EdgeRule = engine.EdgeRule;
 pub const Allow = engine.Allow;
 pub const ReferenceRule = engine.ReferenceRule;
 pub const Required = engine.Required;
+pub const TokenRule = engine.TokenRule;
 pub const Rules = engine.Rules;
 pub const Violation = engine.Violation;
 pub const matches = engine.matches;
+pub const matchesToken = engine.matchesToken;
 
 pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Violation {
-    return engine.check(g, a, rules);
+    return g.check(a, rules);
 }

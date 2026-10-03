@@ -24,6 +24,7 @@ test {
     _ = @import("test_python_policy.zig");
     _ = @import("test_graph.zig");
     _ = @import("test_rules.zig");
+    _ = @import("test_tokens.zig");
     _ = @import("test_manifests.zig");
     _ = @import("test_nim.zig");
     _ = @import("test_java.zig");

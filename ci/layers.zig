@@ -32,6 +32,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/maven.zig",
         "src/nim_config.zig",
         "src/nimble.zig",
+        "src/tokens.zig",
         "src/tsconfig.zig",
     } },
     .{ .name = "graph storage and language policy", .patterns = &.{
@@ -82,6 +83,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/test_resolution.zig",
         "src/test_rules.zig",
         "src/test_scan_diagnostic.zig",
+        "src/test_tokens.zig",
         "src/test_unsupported.zig",
     } },
     .{ .name = "tests", .patterns = &.{

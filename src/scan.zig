@@ -18,6 +18,7 @@ const Dependency = t.Dependency;
 const GoFile = api.GoFile;
 const ImportStore = @import("import_store.zig");
 const PathStore = @import("owned_slice.zig").Store([]const u8);
+const Recorder = @import("tokens.zig").Recorder;
 pub const Imports = @import("Imports.zig").Imports;
 pub const Paths = PathStore.Owner;
 
@@ -29,12 +30,18 @@ pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) !
     const result = try ImportStore.create(gpa);
     errdefer result.deinit();
     const a = result.arena.allocator();
-    result.recovery = try extract(a, language, try a.dupe(u8, source));
+    result.recovery = try extract(a, language, try a.dupe(u8, source), null, 0, "");
     return ImportStore.owner(Imports, result);
 }
-fn extract(a: std.mem.Allocator, language: Language, source: []const u8) !t.Recovery {
+/// Recovery, handing the token stream to the token rules on the way when
+/// `recorder` still wants this file.
+fn extract(a: std.mem.Allocator, language: Language, source: []const u8, recorder: ?*Recorder, index: usize, file: []const u8) !t.Recovery {
     return switch (language) {
-        inline else => |lang| @field(languages, @tagName(lang)).recover(a, source),
+        inline else => |lang| {
+            const module = @field(languages, @tagName(lang));
+            const seen = if (recorder) |r| r.observer(a, index, file, lang, source) else null;
+            return module.recoverTokens(a, source, try module.lex(a, source, seen));
+        },
     };
 }
 /// The reference kinds `scan` reads from `file`, by its name alone:
@@ -95,6 +102,12 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         };
         break :blk false;
     };
+    var recorder: Recorder = try .init(w, a, options.tokens, g.paths.len);
+    if (recorder.active()) {
+        const scanned = try a.alloc(@import("rules_check.zig").TokenRule, options.tokens.len);
+        for (options.tokens, scanned) |rule, *dest| dest.* = .{ .name = "", .kind = rule.kind, .token = try a.dupe(u8, rule.token) };
+        g.scanned_tokens = scanned;
+    }
     const cached: []?t.Recovery = if (needs_cache) try w.alloc(?t.Recovery, g.paths.len) else &.{};
     @memset(cached, null);
     var go_files: std.ArrayList(GoFile) = .empty;
@@ -103,8 +116,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         const s = scratch.allocator();
         if (try reader.readFile(p, s)) |text| {
             progress.at(.go_constraints, p);
-            const lexer = @import("lexer.zig");
-            const tokens = lexer.compact(try lexer.lex(.go, s, text));
+            const tokens = try recorder.lex(languages.go, s, file_index, p, .go, text);
             var info = try @import("go_build.zig").parseTokens(s, p, text, options.go_target, tokens);
             info.package = try a.dupe(u8, info.package);
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
@@ -164,9 +176,9 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     progress.at(.resolution, null);
     const index = try recover.names(w, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs, .nim_configs = nim_configs };
-    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress);
-    const java_packages = if (code_enabled) try @import("java_packages.zig").index(w, gpa, g.paths, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
-    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress) else std.StringHashMapUnmanaged([]const []const u8).empty;
+    const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress, &recorder);
+    const java_packages = if (code_enabled) try @import("java_packages.zig").index(w, gpa, g.paths, &reader, Reader.readFile, cached, a, &progress, &recorder) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
+    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress, &recorder) else std.StringHashMapUnmanaged([]const []const u8).empty;
     // Edges wait as path positions outside graph storage: a quarter of an
     // `Edge`, and their outgrown buffers go back to the allocator.
     const position = try Graph.positions(w, g.paths);
@@ -178,9 +190,10 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         const language = languageOf(p);
         const readable = kindsOf(p);
         const code = code_enabled and readable.contains(.import);
+        const lexed = readable.contains(.import) and recorder.wants(file_index);
         const links = enabled(options, .link) and readable.contains(.link);
         const assets = enabled(options, .asset) and readable.contains(.asset);
-        if (!code and !links and !assets) continue;
+        if (!code and !lexed and !links and !assets) continue;
         const s = scratch.allocator();
         const prior = if (cached.len > 0) cached[file_index] else null;
         const text = (if (prior != null) "" else try reader.readFile(p, s)) orelse {
@@ -192,10 +205,11 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         ctx.python_reexports = &reexports;
         ctx.java_packages = &java_packages;
         const from: u32 = @intCast(file_index);
+        if (lexed and !code) _ = try extract(s, language.?, text, &recorder, file_index, p);
         if (code) {
             var seen: std.AutoHashMapUnmanaged(struct { usize, u32 }, void) = .empty;
             progress.at(.imports, p);
-            const recovery = prior orelse try extract(s, language.?, text);
+            const recovery = prior orelse try extract(s, language.?, text, &recorder, file_index, p);
             if (options.strict_imports and recovery.unsupported.len > 0) {
                 progress.offset = recovery.unsupported[0].offset;
                 return error.UnsupportedImport;
@@ -278,6 +292,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         }
     }.less);
     g.unsupported = try unsupported.toOwnedSlice(a);
+    g.tokens = try recorder.finish();
     g.references = try refs.toOwnedSlice(a);
     g.dependencies = try deps.toOwnedSlice(a);
     g.unread = try reader.unreadPaths(a, &g.files);

@@ -150,6 +150,15 @@ and cycles. Exceptions apply to a named restriction. Path patterns use `*` and `
 within a component and `**` across components. Every matching restriction reports in
 rule order. These rules operate on the recovered graph.
 
+A token rule names an identifier, or a string literal's value after its escapes, that
+only its owners' files may spell: `.{ .name = "console", .token = "CreateFileW", .owners =
+&.{"src/os/**"} }`. `*` in a token matches any bytes and `?` one byte. Pass the same rules
+in `Options.tokens` and `Rules.tokens`: the scan records their occurrences from the token
+streams it lexes for imports (`graph.tokens()`, with path, line and byte column), and
+`check` reports those outside the owners, or `error.UnscannedToken` for a rule the scan
+did not record. Comments, character literals, numbers, raw strings and multi-line strings
+never match.
+
 ## Scope
 
 - It does not discover a repository, apply gitignore rules or select files for the caller.

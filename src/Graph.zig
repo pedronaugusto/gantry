@@ -30,6 +30,11 @@ pub const Graph = enum(usize) {
     pub fn references(g: *const Graph) []const t.Reference {
         return store.get(g.*).references;
     }
+    /// Identifiers and string literals that `Options.tokens` named, ordered
+    /// by path and byte offset, each listed once.
+    pub fn tokens(g: *const Graph) []const t.Token {
+        return store.get(g.*).tokens;
+    }
     /// Detectable import and manifest declaration constructs omitted by
     /// lexical recovery, ordered by path and byte offset. These slices
     /// belong to this graph.
@@ -60,8 +65,10 @@ pub const Graph = enum(usize) {
     }
     /// Findings borrow graph storage, rule names and required-path strings.
     /// Keep the graph and those caller strings alive until findings are freed.
-    /// Free only the returned slice with gpa.free.
+    /// Free only the returned slice with gpa.free. A token rule the graph
+    /// was not scanned for is `error.UnscannedToken`, never a silent pass.
     pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules_check.zig").Rules) ![]const @import("rules_check.zig").Violation {
+        for (rules.tokens) |rule| if (!store.get(g.*).scannedFor(rule)) return error.UnscannedToken;
         return @import("rules_check.zig").check(g, gpa, rules);
     }
 };

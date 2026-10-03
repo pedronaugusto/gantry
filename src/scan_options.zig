@@ -23,6 +23,10 @@ pub const Options = struct {
     go_target: ?GoTarget = null,
     python_initializers: PythonInitializers = .ancestors,
     python_star_reexports: bool = true,
+    /// Record the identifiers and string values these rules name, from
+    /// source files in a supported language, for `graph.tokens()` and the
+    /// same rules in `rules.Rules.tokens`. Only `kind` and `token` are read.
+    tokens: []const @import("rules_check.zig").TokenRule = &.{},
 };
 
 pub fn languageOf(p: []const u8) ?Language {

@@ -1,6 +1,5 @@
 //! Java files by the package they declare, recovered once for imports too.
 const std = @import("std");
-const l = @import("lexer.zig");
 const java = @import("lang/java.zig");
 const t = @import("types.zig");
 
@@ -10,7 +9,7 @@ pub const Packages = std.StringHashMapUnmanaged(std.ArrayList([]const u8));
 /// file without a declaration is in the unnamed package, which no import
 /// can name, and `package-info.java` and `module-info.java` declare no type.
 /// Recoveries are kept in `cached` for the import pass.
-pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import("scan_diagnostic.zig").Progress) !Packages {
+pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import("scan_diagnostic.zig").Progress, recorder: *@import("tokens.zig").Recorder) !Packages {
     progress.at(.java_packages, null);
     var out: Packages = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
@@ -24,7 +23,8 @@ pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []cons
         defer _ = scratch.reset(.retain_capacity);
         const source = (try read(context, file, s)) orelse continue;
         progress.at(.java_packages, file);
-        const recovery = try java.recoverTokens(s, l.compact(try l.lex(.java, s, source)));
+        const tokens = try recorder.lex(java, s, file_index, file, .java, source);
+        const recovery = try java.recoverTokens(s, source, tokens);
         cached[file_index] = try recovery.clone(a, strings);
         if (recovery.package.len == 0 or descriptor) continue;
         const entry = try out.getOrPut(a, cached[file_index].?.package);

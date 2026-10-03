@@ -2,8 +2,14 @@ const std = @import("std");
 const l = @import("../lexer.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
+/// The token stream recovery reads; `seen` observes it as it grows.
+pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
+    return l.lexSeen(.c, a, source, seen);
+}
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    const ts = try l.lex(.c, a, source);
+    return recoverTokens(a, source, try lex(a, source, null));
+}
+pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     for (ts, 0..) |token, i| {

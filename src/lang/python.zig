@@ -10,11 +10,14 @@ fn module(a: std.mem.Allocator, ts: []const l.Token, pos: *usize) ![]const u8 {
 }
 const types = @import("../types.zig");
 const Spec = types.Spec;
-pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    const ts = try l.lex(.python, a, source);
-    return recoverTokens(a, ts);
+/// The token stream recovery reads; `seen` observes it as it grows.
+pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
+    return l.lexSeen(.python, a, source, seen);
 }
-pub fn recoverTokens(a: std.mem.Allocator, ts: []const l.Token) !types.Recovery {
+pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
+    return recoverTokens(a, source, try lex(a, source, null));
+}
+pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     const loaders = l.compact(try a.dupe(l.Token, ts));

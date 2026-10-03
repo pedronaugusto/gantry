@@ -10,6 +10,7 @@ pub const Language = t.Language;
 pub const Kind = t.Kind;
 pub const Edge = t.Edge;
 pub const Reference = t.Reference;
+pub const Token = t.Token;
 pub const UnsupportedReference = t.UnsupportedReference;
 pub const ImportExpression = t.ImportExpression;
 pub const Dependency = t.Dependency;
