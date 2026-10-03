@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `importlib.import_module` and `__import__` with literal names are `dynamic` edges, a relative name resolved against its literal package; other arguments stay unsupported.
+
 - Python imports under `if TYPE_CHECKING:` are `type_only` edges, nested blocks included and `else` branches not.
 
 - A finding's `edge`, `reference` and `token` point into the graph's records instead of copying them: a finding is 104 bytes, down from 240, and field access reads the same.

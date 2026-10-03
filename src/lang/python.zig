@@ -45,8 +45,9 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
             ahead[1..n]
         else
             continue;
-        _ = call;
-        try unsupported.append(a, .{ .offset = token.offset, .expression = if (importlib) .python_importlib else .python_import });
+        if (try loaded(a, call, importlib)) |name| {
+            try out.append(a, .{ .name = name, .offset = token.offset, .form = .python, .kind = if (inside(checking, token.offset)) .type_only else .dynamic });
+        } else try unsupported.append(a, .{ .offset = token.offset, .expression = if (importlib) .python_importlib else .python_import });
     }
     var i: usize = 0;
     while (i < ts.len) : (i += 1) {
@@ -105,6 +106,36 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
         i = j -| 1;
     }
     return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
+}
+
+/// The module a loader call with literal arguments imports:
+/// `import_module("a.b")`, `import_module(".b", "a")` or with `package="a"`,
+/// and `__import__("a.b")`. A relative name resolves against its package
+/// as `importlib` does. Null for any other argument.
+fn loaded(a: std.mem.Allocator, args: []const l.Token, importlib: bool) !?[]const u8 {
+    if (args.len < 2 or args[0].kind != .string) return null;
+    const name = l.decode(a, args[0].text) catch return null;
+    if (name.len == 0) return null;
+    if (!args[1].is(")") and !args[1].is(",")) return null;
+    // `__import__` imports its first argument whatever follows; its
+    // `level` is not read, so a relative name is not resolved.
+    if (!importlib) return if (name[0] == '.') null else name;
+    var package: ?[]const u8 = null;
+    if (args[1].is(",")) {
+        var k: usize = 2;
+        if (k + 1 < args.len and args[k].is("package") and args[k + 1].is("=")) k += 2;
+        if (k + 1 >= args.len or args[k].kind != .string or !args[k + 1].is(")")) return null;
+        package = l.decode(a, args[k].text) catch return null;
+    }
+    if (name[0] != '.') return name;
+    // A relative name needs its package, as `importlib` does.
+    const base = package orelse return null;
+    var dots: usize = 0;
+    while (dots < name.len and name[dots] == '.') : (dots += 1) {}
+    var anchor = base;
+    for (1..dots) |_| anchor = anchor[0 .. std.mem.lastIndexOfScalar(u8, anchor, '.') orelse return null];
+    if (anchor.len == 0) return null;
+    return if (dots == name.len) anchor else try std.fmt.allocPrint(a, "{s}.{s}", .{ anchor, name[dots..] });
 }
 
 /// Byte ranges of `if TYPE_CHECKING:` bodies, `typing.TYPE_CHECKING` or any

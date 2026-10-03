@@ -73,6 +73,7 @@ test "imports in TYPE_CHECKING blocks are type-only, nested blocks included and 
         \\    if TYPE_CHECKING:
         \\        import i
         \\    import j
+        \\    x = importlib.import_module("k") if TYPE_CHECKING else None
         \\
     ;
     var items: std.ArrayList(f.Item) = .empty;
@@ -84,8 +85,34 @@ test "imports in TYPE_CHECKING blocks are type-only, nested blocks included and 
     defer graph.deinit();
     for ([_][]const u8{ "b.py", "c.py", "d.py", "e.py", "g.py", "i.py" }) |to| try f.edge(&graph, "m.py", to, .type_only, 1);
     for ([_][]const u8{ "a.py", "f.py", "h.py", "j.py" }) |to| try f.edge(&graph, "m.py", to, .import, 1);
+    try f.edge(&graph, "m.py", "k.py", .dynamic, 1);
     // import-linter's exclude_type_checking_imports: the static graph alone.
     var static = try (f.Fixture{ .items = items.items }).scan(a, .{ .kinds = &.{.import} });
     defer static.deinit();
     try std.testing.expectEqual(4, static.edges().len);
+}
+
+test "importlib.import_module and __import__ with literal names are dynamic edges" {
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "app.py", .text =
+        \\import importlib
+        \\m1 = importlib.import_module("pkg.mod")
+        \\m2 = importlib.import_module(".sib", package="pkg")
+        \\m3 = importlib.import_module("..up", "pkg.sub")
+        \\m4 = __import__("other", globals(), locals(), [], 0)
+        \\m5 = importlib.import_module(name)
+        \\m6 = importlib.import_module(".rel")
+        \\m7 = __import__("..rel")
+        },
+        .{ .path = "pkg/__init__.py" },
+        .{ .path = "pkg/mod.py" },
+        .{ .path = "pkg/sib.py" },
+        .{ .path = "pkg/up.py" },
+        .{ .path = "pkg/sub/__init__.py" },
+        .{ .path = "other.py" },
+    } }).scan(a, .{});
+    defer graph.deinit();
+    for ([_][]const u8{ "pkg/mod.py", "pkg/sib.py", "pkg/up.py", "other.py" }) |to| try f.edge(&graph, "app.py", to, .dynamic, 1);
+    try std.testing.expectEqual(3, graph.unsupported().len);
+    for (graph.unsupported()) |record| try std.testing.expect(record.expression == .python_importlib or record.expression == .python_import);
 }

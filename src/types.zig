@@ -16,7 +16,8 @@ pub const Kind = enum {
     /// type`, braces whose every name is marked `type`, `typeof import("x")`
     /// or `import("x").T` in a type; a Python import under `if TYPE_CHECKING:`.
     type_only,
-    /// A JavaScript `import("x")` call, which loads the module when it runs.
+    /// A module loaded when the code runs: JavaScript `import("x")`, Python
+    /// `importlib.import_module("x")` and `__import__("x")`.
     dynamic,
 };
 pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: usize = 1 };
@@ -55,7 +56,9 @@ pub const ImportExpression = enum {
     c_include,
     javascript_import,
     javascript_require,
+    /// An `importlib.import_module` call whose names are not literal.
     python_importlib,
+    /// A `__import__` call whose name is not a literal.
     python_import,
     rust_include,
     rust_path,

@@ -83,7 +83,7 @@ test "unsupported Python imports expose direct runtime loaders without guessing 
         \\# importlib.import_module(name)
         \\text = "__import__(name)"
         \\from pkg import child
-    , 5);
+    , 3);
 }
 
 test "Python loader calls are read across line breaks" {
