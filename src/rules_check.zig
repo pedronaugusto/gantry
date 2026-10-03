@@ -27,6 +27,17 @@ pub const EdgeRule = struct {
     /// transitive: every chain into a file ends in an edge into it.
     transitive: bool = false,
 };
+/// Files that must be reachable: every file matching `files` that no
+/// chain from an entry reaches, and that is no entry itself, reports.
+/// An orphan, with no edges at all, is unreachable unless it is an entry.
+pub const Reachable = struct {
+    name: []const u8,
+    /// Path patterns of the files the chains start from.
+    entries: []const []const u8,
+    files: []const u8 = "**",
+    /// The edges chains follow; null follows every kind.
+    kind: ?t.Kind = null,
+};
 /// An allowance exempts an edge from just the named rule. It cannot waive
 /// cycles or required paths. A layer name here means OrderedLayers.name.
 pub const Allow = struct { rule: []const u8, from: []const u8 = "**", to: []const u8 = "**", kind: ?t.Kind = null };
@@ -66,6 +77,7 @@ pub const Rules = struct {
     nothing_imports: []const EdgeRule = &.{},
     references: []const ReferenceRule = &.{},
     required: []const Required = &.{},
+    reachable: []const Reachable = &.{},
     /// Tokens outside their owners' files; the graph must have been scanned
     /// with the same rules in `Options.tokens`.
     tokens: []const TokenRule = &.{},
@@ -74,12 +86,13 @@ pub const Rules = struct {
 };
 pub const Violation = struct {
     rule: []const u8,
-    reason: enum { upward, forbidden, entry, reference, missing, cycle, token },
+    reason: enum { upward, forbidden, entry, reference, missing, cycle, token, unreached },
     /// The edge a direct rule restricts, or a chain's first edge.
     edge: ?t.Edge = null,
     reference: ?t.Reference = null,
     token: ?t.Token = null,
-    /// A missing required path, or the file a chain ends in.
+    /// A missing required path, an unreachable file, or the file a chain
+    /// ends in.
     path: ?[]const u8 = null,
     /// A transitive rule's witness, its first file to its last; empty for
     /// every other finding. `free` releases it with the findings.
@@ -188,6 +201,10 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules) ![]const Violation 
             try out.append(.{ .rule = name, .reason = .cycle, .edge = g.edges()[low] });
         }
     }
+    for (rules.reachable) |r| {
+        if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
+        try walks.?.unreached(&out, g.edges(), r);
+    }
     return out.finish();
 }
 /// Findings, and their chains gathered into one block for `free`.
@@ -282,6 +299,27 @@ const Walks = struct {
             const first = try walk.chain(w.a, w.forward, dist[j], filter, @intCast(v), &nodes) orelse continue;
             try out.appendChain(.{ .rule = r.name, .reason = .upward, .edge = edges[first], .path = w.paths[nodes.items[nodes.items.len - 1]] }, w.paths, nodes.items);
         };
+    }
+    fn unreached(w: Walks, out: *Findings, edges: []const t.Edge, r: Reachable) !void {
+        const marks = try w.a.alloc(bool, w.paths.len);
+        @memset(marks, false);
+        var queue: std.ArrayList(u32) = .empty;
+        for (w.paths, 0..) |path, v| for (r.entries) |entry| if (matches(entry, path)) {
+            marks[v] = true;
+            try queue.append(w.a, @intCast(v));
+            break;
+        };
+        var head: usize = 0;
+        while (head < queue.items.len) : (head += 1) {
+            const v = queue.items[head];
+            for (w.forward.offsets[v]..w.forward.offsets[v + 1]) |k| {
+                const next = w.forward.targets[k];
+                if (marks[next] or (r.kind != null and edges[w.forward.labels[k]].kind != r.kind.?)) continue;
+                marks[next] = true;
+                try queue.append(w.a, next);
+            }
+        }
+        for (w.paths, marks) |path, mark| if (!mark and matches(r.files, path)) try out.append(.{ .rule = r.name, .reason = .unreached, .path = path });
     }
 };
 /// Slash-separated globs: * and ? within components, ** as a complete

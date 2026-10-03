@@ -203,6 +203,28 @@ test "transitive layers report chains through unlayered files, once per file and
     try std.testing.expectEqualStrings("high/h", findings[3].path.?);
 }
 
+test "files no chain from an entry reaches are unreached, orphans included" {
+    var graph = try g.Graph.fromEdges(a, &.{ "src/main.zig", "src/used.zig", "src/deep.zig", "src/orphan.zig", "src/fixture.zig", "src/main_test.zig", "docs/x.md" }, &.{
+        .{ .from = "src/main.zig", .to = "src/used.zig" },
+        .{ .from = "src/used.zig", .to = "src/deep.zig" },
+        .{ .from = "src/main_test.zig", .to = "src/fixture.zig", .kind = .@"test" },
+        .{ .from = "src/main.zig", .to = "src/main_test.zig", .kind = .@"test" },
+    });
+    defer graph.deinit();
+    const findings = try graph.check(a, .{ .reachable = &.{
+        .{ .name = "reached", .entries = &.{"src/main.zig"}, .files = "src/**" },
+        .{ .name = "shipped", .entries = &.{"**/main.zig"}, .files = "src/**", .kind = .import },
+    } });
+    defer g.rules.free(a, findings);
+    try eq(4, findings.len);
+    try std.testing.expectEqualStrings("src/orphan.zig", findings[0].path.?);
+    try eq(.unreached, findings[0].reason);
+    try std.testing.expectEqualStrings("shipped", findings[1].rule);
+    try std.testing.expectEqualStrings("src/fixture.zig", findings[1].path.?);
+    try std.testing.expectEqualStrings("src/main_test.zig", findings[2].path.?);
+    try std.testing.expectEqualStrings("src/orphan.zig", findings[3].path.?);
+}
+
 test "transitive findings agree with an independent nearest-target search" {
     const n = 10;
     const paths = &[_][]const u8{ "a0", "a1", "a2", "a3", "a4", "b0", "b1", "b2", "b3", "b4" };

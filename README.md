@@ -180,6 +180,11 @@ type-only chains through. Transitive ordered layers work as import-linter's laye
 contract: a file no layer names has no layer, chains pass through it, and each layered
 file reports the shortest chain through unlayered files to each higher layer it reaches.
 
+A reachable rule names entry files by pattern and reports every file matching `files`
+that no chain from an entry reaches (`unreached`), as madge's orphans and
+dependency-cruiser's `no-orphans` and `reachable: false` rules do; a file with no edges
+at all is unreached unless it is an entry. `kind` restricts the edges chains follow.
+
 A token rule names an identifier, or a string literal's value after its escapes, that
 only its owners' files may spell: `.{ .name = "console", .token = "CreateFileW", .owners =
 &.{"src/os/**"} }`. `*` in a token matches any bytes and `?` one byte. Pass the same rules
