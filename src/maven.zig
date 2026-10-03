@@ -2,11 +2,13 @@
 const std = @import("std");
 const t = @import("types.zig");
 
-const Field = enum { groupId, artifactId, version, scope, systemPath };
+const Field = enum { groupId, artifactId, version, scope, optional, systemPath };
 const Declared = struct { offset: usize, fields: std.EnumArray(Field, []const u8) = .initFill("") };
 
 /// Each `project/dependencies/dependency` with its `groupId:artifactId` name,
-/// `version` requirement and `scope` group (`compile` when absent). A
+/// `version` requirement and `scope` group (`compile` when absent); an
+/// `<optional>true</optional>` dependency's group gains `,optional`
+/// (`compile,optional`). A
 /// `${property}` resolves through this file's literal `<properties>` and its
 /// project and parent coordinates, as Maven interpolates them; a dependency
 /// that names anything else is unsupported and declares nothing. Managed
@@ -97,13 +99,14 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
         }
         if (fields.get(.groupId).len == 0 or fields.get(.artifactId).len == 0) return error.InvalidManifest;
         const scope = if (fields.get(.scope).len == 0) "compile" else fields.get(.scope);
+        const optional = std.mem.eql(u8, fields.get(.optional), "true");
         const system = std.mem.eql(u8, scope, "system") and fields.get(.systemPath).len > 0;
         try out.append(a, .{
             .manifest = path,
             .name = try std.fmt.allocPrint(a, "{s}:{s}", .{ fields.get(.groupId), fields.get(.artifactId) }),
             .requirement = fields.get(.version),
             .source = if (system) fields.get(.systemPath) else "",
-            .group = scope,
+            .group = if (optional) try std.fmt.allocPrint(a, "{s},optional", .{scope}) else scope,
             .origin = if (system) .local else .registry,
         });
     }

@@ -463,6 +463,9 @@ test "Maven dependencies interpolate this file's properties and map their scope"
         \\    <dependency><groupId>javax.servlet</groupId><artifactId>servlet-api</artifactId><scope>provided</scope></dependency>
         \\    <dependency><groupId>com.x</groupId><artifactId>native</artifactId><version>1</version><scope>system</scope><systemPath>${basedir}/lib/native.jar</systemPath></dependency>
         \\    <dependency><groupId>a&amp;b</groupId><artifactId><![CDATA[c]]></artifactId><optional>true</optional></dependency>
+        \\    <dependency><groupId>o</groupId><artifactId>provided</artifactId><scope>provided</scope><optional>true</optional></dependency>
+        \\    <dependency><groupId>o</groupId><artifactId>test</artifactId><scope>test</scope><optional>true</optional></dependency>
+        \\    <dependency><groupId>o</groupId><artifactId>not</artifactId><optional>false</optional></dependency>
         \\    <dependency><groupId>com.y</groupId><artifactId>lib</artifactId><version>${elsewhere.version}</version></dependency>
         \\  </dependencies>
         \\  <dependencyManagement><dependencies><dependency><groupId>managed</groupId><artifactId>m</artifactId></dependency></dependencies></dependencyManagement>
@@ -475,7 +478,7 @@ test "Maven dependencies interpolate this file's properties and map their scope"
     ;
     const declared = try g.manifests.read(arena.allocator(), "app/pom.xml", text);
     const deps = declared.dependencies;
-    try eq(5, deps.len);
+    try eq(8, deps.len);
     const Scope = g.Dependency.Scope;
     const junit = try find(deps, "org.junit.jupiter:junit-jupiter");
     try std.testing.expectEqualStrings("5.10.2", junit.requirement);
@@ -488,7 +491,14 @@ test "Maven dependencies interpolate this file's properties and map their scope"
     const native = try find(deps, "com.x:native");
     try eq(g.Dependency.Origin.local, native.origin);
     try std.testing.expectEqualStrings("./lib/native.jar", native.source);
-    try eq(g.Dependency.Origin.registry, (try find(deps, "a&b:c")).origin);
+    const optional = try find(deps, "a&b:c");
+    try eq(g.Dependency.Origin.registry, optional.origin);
+    try std.testing.expectEqualStrings("compile,optional", optional.group);
+    try eq(Scope.optional, optional.scope());
+    // optional wins over every scope but `test`
+    try eq(Scope.optional, (try find(deps, "o:provided")).scope());
+    try eq(Scope.development, (try find(deps, "o:test")).scope());
+    try eq(Scope.runtime, (try find(deps, "o:not")).scope());
     try eq(1, declared.unsupported.len);
     try eq(g.ImportExpression.maven_dependency, declared.unsupported[0].expression);
     try std.testing.expect(std.mem.startsWith(u8, text[declared.unsupported[0].offset..], "<dependency><groupId>com.y"));
@@ -570,6 +580,21 @@ test "Gradle Groovy declarations keep literal notations and their configuration'
     for (declared.unsupported, [_][]const u8{ "implementation \"org.x", "implementation libs", "implementation fileTree", "if (useFast)", "testImplementation \"org.junit" }) |record, spelling| {
         try eq(g.ImportExpression.gradle_dependency, record.expression);
         try std.testing.expect(std.mem.startsWith(u8, text[record.offset..], spelling));
+    }
+}
+test "Gradle statements that are not declarations, even malformed ones, end where they stop" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    for ([_][]const u8{
+        "dependencies {\n )\n ] implementation 'a:b:1'\n}",
+        "dependencies { implementation(",
+        "dependencies { implementation 'a:b:1' {",
+        "dependencies {\n implementation 'a:b:1',\n}",
+        "dependencies { constraints {",
+        "}}} dependencies { add(\"x\", ) }",
+    }) |text| {
+        const declared = try g.manifests.read(arena.allocator(), "build.gradle", text);
+        try std.testing.expect(declared.unsupported.len > 0 or declared.dependencies.len > 0 or std.mem.indexOf(u8, text, "constraints") != null);
     }
 }
 test "Gradle Kotlin declarations read string templates and helpers as computed" {

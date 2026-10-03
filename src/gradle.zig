@@ -44,7 +44,8 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
         if (!literal) {
             out.shrinkRetainingCapacity(before);
             try unsupported.append(a, .{ .offset = token.offset, .expression = .gradle_dependency });
-            reader.i = skip(ts, i);
+            // A stray closing bracket is its own statement; always move on.
+            reader.i = @max(skip(ts, i), i + 1);
         }
         i = reader.i;
     }

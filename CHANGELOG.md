@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Recover Java imports and package declarations, resolved through the packages selected files declare; `Class.forName` and `loadClass` calls are unsupported.
 
-- Read `pom.xml` dependencies with their scope through the file's own properties, and literal `build.gradle` and `build.gradle.kts` declarations; computed declarations are unsupported.
+- Read `pom.xml` dependencies with their scope through the file's own properties (`<optional>` is optional scope outside `test`), and literal `build.gradle` and `build.gradle.kts` declarations; computed declarations are unsupported.
 
 - Recover Nim `import`, `include` and `from` modules, resolved beside the importer and on the literal search paths of selected Nim configs.
 
