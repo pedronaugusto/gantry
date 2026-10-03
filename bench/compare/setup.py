@@ -1,10 +1,13 @@
 """Pinned, scratch-only installation; also usable independently of run.py."""
+import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
+import tarfile
 
 HERE = Path(__file__).resolve().parent
 PINS = json.loads((HERE / "pins.json").read_text())
@@ -35,6 +38,25 @@ def environment(scratch):
     return env
 
 
+def jdk_home(scratch):
+    """The pinned JDK unpacked in scratch: `Contents/Home` on macOS."""
+    root = scratch / "jdk" / ("jdk-" + PINS["jdk"]["version"])
+    return root / "Contents/Home" if (root / "Contents/Home").exists() else root
+
+
+def checkout(repo, url, commit, env):
+    if not (repo / ".git").exists():
+        run(["git", "init", str(repo)], env)
+        run(["git", "-C", str(repo), "remote", "add", "origin", url], env)
+        run(["git", "-C", str(repo), "fetch", "--depth=1", "origin", commit], env)
+        run(["git", "-C", str(repo), "checkout", "--detach", commit], env)
+    head = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], env=env, text=True).strip()
+    if head != commit:
+        raise RuntimeError(f"wrong corpus commit in {repo}: {head}")
+    if subprocess.check_output(["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no"], env=env):
+        raise RuntimeError(f"modified corpus: {repo}")
+
+
 def run(command, env, cwd=None):
     print("+", " ".join(map(str, command)), flush=True)
     subprocess.run(command, env=env, cwd=cwd, check=True)
@@ -47,16 +69,24 @@ def prepare(scratch, languages):
     for language in languages:
         pin = PINS["repositories"][language]
         repo = scratch / "repos" / language
-        if not (repo / ".git").exists():
-            run(["git", "init", str(repo)], env)
-            run(["git", "-C", str(repo), "remote", "add", "origin", pin["url"]], env)
-            run(["git", "-C", str(repo), "fetch", "--depth=1", "origin", pin["commit"]], env)
-            run(["git", "-C", str(repo), "checkout", "--detach", pin["commit"]], env)
-        head = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], env=env, text=True).strip()
-        if head != pin["commit"]:
-            raise RuntimeError(f"wrong corpus commit in {repo}: {head}")
-        if subprocess.check_output(["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no"], env=env):
-            raise RuntimeError(f"modified corpus: {repo}")
+        checkout(repo, pin["url"], pin["commit"], env)
+        # Pinned sources a corpus's own tooling would fetch (Nim's `koch deps`).
+        for dependency in pin.get("dependencies", []):
+            checkout(repo / dependency["path"], dependency["url"], dependency["commit"], env)
+    if "java" in languages and not (jdk_home(scratch) / "bin/jdeps").exists():
+        key = f"{sys.platform}-{platform.machine().lower().replace('aarch64', 'arm64')}"
+        archive = PINS["jdk"]["archives"].get(key)
+        if archive is None:
+            raise RuntimeError(f"no pinned JDK for {key}")
+        download = scratch / "downloads" / Path(archive["url"]).name.replace("%2B", "+")
+        download.parent.mkdir(exist_ok=True)
+        if not download.exists():
+            run(["curl", "-fsSL", "-o", str(download), archive["url"]], env)
+        digest = hashlib.sha256(download.read_bytes()).hexdigest()
+        if digest != archive["sha256"]:
+            raise RuntimeError(f"JDK archive digest {digest} differs from pin")
+        with tarfile.open(download) as tar:
+            tar.extractall(scratch / "jdk", filter="tar")
     if "typescript" in languages:
         npm = scratch / "npm"
         npm.mkdir(exist_ok=True)
@@ -93,6 +123,16 @@ def verify_tools(scratch, languages, env):
         if actual != PINS["python"]:
             raise RuntimeError(f"Python rivals differ from pins: {actual}")
         versions.update(actual)
+    if "nim" in languages:
+        actual = subprocess.check_output(["nim", "--version"], env=env, text=True).split()[3]
+        if actual != PINS["toolchains"]["nim"]:
+            raise RuntimeError(f"nim {actual} differs from pin {PINS['toolchains']['nim']}")
+        versions["nim"] = actual
+    if "java" in languages:
+        release = (jdk_home(scratch) / "release").read_text()
+        if f'JAVA_RUNTIME_VERSION="{PINS["jdk"]["version"]}' not in release:
+            raise RuntimeError("JDK differs from pin")
+        versions["jdk"] = PINS["jdk"]["version"]
     if "rust" in languages:
         installed = json.loads((scratch / "cargo/.crates2.json").read_text())["installs"]
         if not any(key.startswith("cargo-modules " + PINS["cargo"]["cargo-modules"] + " ") for key in installed):

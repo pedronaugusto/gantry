@@ -35,7 +35,8 @@ def main():
         import run as compare
         from setup import PINS, environment, prepare, verify_tools
         scratch=(p.args.comparison_scratch or p.here/'build/comparison').resolve()
-        languages=list(PINS['repositories'])
+        # Agreement-only corpora (`"timed": false`) stay out of the timing pass.
+        languages=[name for name,pin in PINS['repositories'].items() if pin.get('timed',True)]
         env=prepare(scratch,languages) if p.preparing and not p.args.skip_setup else environment(scratch)
         for asset in ('cargo/bin/cargo-modules','venv/bin/python','npm/node_modules/madge/package.json','npm/node_modules/dependency-cruiser/package.json'):
             p.prepared.require(scratch/asset)

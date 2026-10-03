@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from run import json_stream, normalise, rust_dot
+from run import java_classes, json_stream, nim_dot, nim_statement, nim_target, normalise, rust_dot
 
 
 class Adapters(unittest.TestCase):
@@ -41,6 +41,35 @@ class Adapters(unittest.TestCase):
             output.write_text(json.dumps({"modules": [{"source": "src/a.ts", "dependencies": [
                 {"resolved": str(repo / "src/b.ts")}, {"resolved": "src/c.ts", "couldNotResolve": True}, {"resolved": "/outside/x.ts"}]}]}))
             self.assertEqual(normalise("dependency-cruiser", output, repo, {"src/a.ts", "src/b.ts", "src/c.ts"}, "src", None), {("src/a.ts", "src/b.ts")})
+
+    def test_nim_modules_from_the_project_folder_and_outside_lib(self):
+        dot = '\n'.join(['digraph nim {', '"nim" -> "ast";', '"ast" -> "std/os";', '"ic/ic" -> "../dist/x/y";', '"ic/ic" -> "ast";', '"ast" -> "ast";', '}'])
+        files = {"compiler/nim.nim", "compiler/ast.nim", "compiler/ic/ic.nim"}
+        nodes, edges = nim_dot(dot, files)
+        self.assertEqual(edges, {("compiler/nim.nim", "compiler/ast.nim"), ("compiler/ic/ic.nim", "compiler/ast.nim")})
+        self.assertEqual(nodes, files)
+        with self.assertRaises(ValueError):
+            nim_dot('digraph nim {}', files)
+
+    def test_nim_witness_reads_includes_and_when_branches(self):
+        text = "import a\ninclude b\nwhen defined(x):\n  # note\n  import c\n"
+        self.assertEqual(nim_statement(text, text.index("include")), ("include", None))
+        self.assertEqual(nim_statement(text, text.index("import c")), ("import", "when defined(x):"))
+        files = {"compiler/a.nim", "compiler/x.inc"}
+        self.assertEqual(nim_target("compiler/b.nim", "a", files), "compiler/a.nim")
+        self.assertEqual(nim_target("compiler/b.nim", "x.inc", files), "compiler/x.inc")
+        self.assertIsNone(nim_target("compiler/b.nim", "std/a", files))
+
+    def test_java_classes_map_to_declaring_sources_without_self_edges(self):
+        output = json.dumps({"jdeps": "\n".join(["classes -> java.base",
+                                                   "   p.A          -> p.B          classes",
+                                                   "   p.A$Inner    -> p.A          classes",
+                                                   "   p.A          -> java.lang.Object  java.base",
+                                                   "   p.Hidden     -> p.B          classes"]),
+                             "sources": {"p.A": "src/p/A.java", "p.A$Inner": "src/p/A.java", "p.B": "src/p/B.java", "p.Hidden": "src/p/B.java"}})
+        self.assertEqual(java_classes(output, {"src/p/A.java", "src/p/B.java"}), {("src/p/A.java", "src/p/B.java")})
+        with self.assertRaises(ValueError):
+            java_classes(json.dumps({"jdeps": "", "sources": {}}), set())
 
 
 if __name__ == "__main__":

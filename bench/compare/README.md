@@ -23,7 +23,7 @@ bench/compare/run.sh --smoke
 
 Scratch defaults to `tempfile.gettempdir()/gantry-compare`. Output defaults to
 `<scratch>/results`, `agreement`, or `smoke`. Override with `--output`.
-`--languages typescript python go rust zig` selects cases. `--skip-setup` reuses
+`--languages typescript python go rust zig nim java` selects cases. `--skip-setup` reuses
 an installation; corpus hashes and tracked content are still checked. Setup
 never checks out a moving branch or runs a corpus's install scripts.
 
@@ -52,6 +52,8 @@ already on PATH. No toolchain is installed globally by this harness.
 | import-linter / Grimp graph | 2.15 / 3.17 | `pins.json:python`, `requirements.txt` |
 | go list | go1.27.1 reference toolchain | `pins.json:toolchains`, actual version in report |
 | cargo-modules | 0.26.0 | `pins.json:cargo`, `cargo install --locked` uses that release's Cargo.lock |
+| nim genDepend | Nim 2.2.10 | `pins.json:toolchains`, the installed compiler, checked by version |
+| jdeps, javac | Temurin 21.0.12.1+1 | `pins.json:jdk`, archive checked by SHA-256 and unpacked in scratch |
 
 `setup.py` installs npm with a local prefix at `<scratch>/npm`, Python into
 `<scratch>/venv`, and cargo-modules with `cargo install --root <scratch>/cargo`.
@@ -72,6 +74,13 @@ Repository URLs and **full commit hashes** are in `pins.json:repositories`.
 | Go | Kubernetes 1.32.1 | `pkg/...` sources and repository packages in their compiler dependency closure |
 | Rust | rust-analyzer 2025-02-17 | the `ide` library, `crates/ide/src` |
 | Zig | Zig 0.14.0 | `lib/std` |
+| Nim | Nim 2.2.10, with nim-lang/checksums `0b8e463` in `dist/checksums` | `compiler`, every `.nim` file and its configs |
+| Java | Apache Commons Lang 3.17.0 | `src/main/java` |
+
+Nim and Java are agreement checks only (`"timed": false` in `pins.json`); the
+quiet timing pass leaves them out. Setup checks out the compiler's checksums
+dependency at the commit `koch deps` pins, and downloads the JDK into
+`<scratch>/jdk`; the corpus itself is never built or modified.
 
 The Rust case is a selected library in the real rust-analyzer workspace,
 not a claim to cover every workspace crate. The Go command uses the pinned
@@ -93,6 +102,15 @@ such as `ide::hover`. File module declarations are retained as dependencies.
 Module/package self edges are removed on both sides; file self edges remain.
 No transitive closure is added. Normalization admits an edge only when both
 endpoints are in the same selected repository universe.
+
+Nim normalizes `nim genDepend compiler/nim.nim` (host configuration) to file
+pairs: genDepend names a module by its path from `compiler`, and standard
+library modules fall outside the selection. genDepend renders its DOT file
+with Graphviz; `nim_graph.py` puts a no-op `dot` on PATH, prints the DOT file
+and removes it. Java compiles every main source with `javac` (untimed), runs
+`jdeps -verbose:class` on the classes, and maps each class to the source file
+its class file names (`SourceFile`), nested and non-public classes included.
+File self edges are removed on both sides for Nim and Java.
 
 VS Code comparison tools use a scratch-local tsconfig with `baseUrl=<repo>/src`, type
 imports enabled, and no installed external dependencies. Madge's warnings
@@ -120,6 +138,14 @@ Known differences in the checked-in agreement report:
 - Go test files, inactive build variants, and workspace/replacement imports.
 - Rust test modules versus `cfg`, and semantic definitions/re-exports/types
   versus gantry's documented lexical module resolution.
+
+- Nim includes, which gantry keeps as edges and genDepend folds into the
+  including module (with the included file's imports); `when` branches the
+  host configuration does not take; and files genDepend never compiles from
+  the project file.
+- Java types of the importer's own package and fully qualified names, which
+  need no import; types reached only through another type's signature;
+  imports used only by Javadoc. See `results/langs-agreement.md`.
 
 Agreed edges have identical normalized endpoints within these scopes. Zig
 has no comparison tool: its graph and sample are reported, with no agreement score.

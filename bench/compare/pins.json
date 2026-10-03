@@ -4,10 +4,13 @@
     "python": {"url": "https://github.com/django/django.git", "commit": "3d3d7f5052edb99bafaa5a2f1a7dd5b968643727", "label": "Django 5.1.5", "scope": "django"},
     "go": {"url": "https://github.com/kubernetes/kubernetes.git", "commit": "e9c9be4007d1664e68796af02b8978640d2c1b26", "label": "Kubernetes 1.32.1", "scope": "pkg"},
     "rust": {"url": "https://github.com/rust-lang/rust-analyzer.git", "commit": "84b6936e0856d0cac8d616c5ba3306155d8b3b1d", "label": "rust-analyzer 2025-02-17", "scope": "crates/ide/src", "package": "ide"},
-    "zig": {"url": "https://github.com/ziglang/zig.git", "commit": "5ad91a646a753cc3eecd8751e61cf458dadd9ac4", "label": "Zig 0.14.0", "scope": "lib/std"}
+    "zig": {"url": "https://github.com/ziglang/zig.git", "commit": "5ad91a646a753cc3eecd8751e61cf458dadd9ac4", "label": "Zig 0.14.0", "scope": "lib/std"},
+    "nim": {"url": "https://github.com/nim-lang/Nim.git", "commit": "bfeb3146d1638b39f69007a4ae5a23e23ae4e5ef", "label": "Nim 2.2.10", "scope": "compiler", "project": "compiler/nim.nim", "timed": false, "dependencies": [{"url": "https://github.com/nim-lang/checksums.git", "commit": "0b8e46379c5bc1bf73d8b3011908389c60fb9b98", "path": "dist/checksums"}]},
+    "java": {"url": "https://github.com/apache/commons-lang.git", "commit": "29ccc7665f3bc5d84155a3092ab2209a053324e6", "label": "Apache Commons Lang 3.17.0", "scope": "src/main/java", "timed": false}
   },
   "npm": {"madge": "8.0.0", "dependency-cruiser": "16.10.4", "typescript": "5.7.3"},
   "python": {"pydeps": "3.0.8", "grimp": "3.17", "import-linter": "2.15"},
   "cargo": {"cargo-modules": "0.26.0"},
-  "toolchains": {"zig": "0.16.0", "go": "go1.27.1", "rust": "1.93.0", "node": "v22.23.2", "python": "3.13.2"}
+  "toolchains": {"zig": "0.16.0", "go": "go1.27.1", "rust": "1.93.0", "node": "v22.23.2", "python": "3.13.2", "nim": "2.2.10"},
+  "jdk": {"version": "21.0.12.1+1", "vendor": "Eclipse Temurin", "archives": {"darwin-arm64": {"url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz", "sha256": "3623232f33a9c3baadf304480b2535f9a3cba8a58d42ecbb438ba267315d9998"}, "linux-x86_64": {"url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz", "sha256": "ce79869e1307ed8ee1e2baa86a412b1eb5b75d10a01006d788a6f968bcfaee94"}}}
 }

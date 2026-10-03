@@ -7,13 +7,14 @@ import os
 import posixpath
 from pathlib import Path
 import re
+import shutil
 import statistics
 import subprocess
 import sys
 import tempfile
 import time
 
-from setup import HERE, PINS, environment, prepare, verify_tools
+from setup import HERE, PINS, environment, jdk_home, prepare, verify_tools
 
 
 def command(argv, cwd, env, output, timed=False):
@@ -83,10 +84,45 @@ def rust_dot(text, files, scope):
     return edges
 
 
+def nim_dot(text, files):
+    """genDepend names a module by its path from the project file's folder,
+    without `.nim`; standard library modules are named from `lib` and fall outside."""
+    folder = posixpath.dirname(PINS["repositories"]["nim"]["project"])
+    def node(name):
+        path = posixpath.normpath(posixpath.join(folder, name + ".nim"))
+        return path if path in files else None
+    nodes, edges = set(), set()
+    for source, target in re.findall(r'"([^"\n]+)"\s*->\s*"([^"\n]+)"', text):
+        source, target = node(source), node(target)
+        nodes.update(n for n in (source, target) if n)
+        if source and target and source != target:
+            edges.add((source, target))
+    if not edges:
+        raise ValueError("genDepend produced no normalized edges; check DOT adapter")
+    return nodes, edges
+
+
+def java_classes(text, files):
+    """jdeps class pairs, each class mapped to the source file that declared it."""
+    data = json.loads(text)
+    sources, edges = data["sources"], set()
+    for line in data["jdeps"].splitlines():
+        if pair := re.match(r"\s+(\S+)\s+->\s+(\S+)\s", line):
+            source, target = sources.get(pair[1]), sources.get(pair[2])
+            if source in files and target in files and source != target:
+                edges.add((source, target))
+    if not edges:
+        raise ValueError("jdeps produced no normalized edges; check class adapter")
+    return edges
+
+
 def normalise(tool, output, repo, files, scope, go_packages):
     text = output.read_text()
     if tool == "gantry":
         edges = {tuple(line.split("\t")[1:3]) for line in text.splitlines() if line.startswith("E\t")}
+        if scope.startswith("compiler") or scope.startswith("src/main/java"):
+            # A file's references to itself are not module or file dependencies.
+            return {(a, b) for a, b in edges if a != b and a in files and b in files}
         if scope.startswith("crates/"):
             return {(rust_module(a, scope), rust_module(b, scope)) for a, b in edges if a != b}
         if go_packages is not None:
@@ -95,6 +131,10 @@ def normalise(tool, output, repo, files, scope, go_packages):
         return edges
     if tool == "cargo-modules":
         return rust_dot(text, files, scope)
+    if tool == "gendepend":
+        return nim_dot(text, files)[1]
+    if tool == "jdeps":
+        return java_classes(text, files)
     if tool == "go-list":
         packages = list(json_stream(text))
         if any(p.get("Error") or p.get("DepsErrors") for p in packages):
@@ -127,8 +167,8 @@ def make_case(language, scratch, out, env, binary, smoke):
     actual = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     if actual != pin["commit"] or subprocess.check_output(["git", "-C", str(repo), "diff", "HEAD", "--name-only"]):
         raise ValueError(f"corpus differs from pinned commit: {repo}")
-    scope = ({"typescript":"src/vs/base/common", "python":"django/utils", "go":"pkg/util/slice", "rust":pin["scope"], "zig":"lib/std/Random"}[language]) if smoke else pin["scope"]
-    suffix = {"typescript": (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"), "python": (".py",), "go": (".go",), "rust": (".rs",), "zig": (".zig",)}[language]
+    scope = ({"typescript":"src/vs/base/common", "python":"django/utils", "go":"pkg/util/slice", "rust":pin["scope"], "zig":"lib/std/Random", "nim":"compiler/ic", "java":"src/main/java/org/apache/commons/lang3/time"}[language]) if smoke else pin["scope"]
+    suffix = {"typescript": (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"), "python": (".py",), "go": (".go",), "rust": (".rs",), "zig": (".zig",), "nim": (".nim", ".cfg", ".nims"), "java": (".java",)}[language]
     files = {p for p in tracked(repo) if p.startswith(scope + "/") and p.endswith(suffix)}
     go_packages = None
     commands = {}
@@ -160,6 +200,18 @@ def make_case(language, scratch, out, env, binary, smoke):
                     "grimp": [scratch / "venv/bin/python", HERE / "python_graph.py", repo]}
     elif language == "rust":
         commands = {"cargo-modules": [scratch / "cargo/bin/cargo-modules", "dependencies", "--lib", "--package", pin["package"], "--no-externs", "--no-sysroot"]}
+    elif language == "nim":
+        # The compiler's own module graph from its entry file, host configuration.
+        commands = {"gendepend": [sys.executable, HERE / "nim_graph.py", repo, pin["project"], scratch / "nimcache"]}
+    elif language == "java":
+        # jdeps reads compiled classes: compile every main source once, untimed.
+        classes = scratch / "java-classes"
+        shutil.rmtree(classes, ignore_errors=True)
+        sources = out / "javac-sources.txt"
+        sources.parent.mkdir(parents=True, exist_ok=True)
+        sources.write_text("\n".join(sorted(p for p in tracked(repo) if p.startswith(pin["scope"] + "/") and p.endswith(".java"))) + "\n")
+        command([jdk_home(scratch) / "bin/javac", "-nowarn", "-encoding", "UTF-8", "-proc:none", "-d", classes, f"@{sources}"], repo, env, out / "javac.log")
+        commands = {"jdeps": [sys.executable, HERE / "java_graph.py", jdk_home(scratch), classes, pin["scope"]]}
     listing = out / "paths.txt"
     listing.parent.mkdir(parents=True, exist_ok=True)
     listing.write_text("\n".join(sorted(files)) + "\n")
@@ -170,11 +222,13 @@ def make_case(language, scratch, out, env, binary, smoke):
 @cache
 def witnesses(folder, repo, scope):
     refs, contributors, active, rust = defaultdict(list), defaultdict(set), defaultdict(set), defaultdict(list)
+    located = defaultdict(list)
     with (folder / "gantry.raw").open() as raw:
         for line in raw:
             if line.startswith("R\t"):
                 fields = line.rstrip("\n").split("\t", 4)
                 refs[fields[1]].append(fields[4])
+                located[fields[1]].append((int(fields[2]), fields[4]))
             elif line.startswith("E\t"):
                 _, source, target = line.rstrip("\n").split("\t")
                 contributors[(Path(source).parent.as_posix(), Path(target).parent.as_posix())].add(source)
@@ -195,14 +249,47 @@ def witnesses(folder, repo, scope):
         for line in (folder / "cargo-modules.raw").read_text().splitlines():
             if pair := re.search(r'"([^"\n]+)"\s*->\s*"([^"\n]+)"', line):
                 rust[(owner(pair[1]), owner(pair[2]))].append(line.strip())
-    return refs, contributors, active, rust
+    reached = set()
+    if (folder / "gendepend.raw").exists():
+        reached = nim_dot((folder / "gendepend.raw").read_text(), set((folder / "paths.txt").read_text().split()))[0]
+    return refs, contributors, active, rust, located, reached
+
+
+def nim_target(source, name, files):
+    """The selected file a module name names beside its importer, as gantry reads it."""
+    if name.startswith("std/") or name.startswith("pkg/"):
+        return None
+    path = posixpath.normpath(posixpath.join(posixpath.dirname(source), name if posixpath.splitext(name)[1] else name + ".nim"))
+    return path if path in files else None
+
+
+def nim_statement(text, offset):
+    """The statement keyword at an import's offset and the block that holds it."""
+    keyword = text[offset:].split(None, 1)[0]
+    line = text.rfind("\n", 0, offset) + 1
+    indent = offset - line
+    holder = None
+    while indent > 0 and line > 0:
+        line = text.rfind("\n", 0, line - 1) + 1
+        content = text[line:text.find("\n", line)]
+        stripped = content.lstrip()
+        if stripped and not stripped.startswith("#") and len(content) - len(stripped) < indent:
+            holder = stripped
+            break
+    return keyword, holder
+
+
+def java_code(text):
+    """Source without comments and import declarations: the names code uses."""
+    text = re.sub(r"/\*.*?\*/|//[^\n]*", " ", text, flags=re.S)
+    return re.sub(r"^\s*import\s[^;]*;", " ", text, flags=re.M)
 
 
 def classify(language, direction, edge, repo, folder, graphs, scope):
     """Use witnesses to separate documented scope from differences needing review."""
     a, b = edge
     evidence = []
-    refs_by_source, go_contributors, go_active, rust_witnesses = witnesses(folder, repo, scope)
+    refs_by_source, go_contributors, go_active, rust_witnesses, located, reached = witnesses(folder, repo, scope)
     if language == "typescript":
         refs = refs_by_source[a]
         if direction == "gantry_only" and b.endswith(".js") and (a, b[:-3] + ".d.ts") in graphs["madge"]:
@@ -244,6 +331,51 @@ def classify(language, direction, edge, repo, folder, graphs, scope):
             if rust_witnesses[(a, b)]:
                 return "scope: semantic definitions, re-exports and type dependencies are outside gantry resolution", rust_witnesses[(a, b)]
         return "review: Rust lexical resolution or cfg selection", evidence
+    if language == "nim":
+        files = set((folder / "paths.txt").read_text().split())
+        if direction == "gantry_only":
+            if a not in reached:
+                return "scope: a file genDepend never reaches from the project file (an include, or a module this configuration does not compile)", [a]
+            text = (repo / a).read_text()
+            for offset, name in located[a]:
+                if nim_target(a, name, files) != b:
+                    continue
+                keyword, holder = nim_statement(text, offset)
+                statement = text[offset:text.find("\n", offset)].strip()
+                if keyword == "include":
+                    return "scope: include is textual; genDepend lists imported modules", [statement]
+                if holder and holder.split()[0].rstrip(":") in ("when", "elif", "else"):
+                    return "scope: an import under a `when` branch this configuration does not take", [holder, statement]
+            return "review: Nim module resolution", evidence
+        if direction == "rival_only":
+            text = (repo / a).read_text()
+            for offset, name in located[a]:
+                included = nim_target(a, name, files)
+                if included and nim_statement(text, offset)[0] == "include" and (included, b) in graphs["gantry"]:
+                    return "scope: an included file's imports belong to the module that includes it", [included]
+            return "review: Nim module resolution", evidence
+    if language == "java":
+        text = (repo / a).read_text()
+        package = posixpath.dirname(b)[len(scope) + 1:].replace("/", ".")
+        simple = posixpath.basename(b)[:-len(".java")]
+        named = re.search(r"\b%s\b" % re.escape(simple), java_code(text)) is not None
+        if direction == "rival_only":
+            if posixpath.dirname(a) == posixpath.dirname(b):
+                return "scope: a type of the importer's own package needs no import", [simple]
+            if f"{package}.{simple}" in java_code(text):
+                return "scope: a fully qualified name needs no import", [f"{package}.{simple}"]
+            if not named:
+                return "scope: a type reached only through another type's signature, never named in the source", [simple]
+            if own := re.search(r"\b(?:class|interface|enum|record)\s+%s\b" % re.escape(simple), java_code(text)):
+                return "scope: a type reached only through another type's signature; the file's own type of that name shadows it", [own.group(0)]
+            return "review: Java import resolution", evidence
+        if direction == "gantry_only":
+            single = re.search(r"^\s*import\s+(static\s+)?%s\.%s[.;]" % (re.escape(package), re.escape(simple)), text, flags=re.M)
+            if single and not named:
+                return "scope: an import used only by Javadoc, or not at all, leaves no class reference", [single.group(0).strip()]
+            if re.search(r"^\s*import\s+%s\.\*;" % re.escape(package), text, flags=re.M) and not named:
+                return "scope: an on-demand import names every file of its package", [f"import {package}.*;"]
+            return "review: Java import resolution", evidence
     return "review: unexplained difference", evidence
 
 
@@ -284,8 +416,8 @@ def main():
                "gantry_dirty": bool(subprocess.check_output(["git", "-C", str(source), "status", "--porcelain"], text=True)),
                "gantry_source_tree": subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD:src"], text=True).strip(),
                "platform": sys.platform, "languages": {}, "rival_versions": versions, "runtime_versions": {"python": sys.version.split()[0]}}
-    for name, argv in {"zig": ["zig", "version"], "go": ["go", "version"], "rust": ["rustc", "--version"], "node": ["node", "--version"]}.items():
-        if name in ("zig",) or {"go": "go", "rust": "rust", "node": "typescript"}.get(name) in args.languages:
+    for name, argv in {"zig": ["zig", "version"], "go": ["go", "version"], "rust": ["rustc", "--version"], "node": ["node", "--version"], "nim": ["nim", "--version"]}.items():
+        if name in ("zig",) or {"go": "go", "rust": "rust", "node": "typescript", "nim": "nim"}.get(name) in args.languages:
             summary["runtime_versions"][name] = subprocess.check_output(argv, env=env, text=True).strip()
     for language in args.languages:
         print(f"Comparing {language}", flush=True)

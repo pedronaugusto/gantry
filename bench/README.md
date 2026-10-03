@@ -49,7 +49,9 @@ Same-job tools retained on pinned repositories: madge 8.0.0 and
 dependency-cruiser 16.10.4 on VS Code; pydeps 3.0.8 and Grimp 3.17 on Django;
 Go `go list` on Kubernetes; cargo-modules 0.26.0 on rust-analyzer. Zig's standard
 library has no same-job tool, and is scanned without an agreement score.
-No new tool was added. See [comparison methodology](compare/README.md) and
+The timing pass adds no tool. Agreement-only cases outside it: `nim genDepend`
+on the Nim 2.2.10 compiler and `jdeps` on Apache Commons Lang 3.17.0. See
+[comparison methodology](compare/README.md) and
 `compare/pins.json` for full repository and dependency pins.
 
 Both package revisions participate in each real-repository graph round.
