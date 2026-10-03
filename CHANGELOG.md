@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Hold scan edges as path positions until they are coalesced, so graph storage keeps no outgrown edge lists.
+
 - Recover Java imports and package declarations, resolved through the packages selected files declare; `Class.forName` and `loadClass` calls are unsupported.
 
 - Read `pom.xml` dependencies with their scope through the file's own properties (`<optional>` is optional scope outside `test`), and literal `build.gradle` and `build.gradle.kts` declarations; computed declarations are unsupported.

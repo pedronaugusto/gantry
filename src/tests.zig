@@ -29,4 +29,5 @@ test {
     _ = @import("test_java.zig");
     _ = @import("test_recovery.zig");
     _ = @import("test_properties.zig");
+    _ = @import("test_memory.zig");
 }
