@@ -101,7 +101,8 @@ pub const Dependency = struct {
         /// `androidTestImplementation`, `testFixturesApi`).
         development,
         /// Only when asked for: npm `optionalDependencies`, PEP 621
-        /// `project.optional-dependencies` (extras), Nimble `feature` blocks.
+        /// `project.optional-dependencies` (extras), Nimble `feature` blocks,
+        /// a Maven `<optional>true</optional>` dependency outside `test` scope.
         optional,
         /// To build: Cargo `build-dependencies`, Maven `provided` scope,
         /// Gradle `compileOnly`, annotation processors and `buildscript`
@@ -129,8 +130,11 @@ pub const Dependency = struct {
             return .runtime;
         }
         if (std.mem.eql(u8, manifest, "pom.xml")) {
-            if (std.mem.eql(u8, dep.group, "test")) return .development;
-            if (std.mem.eql(u8, dep.group, "provided")) return .build;
+            // `test` stays development even when optional; otherwise optional wins.
+            const maven = dep.group[0 .. std.mem.indexOfScalar(u8, dep.group, ',') orelse dep.group.len];
+            if (std.mem.eql(u8, maven, "test")) return .development;
+            if (std.mem.endsWith(u8, dep.group, ",optional")) return .optional;
+            if (std.mem.eql(u8, maven, "provided")) return .build;
             return .runtime;
         }
         if (std.mem.eql(u8, manifest, "build.gradle") or std.mem.eql(u8, manifest, "build.gradle.kts")) {

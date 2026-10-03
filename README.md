@@ -126,7 +126,7 @@ files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
 `go.mod`, `pyproject.toml`, `pom.xml`, `build.gradle`, `build.gradle.kts`
 (`manifests.names`) and `.nimble` files (`manifests.extensions`) remain separate from file
 edges. A Maven `${property}` resolves through the same file's literal properties and
-project coordinates. Gradle declarations are read when literal. A declaration a reader
+project coordinates, and an `<optional>` dependency is optional unless its scope is `test`. Gradle declarations are read when literal. A declaration a reader
 cannot read, such as a Gradle version catalog entry, an interpolated coordinate or a
 `requires` with a computed argument, declares nothing and appears in `graph.unsupported()`.
 A declaration's `scope()` is runtime, development, optional or build, read from its
