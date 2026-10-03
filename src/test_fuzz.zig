@@ -133,7 +133,7 @@ fn checkTokens(graph: *const g.Graph, text: []const u8) !void {
 
 /// The lexer emits ordered tokens inside the text, no more than one per
 /// byte, the same way twice, and fails only for memory. A string's value is
-/// never longer than its spelling.
+/// never longer than its spelling. Without newlines it emits the rest alike.
 fn checkLexer(comptime syntax: lexer.Syntax, language: ?g.Language, text: []const u8) !void {
     const a = testing.allocator;
     const first = lexer.lex(syntax, a, text) catch |err| switch (err) {
@@ -162,6 +162,17 @@ fn checkLexer(comptime syntax: lexer.Syntax, language: ?g.Language, text: []cons
                 try testing.expectEqualStrings(value, try tokens.value(arena.allocator(), lang, x.text, keep));
             }
         };
+    }
+    // The compact lexer emits the same stream without its newlines.
+    const compacted = try lexer.lexCompact(syntax, a, text, null);
+    defer a.free(compacted);
+    const kept = lexer.compact(second);
+    try testing.expectEqual(kept.len, compacted.len);
+    for (kept, compacted) |x, y| {
+        try testing.expectEqual(x.kind, y.kind);
+        try testing.expectEqual(x.offset, y.offset);
+        try testing.expectEqual(x.end, y.end);
+        try testing.expectEqualStrings(x.text, y.text);
     }
 }
 

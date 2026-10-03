@@ -29,6 +29,13 @@ pub const Observer = struct {
 /// `lex`, telling `seen` of each word and string as it is emitted. One
 /// lexer serves both, so a scan without observers runs the same code.
 pub fn lexSeen(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, seen: ?Observer) ![]Token {
+    return tokenize(lang, true, a, text, seen);
+}
+/// `compact(lexSeen(…))`, without emitting the newlines it would drop.
+pub fn lexCompact(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, seen: ?Observer) ![]Token {
+    return tokenize(lang, false, a, text, seen);
+}
+fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator, text: []const u8, seen: ?Observer) ![]Token {
     var out: std.ArrayList(Token) = .empty;
     var i: usize = 0;
     var regex_allowed = true;
@@ -73,7 +80,7 @@ pub fn lexSeen(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, se
         }
         if (c == '\n') {
             i += 1;
-            try out.append(a, .{ .kind = .newline, .text = text[start..i], .offset = start, .end = i });
+            if (newlines) try out.append(a, .{ .kind = .newline, .text = text[start..i], .offset = start, .end = i });
             continue;
         }
         if (std.ascii.isWhitespace(c)) {
@@ -104,7 +111,7 @@ pub fn lexSeen(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, se
                     depth += 1;
                     i += 2;
                 } else {
-                    if (lang == .c and text[i] == '\n') try out.append(a, .{ .kind = .newline, .text = text[i .. i + 1], .offset = i, .end = i + 1 });
+                    if (newlines and lang == .c and text[i] == '\n') try out.append(a, .{ .kind = .newline, .text = text[i .. i + 1], .offset = i, .end = i + 1 });
                     i += 1;
                 }
             }

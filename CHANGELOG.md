@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Lex Go, Zig, JavaScript, Rust and Java without the newline tokens their recovery drops.
+
 - Fuzz properties for every lexer and every manifest and config reader; `zig build test` runs their seeds.
 
 - Token rules: an identifier or string value only its owners' files may spell, recorded from the token streams the scan lexes anyway and checked with path, line and column.

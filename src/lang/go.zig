@@ -6,7 +6,7 @@ const Spec = types.Spec;
 // import expression to detect without adding a syntax-validation contract.
 /// The token stream recovery reads; `seen` observes it as it grows.
 pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
-    return l.compact(try l.lexSeen(.go, a, source, seen));
+    return l.lexCompact(.go, a, source, seen);
 }
 pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
     return recoverTokens(a, source, try lex(a, source, null));
