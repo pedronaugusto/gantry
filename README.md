@@ -289,7 +289,7 @@ config reader, and the package names dependency rules read from import spellings
 by the input, the same result twice): `zig build test` runs their seeds and `zig build test
 --fuzz` searches from them. `zig build examples` runs the example
 separately; `zig build check` compiles the tests only. CI also runs `ci/check-docs.sh`.
-Reports are compared with golden files in `src/golden`, which CI reads with Graphviz's
+Reports are compared with golden files in `src/testing/golden`, which CI reads with Graphviz's
 `dot`, Mermaid's CLI and the SARIF 2.1.0 schema.
 
 [CI](.github/workflows/ci.yml) runs tests and the example in Debug and ReleaseSafe on

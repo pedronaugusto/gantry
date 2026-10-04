@@ -3,7 +3,7 @@ const std = @import("std");
 const t = @import("types.zig");
 const resolver = @import("resolve.zig");
 const recover = @import("recover.zig");
-const Graph = @import("graph_store.zig");
+const Graph = @import("Graph/graph_store.zig");
 const diagnostics = @import("scan_diagnostic.zig");
 const manifests = @import("manifests.zig");
 const path = @import("path.zig");
@@ -16,7 +16,7 @@ const Kind = t.Kind;
 const Reference = t.Reference;
 const Dependency = t.Dependency;
 const GoFile = api.GoFile;
-const ImportStore = @import("import_store.zig");
+const ImportStore = @import("Imports/import_store.zig");
 const PathStore = @import("owned_slice.zig").Store([]const u8);
 const Recorder = @import("tokens.zig").Recorder;
 pub const Imports = @import("Imports.zig").Imports;
@@ -109,7 +109,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     };
     var recorder: Recorder = try .init(w, a, options.tokens, g.paths.len);
     if (recorder.active()) {
-        const scanned = try a.alloc(@import("rules_check.zig").TokenRule, options.tokens.len);
+        const scanned = try a.alloc(@import("rules/rules_check.zig").TokenRule, options.tokens.len);
         for (options.tokens, scanned) |rule, *dest| dest.* = .{ .name = "", .kind = rule.kind, .token = try a.dupe(u8, rule.token) };
         g.scanned_tokens = scanned;
     }
@@ -302,7 +302,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     g.dependencies = try deps.toOwnedSlice(a);
     g.manifests = options.manifests;
     g.unread = try reader.unreadPaths(a, &g.files);
-    return @import("graph_store.zig").owner(@import("Graph.zig").Graph, g);
+    return @import("Graph/graph_store.zig").owner(@import("Graph.zig").Graph, g);
 }
 pub fn walk(gpa: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, context: anytype, comptime keep: anytype) !Paths {
     const result = try PathStore.create(gpa);

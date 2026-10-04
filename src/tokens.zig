@@ -2,8 +2,8 @@
 const std = @import("std");
 const t = @import("types.zig");
 const l = @import("lexer.zig");
-const TokenRule = @import("rules_check.zig").TokenRule;
-const matchesToken = @import("rules_check.zig").matchesToken;
+const TokenRule = @import("rules/rules_check.zig").TokenRule;
+const matchesToken = @import("rules/rules_check.zig").matchesToken;
 
 /// Collects the identifiers and string values the rules name, at most once
 /// per file. With no rules every call returns at once.

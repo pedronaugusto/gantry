@@ -4,8 +4,8 @@
 const std = @import("std");
 const t = @import("types.zig");
 const Graph = @import("Graph.zig").Graph;
-const engine = @import("rules_check.zig");
-const text = @import("report_json.zig");
+const engine = @import("rules/rules_check.zig");
+const text = @import("report/report_json.zig");
 const Writer = std.Io.Writer;
 
 pub const json = text.json;

@@ -1,7 +1,7 @@
 //! An owned graph. Results are read only and live until deinit.
 const std = @import("std");
 const t = @import("types.zig");
-const store = @import("graph_store.zig");
+const store = @import("Graph/graph_store.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
 pub const Graph = enum(usize) {
@@ -61,7 +61,7 @@ pub const Graph = enum(usize) {
     }
     /// Analysis owns its results independently of the graph.
     pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import("Analysis.zig").Analysis {
-        return @enumFromInt(@intFromPtr(try @import("analyze.zig").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
+        return @enumFromInt(@intFromPtr(try @import("Analysis/analyze.zig").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
     /// Findings borrow graph storage, rule names and required-path strings.
     /// Keep the graph and those caller strings alive until findings are freed
@@ -70,9 +70,9 @@ pub const Graph = enum(usize) {
     /// was not scanned for is `error.UnscannedToken`, never a silent pass,
     /// and a dependency rule on a graph scanned without manifests is
     /// `error.UnscannedManifests`.
-    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules_check.zig").Rules) ![]const @import("rules_check.zig").Violation {
+    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules/rules_check.zig").Rules) ![]const @import("rules/rules_check.zig").Violation {
         for (rules.tokens) |rule| if (!store.get(g.*).scannedFor(rule)) return error.UnscannedToken;
         if (rules.dependencies.len > 0 and !store.get(g.*).manifests) return error.UnscannedManifests;
-        return @import("rules_check.zig").check(g, gpa, rules, @import("dependency_check.zig"));
+        return @import("rules/rules_check.zig").check(g, gpa, rules, @import("rules/dependency_check.zig"));
     }
 };

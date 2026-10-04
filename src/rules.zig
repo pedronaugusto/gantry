@@ -1,5 +1,5 @@
 //! Public rule data and checking over an owned graph.
-const engine = @import("rules_check.zig");
+const engine = @import("rules/rules_check.zig");
 const std = @import("std");
 const Graph = @import("Graph.zig").Graph;
 pub const Layer = engine.Layer;

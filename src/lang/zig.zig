@@ -50,7 +50,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     if (std.mem.endsWith(u8, name, ".zig")) {
         if (try c.candidate(dir, name, &.{""})) |v| try out.append(a, v);
     } else for (c.named_modules) |m| {
-        if (std.mem.eql(u8, name, m.name) and @import("../rules_check.zig").matches(m.from, from)) {
+        if (std.mem.eql(u8, name, m.name) and @import("../rules/rules_check.zig").matches(m.from, from)) {
             if (try c.candidate("", m.path, &.{""})) |v| try out.append(a, v);
             break;
         }
