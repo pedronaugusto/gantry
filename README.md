@@ -223,6 +223,45 @@ streams it lexes for imports (`graph.tokens()`, with path, line and byte column)
 did not record. Comments, character literals, numbers, raw strings and multi-line strings
 never match.
 
+## Reports
+
+`gantry.report` writes text for the tools that lay out, draw and annotate, to a
+`*std.Io.Writer`. Output is the same for the same graph, options and findings.
+
+| Call | Writes |
+|---|---|
+| `report.dot(gpa, w, graph, options)` | A Graphviz digraph |
+| `report.mermaid(gpa, w, graph, options)` | A Mermaid flowchart with the same nodes, edges and clusters |
+| `report.json(w, graph, findings)` | Nodes, edges and findings as one JSON object |
+| `report.sarif(gpa, w, findings, options)` | A SARIF 2.1.0 log for GitHub code scanning and other SARIF readers |
+| `report.sarifWithSource(gpa, w, findings, context, read, options)` | The same, with lines and columns read from the sources |
+
+Drawings list nodes in path order, then edges in the graph's order. `cluster` is
+`.none`, `.directory` (nested boxes, nodes labelled with their last component) or
+`.layer` (one box per `rules.Layer` in `layers`, a node in the first that matches it).
+Edge kinds are styles: `import` solid, `type_only` dashed, `dynamic` dotted, `test` with a
+hollow head, `link` and `asset` broken with their own heads; Mermaid labels every kind but
+`import`. The findings in `options.findings` are drawn red: the nodes they name, their
+edges and every edge along a chain. For directories as nodes, draw `graph.aggregate(depth)`.
+Mermaid refuses more than 500 edges by default.
+
+JSON is `{"format": "gantry", "version": 1, "nodes", "edges", "findings"}`: each node
+`{"path"}`, each edge `{"from", "to", "kind", "count"}`, and each finding its `rule` and
+`reason` with only the fields that finding has (`edge`, `reference`, `token`, `path`,
+`dependency`, `package`, `chain`). Offsets are bytes. `version` changes only when a
+field changes meaning or goes away.
+
+SARIF lists each rule name once as a rule id and each finding as an `error` result at the
+file it is about, under `uri_prefix`. A token finding has its line; `sarifWithSource`
+reads each file a reference or token finding names once, through the same reader `scan`
+takes, for a line and a column in code points. Edge findings are about the importing file:
+an edge keeps no offset.
+
+DOT quotes escape `"` and `\`, write a newline as `\n` and other control bytes and bytes
+that are not UTF-8 as `\xNN`, so distinct paths stay distinct IDs. Mermaid nodes are numbered and labels use entity
+codes. JSON writes a byte that is not UTF-8 as U+FFFD; SARIF URIs percent-encode
+every byte outside the unreserved set and `/`.
+
 ## Scope
 
 - It does not discover a repository, apply gitignore rules or select files for the caller.
@@ -232,7 +271,7 @@ never match.
 - It does not install packages, follow Maven parents or Gradle catalogs, or solve
   transitive external versions.
 - It does not implement complete language, CommonMark, TOML or asset-format grammars.
-- It does not render a graph or provide a command-line linter.
+- It does not lay out or render a graph, or provide a command-line linter.
 
 <!-- performance: quiet pass -->
 
@@ -250,6 +289,8 @@ config reader, and the package names dependency rules read from import spellings
 by the input, the same result twice): `zig build test` runs their seeds and `zig build test
 --fuzz` searches from them. `zig build examples` runs the example
 separately; `zig build check` compiles the tests only. CI also runs `ci/check-docs.sh`.
+Reports are compared with golden files in `src/golden`, which CI reads with Graphviz's
+`dot`, Mermaid's CLI and the SARIF 2.1.0 schema.
 
 [CI](.github/workflows/ci.yml) runs tests and the example in Debug and ReleaseSafe on
 `ubuntu-latest`, `macos-latest` and `windows-latest`, plus ReleaseFast on Ubuntu.

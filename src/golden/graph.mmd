@@ -1,0 +1,21 @@
+flowchart LR
+  classDef finding stroke:#cc0000,stroke-width:2px,color:#cc0000
+  n0["README.md"]
+  n1["assets/logo.svg"]
+  n2["docs/guide.md"]:::finding
+  n3["src/lang/c.zig"]:::finding
+  n4["src/lang/zig.zig"]
+  n5["src/main.zig"]:::finding
+  n6["src/model.zig"]:::finding
+  n7["src/store.zig"]:::finding
+  n8["tests/main_test.zig"]:::finding
+  n0 -.->|link| n2
+  n2 -.->|asset| n1
+  n3 --> n7
+  n4 --> n3
+  n5 -.->|dynamic| n4
+  n5 --> n7
+  n6 -.->|type_only| n7
+  n7 --> n6
+  n8 -->|test| n5
+  linkStyle 2,5,6,7,8 stroke:#cc0000,stroke-width:2px

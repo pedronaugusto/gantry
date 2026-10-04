@@ -1,0 +1,21 @@
+flowchart LR
+  classDef finding stroke:#cc0000,stroke-width:2px,color:#cc0000
+  subgraph d0["a b"]
+    n0["#35;hash#amp;#lt;tag#gt;#96;tick#96;.zig"]
+  end
+  n1["bad#65533;byte.zig"]
+  n2["new#10;line.zig"]
+  n3["pct%20.zig"]:::finding
+  n4["q#quot;uote.zig"]:::finding
+  n5["tab#9;here.zig"]
+  subgraph d1["ünï"]
+    n6["cödé.zig"]
+  end
+  n0 --> n1
+  n1 --> n2
+  n2 --> n3
+  n3 --> n4
+  n4 --> n5
+  n5 --> n6
+  n6 --> n0
+  linkStyle 3 stroke:#cc0000,stroke-width:2px

@@ -25,6 +25,8 @@ pub const NamedModule = resolver.NamedModule;
 pub const rules = @import("rules.zig");
 pub const manifests = @import("manifests.zig");
 pub const path = @import("path.zig");
+/// DOT, Mermaid, JSON and SARIF text for a graph and its findings.
+pub const report = @import("report.zig");
 pub const Options = @import("scan_options.zig").Options;
 pub const languageOf = @import("scan_options.zig").languageOf;
 /// The reference kinds a scan reads from a path, by its name alone.

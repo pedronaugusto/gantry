@@ -63,6 +63,10 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/rules.zig",
         "src/scan.zig",
     } },
+    .{ .name = "reports", .patterns = &.{
+        "src/report.zig",
+        "src/report_json.zig",
+    } },
     .{ .name = "public", .patterns = &.{
         "src/gantry.zig",
     } },
@@ -86,6 +90,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/test_python_policy.zig",
         "src/test_queries.zig",
         "src/test_recovery.zig",
+        "src/test_report.zig",
         "src/test_resolution.zig",
         "src/test_rules.zig",
         "src/test_scan_diagnostic.zig",

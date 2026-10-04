@@ -1,0 +1,26 @@
+{
+  "format": "gantry",
+  "version": 1,
+  "nodes": [
+    {"path": "a b/#hash&<tag>`tick`.zig"},
+    {"path": "bad\ufffdbyte.zig"},
+    {"path": "new\nline.zig"},
+    {"path": "pct%20.zig"},
+    {"path": "q\"uote.zig"},
+    {"path": "tab\there.zig"},
+    {"path": "ünï/cödé.zig"}
+  ],
+  "edges": [
+    {"from": "a b/#hash&<tag>`tick`.zig", "to": "bad\ufffdbyte.zig", "kind": "import", "count": 1},
+    {"from": "bad\ufffdbyte.zig", "to": "new\nline.zig", "kind": "import", "count": 1},
+    {"from": "new\nline.zig", "to": "pct%20.zig", "kind": "import", "count": 1},
+    {"from": "pct%20.zig", "to": "q\"uote.zig", "kind": "import", "count": 1},
+    {"from": "q\"uote.zig", "to": "tab\there.zig", "kind": "import", "count": 1},
+    {"from": "tab\there.zig", "to": "ünï/cödé.zig", "kind": "import", "count": 1},
+    {"from": "ünï/cödé.zig", "to": "a b/#hash&<tag>`tick`.zig", "kind": "import", "count": 1}
+  ],
+  "findings": [
+    {"rule": "rule \"quoted\"\nsecond line", "reason": "forbidden", "edge": {"from": "pct%20.zig", "to": "q\"uote.zig", "kind": "import", "count": 1}},
+    {"rule": "named", "reason": "missing", "path": "missing \"x\".zig"}
+  ]
+}

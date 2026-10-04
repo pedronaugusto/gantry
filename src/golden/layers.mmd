@@ -1,0 +1,25 @@
+flowchart LR
+  subgraph d0["lang"]
+    n3["src/lang/c.zig"]
+    n4["src/lang/zig.zig"]
+  end
+  subgraph d1["core"]
+    n6["src/model.zig"]
+    n7["src/store.zig"]
+  end
+  subgraph d2["entry"]
+    n5["src/main.zig"]
+  end
+  n0["README.md"]
+  n1["assets/logo.svg"]
+  n2["docs/guide.md"]
+  n8["tests/main_test.zig"]
+  n0 -.->|link| n2
+  n2 -.->|asset| n1
+  n3 --> n7
+  n4 --> n3
+  n5 -.->|dynamic| n4
+  n5 --> n7
+  n6 -.->|type_only| n7
+  n7 --> n6
+  n8 -->|test| n5

@@ -1,0 +1,22 @@
+digraph "gantry" {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  "README.md";
+  "assets/logo.svg";
+  "docs/guide.md" [color="#cc0000", fontcolor="#cc0000", penwidth=2];
+  "src/lang/c.zig" [color="#cc0000", fontcolor="#cc0000", penwidth=2];
+  "src/lang/zig.zig";
+  "src/main.zig" [color="#cc0000", fontcolor="#cc0000", penwidth=2];
+  "src/model.zig" [color="#cc0000", fontcolor="#cc0000", penwidth=2];
+  "src/store.zig" [color="#cc0000", fontcolor="#cc0000", penwidth=2];
+  "tests/main_test.zig" [color="#cc0000", fontcolor="#cc0000", penwidth=2];
+  "README.md" -> "docs/guide.md" [style=dashed, arrowhead=vee];
+  "docs/guide.md" -> "assets/logo.svg" [style=dotted, arrowhead=odot];
+  "src/lang/c.zig" -> "src/store.zig" [color="#cc0000", penwidth=2];
+  "src/lang/zig.zig" -> "src/lang/c.zig";
+  "src/main.zig" -> "src/lang/zig.zig" [style=dotted];
+  "src/main.zig" -> "src/store.zig" [color="#cc0000", penwidth=2];
+  "src/model.zig" -> "src/store.zig" [style=dashed, color="#cc0000", penwidth=2];
+  "src/store.zig" -> "src/model.zig" [color="#cc0000", penwidth=2];
+  "tests/main_test.zig" -> "src/main.zig" [arrowhead=onormal, color="#cc0000", penwidth=2];
+}

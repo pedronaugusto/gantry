@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "gantry",
+          "informationUri": "https://github.com/pedronaugusto/gantry",
+          "rules": [
+            {"id": "named", "defaultConfiguration": {"level": "error"}},
+            {"id": "rule \"quoted\"\nsecond line", "defaultConfiguration": {"level": "error"}}
+          ]
+        }
+      },
+      "columnKind": "unicodeCodePoints",
+      "results": [
+        {"ruleId": "rule \"quoted\"\nsecond line", "ruleIndex": 1, "level": "error", "message": {"text": "pct%20.zig -> q\"uote.zig is forbidden"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "pct%2520.zig"}}}]},
+        {"ruleId": "named", "ruleIndex": 0, "level": "error", "message": {"text": "missing \"x\".zig is required and missing"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "missing%20%22x%22.zig"}}}]}
+      ]
+    }
+  ]
+}

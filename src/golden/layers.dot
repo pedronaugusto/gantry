@@ -1,0 +1,31 @@
+digraph "gantry" {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  subgraph "cluster_0" {
+    label="lang";
+    "src/lang/c.zig";
+    "src/lang/zig.zig";
+  }
+  subgraph "cluster_1" {
+    label="core";
+    "src/model.zig";
+    "src/store.zig";
+  }
+  subgraph "cluster_2" {
+    label="entry";
+    "src/main.zig";
+  }
+  "README.md";
+  "assets/logo.svg";
+  "docs/guide.md";
+  "tests/main_test.zig";
+  "README.md" -> "docs/guide.md" [style=dashed, arrowhead=vee];
+  "docs/guide.md" -> "assets/logo.svg" [style=dotted, arrowhead=odot];
+  "src/lang/c.zig" -> "src/store.zig";
+  "src/lang/zig.zig" -> "src/lang/c.zig";
+  "src/main.zig" -> "src/lang/zig.zig" [style=dotted];
+  "src/main.zig" -> "src/store.zig";
+  "src/model.zig" -> "src/store.zig" [style=dashed];
+  "src/store.zig" -> "src/model.zig";
+  "tests/main_test.zig" -> "src/main.zig" [arrowhead=onormal];
+}

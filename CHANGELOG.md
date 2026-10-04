@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `report.dot`, `mermaid`, `json` and `sarif`: a graph as Graphviz or Mermaid text, clustered by directory or layer, with findings in red; a graph and its findings as JSON of a documented shape; findings as SARIF 2.1.0 for GitHub code scanning, with lines read from the sources by `sarifWithSource`.
+
 - Rust `use util::X` resolves to `util.rs` when the current module declares `mod util;`, as rustc's 2018 paths do, and gives no edge beside an `extern crate util`.
 
 - `importlib.import_module` and `__import__` with literal names are `dynamic` edges, a relative name resolved against its literal package; other arguments stay unsupported.

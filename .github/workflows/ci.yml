@@ -98,6 +98,41 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
       - run: zig build -Dtarget=${{ matrix.target }}
 
+  # The report goldens the suite compares against must read in the tools they are for.
+  reports:
+    name: report formats
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Graphviz lays out the DOT goldens
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q graphviz
+          for f in src/golden/*.dot; do dot -Tsvg "$f" -o /dev/null || exit 1; done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Mermaid renders the flowchart goldens
+        run: |
+          echo '{"args": ["--no-sandbox"]}' > "$RUNNER_TEMP/puppeteer.json"
+          for f in src/golden/*.mmd; do
+            npx -y -p @mermaid-js/mermaid-cli@11 mmdc -q -p "$RUNNER_TEMP/puppeteer.json" -i "$f" -o "$RUNNER_TEMP/out.svg" || exit 1
+          done
+      - name: JSON goldens parse and SARIF goldens match the SARIF 2.1.0 schema
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q jsonschema
+          curl -fsSL https://json.schemastore.org/sarif-2.1.0.json -o "$RUNNER_TEMP/sarif-schema.json"
+          "$RUNNER_TEMP/venv/bin/python" - "$RUNNER_TEMP/sarif-schema.json" src/golden/*.json src/golden/*.sarif <<'PY'
+          import json, sys, jsonschema
+          schema = json.load(open(sys.argv[1], encoding="utf-8"))
+          for name in sys.argv[2:]:
+              document = json.load(open(name, encoding="utf-8"))
+              if name.endswith(".sarif"):
+                  jsonschema.validate(document, schema)
+              print("ok", name)
+          PY
+
   # Keep the documented snippets equal to the examples the suite runs.
   docs:
     name: documented snippets

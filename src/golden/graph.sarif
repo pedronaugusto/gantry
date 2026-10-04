@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "gantry",
+          "informationUri": "https://github.com/pedronaugusto/gantry",
+          "rules": [
+            {"id": "cycles", "defaultConfiguration": {"level": "error"}},
+            {"id": "entry files", "defaultConfiguration": {"level": "error"}},
+            {"id": "lang is a leaf", "defaultConfiguration": {"level": "error"}},
+            {"id": "main reaches no model", "defaultConfiguration": {"level": "error"}},
+            {"id": "named sources", "defaultConfiguration": {"level": "error"}},
+            {"id": "reached docs", "defaultConfiguration": {"level": "error"}}
+          ]
+        }
+      },
+      "columnKind": "unicodeCodePoints",
+      "results": [
+        {"ruleId": "lang is a leaf", "ruleIndex": 2, "level": "error", "message": {"text": "src/lang/c.zig -> src/store.zig is forbidden"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "lib/src/lang/c.zig"}}}]},
+        {"ruleId": "main reaches no model", "ruleIndex": 3, "level": "error", "message": {"text": "src/main.zig -> src/store.zig -> src/model.zig is a forbidden chain"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "lib/src/main.zig"}}}]},
+        {"ruleId": "entry files", "ruleIndex": 1, "level": "error", "message": {"text": "tests/main_test.zig imports src/main.zig, which nothing may import"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "lib/tests/main_test.zig"}}}]},
+        {"ruleId": "named sources", "ruleIndex": 4, "level": "error", "message": {"text": "src/root.zig is required and missing"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "lib/src/root.zig"}}}]},
+        {"ruleId": "cycles", "ruleIndex": 0, "level": "error", "message": {"text": "src/model.zig -> src/store.zig is in a cycle"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "lib/src/model.zig"}}}]},
+        {"ruleId": "reached docs", "ruleIndex": 5, "level": "error", "message": {"text": "docs/guide.md is reached from no entry"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "lib/docs/guide.md"}}}]}
+      ]
+    }
+  ]
+}

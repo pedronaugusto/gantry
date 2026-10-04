@@ -1,0 +1,24 @@
+digraph "gantry" {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+  subgraph "cluster_a b" {
+    label="a b";
+    "a b/#hash&<tag>`tick`.zig" [label="#hash&<tag>`tick`.zig"];
+  }
+  "bad\xffbyte.zig";
+  "new\nline.zig";
+  "pct%20.zig" [color="#cc0000", fontcolor="#cc0000", penwidth=2];
+  "q\"uote.zig" [color="#cc0000", fontcolor="#cc0000", penwidth=2];
+  "tab\x09here.zig";
+  subgraph "cluster_ünï" {
+    label="ünï";
+    "ünï/cödé.zig" [label="cödé.zig"];
+  }
+  "a b/#hash&<tag>`tick`.zig" -> "bad\xffbyte.zig";
+  "bad\xffbyte.zig" -> "new\nline.zig";
+  "new\nline.zig" -> "pct%20.zig";
+  "pct%20.zig" -> "q\"uote.zig" [color="#cc0000", penwidth=2];
+  "q\"uote.zig" -> "tab\x09here.zig";
+  "tab\x09here.zig" -> "ünï/cödé.zig";
+  "ünï/cödé.zig" -> "a b/#hash&<tag>`tick`.zig";
+}
