@@ -3,24 +3,24 @@ const p = @import("path.zig");
 const t = @import("types.zig");
 pub const PythonInitializers = enum { ancestors, explicit, modulefinder };
 pub const NamedModule = struct { name: []const u8, path: []const u8, from: []const u8 = "**" };
-pub const GoModule = @import("go_config.zig").Module;
+pub const GoModule = @import("lang/go/config.zig").Module;
 pub const Context = struct {
     allocator: std.mem.Allocator,
     files: *const std.StringHashMapUnmanaged(void),
     packages: *const std.StringHashMapUnmanaged(std.ArrayList([]const u8)),
     go_modules: []const GoModule,
-    go_workspaces: []const @import("go_config.zig").Workspace = &.{},
+    go_workspaces: []const @import("lang/go/config.zig").Workspace = &.{},
     named_modules: []const NamedModule,
     include_roots: []const []const u8,
     python_roots: []const []const u8,
     python_initializers: PythonInitializers = .ancestors,
     python_reexports: *const std.StringHashMapUnmanaged([]const []const u8) = &.empty,
     ts_configs: []const @import("tsconfig.zig").Config = &.{},
-    nim_configs: []const @import("nim_config.zig").Config = &.{},
+    nim_configs: []const @import("lang/nim/config.zig").Config = &.{},
     java_packages: *const std.StringHashMapUnmanaged(std.ArrayList([]const u8)) = &.empty,
     pub fn candidate(c: Context, root: []const u8, name: []const u8, suffixes: []const []const u8) !?[]const u8 {
         for (suffixes) |suffix| {
-            const norm = @import("resolve_path.zig").join(c.allocator, root, name, suffix) catch |err| switch (err) {
+            const norm = @import("resolve/path.zig").join(c.allocator, root, name, suffix) catch |err| switch (err) {
                 error.InvalidPath => continue,
                 else => return err,
             };

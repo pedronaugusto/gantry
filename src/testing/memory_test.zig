@@ -1,6 +1,6 @@
 const std = @import("std");
-const g = @import("gantry.zig");
-const f = @import("testing/test_support.zig");
+const g = @import("../gantry.zig");
+const f = @import("support.zig");
 const a = std.testing.allocator;
 
 /// A Go module whose `app` files each import package `lib`, so every one
@@ -53,7 +53,7 @@ test "scan returns a large file's scratch before reading the next" {
     for (0..20_000) |_| try source.appendSlice(a, "var x = 1\n");
     var module: Module = .{ .importers = 1, .members = 1, .big = source.items };
     _ = try module.scan();
-    const tokens = 100_002 * @sizeOf(@import("lexer.zig").Token);
+    const tokens = 100_002 * @sizeOf(@import("../lexer.zig").Token);
     try std.testing.expect(module.counter.peak > tokens);
     try std.testing.expect(module.after_big - module.before_big < tokens / 2);
 }

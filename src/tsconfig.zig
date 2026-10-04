@@ -33,7 +33,7 @@ fn validate(value: Value) error{InvalidConfig}!void {
     }
 }
 fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
-    return @import("resolve_path.zig").join(a, root, name, "") catch |err| switch (err) {
+    return @import("resolve/path.zig").join(a, root, name, "") catch |err| switch (err) {
         error.InvalidPath => null,
         else => return err,
     };
@@ -41,7 +41,7 @@ fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
 fn configName(name: []const u8) bool {
     return std.mem.eql(u8, name, "tsconfig.json") or std.mem.eql(u8, name, "jsconfig.json");
 }
-pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype, progress: *@import("scan_diagnostic.zig").Progress) ![]const Config {
+pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype, progress: *@import("scan/diagnostic.zig").Progress) ![]const Config {
     progress.at(.configs, null);
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();

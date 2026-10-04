@@ -1,6 +1,6 @@
 const std = @import("std");
-const g = @import("gantry.zig");
-const f = @import("testing/test_support.zig");
+const g = @import("../gantry.zig");
+const f = @import("support.zig");
 const a = std.testing.allocator;
 
 test "test imports remain edges with kind and rules can exempt them" {

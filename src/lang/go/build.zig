@@ -1,7 +1,7 @@
 //! Constraints are retained as data. Evaluation requires a caller target.
 const std = @import("std");
-const l = @import("lexer.zig");
-const p = @import("path.zig");
+const l = @import("../../lexer.zig");
+const p = @import("../../path.zig");
 pub const Target = struct { os: []const u8, arch: []const u8, tags: []const []const u8 = &.{} };
 pub const File = struct {
     path: []const u8,

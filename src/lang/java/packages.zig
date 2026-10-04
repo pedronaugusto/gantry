@@ -1,7 +1,7 @@
 //! Java files by the package they declare, recovered once for imports too.
 const std = @import("std");
-const java = @import("lang/java.zig");
-const t = @import("types.zig");
+const java = @import("../java.zig");
+const t = @import("../../types.zig");
 
 pub const Packages = std.StringHashMapUnmanaged(std.ArrayList([]const u8));
 
@@ -9,14 +9,14 @@ pub const Packages = std.StringHashMapUnmanaged(std.ArrayList([]const u8));
 /// file without a declaration is in the unnamed package, which no import
 /// can name, and `package-info.java` and `module-info.java` declare no type.
 /// Recoveries are kept in `cached` for the import pass.
-pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import("scan_diagnostic.zig").Progress, recorder: *@import("tokens.zig").Recorder) !Packages {
+pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import("../../scan/diagnostic.zig").Progress, recorder: *@import("../../tokens.zig").Recorder) !Packages {
     progress.at(.java_packages, null);
     var out: Packages = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
     for (paths, 0..) |file, file_index| {
         if (!std.mem.endsWith(u8, file, ".java")) continue;
-        const base = @import("path.zig").base(file);
+        const base = @import("../../path.zig").base(file);
         // Package and module descriptors declare no type an import can name.
         const descriptor = std.mem.eql(u8, base, "package-info.java") or std.mem.eql(u8, base, "module-info.java");
         const s = scratch.allocator();

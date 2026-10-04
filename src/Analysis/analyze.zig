@@ -1,14 +1,14 @@
 //! Iterative SCC discovery, condensation depths and real cycle witnesses.
 const std = @import("std");
 const t = @import("../types.zig");
-const Graph = @import("../Graph/graph_store.zig");
+const Graph = @import("../Graph/storage.zig");
 const Adjacency = @import("reach.zig").Adjacency;
 const Frame = struct { node: usize, next: usize };
 /// The graph supplies unique sorted paths and validated, coalesced edges.
-pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*@import("analysis_store.zig") {
+pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*@import("state.zig") {
     const paths = g.paths;
     const edges = g.edges;
-    const self = try @import("analysis_store.zig").init(gpa);
+    const self = try @import("state.zig").init(gpa);
     errdefer self.deinit();
     const a = self.arena.allocator();
     var scratch: std.heap.ArenaAllocator = .init(gpa);

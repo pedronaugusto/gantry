@@ -11,18 +11,18 @@ references: []const t.Reference = &.{},
 unsupported: []const t.UnsupportedReference = &.{},
 tokens: []const t.Token = &.{},
 /// The token rules the scan recorded occurrences for, by kind and text.
-scanned_tokens: []const @import("../rules/rules_check.zig").TokenRule = &.{},
+scanned_tokens: []const @import("../rules/check.zig").TokenRule = &.{},
 /// Whether the scan read manifest declarations, which dependency rules need.
 manifests: bool = false,
 /// Selected files for which the caller returned null; never silently omitted.
 unread: []const []const u8 = &.{},
-go_files: []const @import("../go_build.zig").File = &.{},
+go_files: []const @import("../lang/go/build.zig").File = &.{},
 files: std.StringHashMapUnmanaged(void) = .empty,
 
 pub fn init(gpa: std.mem.Allocator, paths: []const []const u8) !*Graph {
     return initTracked(gpa, paths, null);
 }
-pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: ?*@import("../scan_diagnostic.zig").Progress) !*Graph {
+pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: ?*@import("../scan/diagnostic.zig").Progress) !*Graph {
     const g = try gpa.create(Graph);
     g.* = .{ .allocator = gpa, .arena = .init(gpa) };
     errdefer g.deinit();
@@ -40,7 +40,7 @@ pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: 
     g.paths = try list.toOwnedSlice(a);
     return g;
 }
-pub fn scannedFor(g: *const Graph, rule: @import("../rules/rules_check.zig").TokenRule) bool {
+pub fn scannedFor(g: *const Graph, rule: @import("../rules/check.zig").TokenRule) bool {
     for (g.scanned_tokens) |scanned| if (scanned.kind == rule.kind and std.mem.eql(u8, scanned.token, rule.token)) return true;
     return false;
 }

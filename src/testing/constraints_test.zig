@@ -1,6 +1,6 @@
 const std = @import("std");
-const g = @import("gantry.zig");
-const f = @import("testing/test_support.zig");
+const g = @import("../gantry.zig");
+const f = @import("support.zig");
 const a = std.testing.allocator;
 const fixture: f.Fixture = .{ .items = &.{
     .{ .path = "go.mod", .text = "module example.org/app" },
@@ -37,7 +37,7 @@ test "Go caller target filters both importers and package expansion" {
 }
 
 test "Go build expression rejects malformed syntax and honors OS aliases" {
-    const build = @import("go_build.zig");
+    const build = @import("../lang/go/build.zig");
     try std.testing.expect(try build.evaluate(a, "unix && linux && !windows", .{ .os = "android", .arch = "arm64" }));
     for ([_][]const u8{ "a &&", "(a", "a b", "a | b", "a)", "" }) |expression| try std.testing.expectError(error.InvalidBuildConstraint, build.evaluate(a, expression, .{ .os = "linux", .arch = "amd64" }));
 }

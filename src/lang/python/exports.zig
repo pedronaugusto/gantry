@@ -1,8 +1,8 @@
 //! A bounded lexical re-export index. Dynamic export lists stay unresolved.
 const std = @import("std");
-const l = @import("lexer.zig");
-const python = @import("lang/python.zig");
-const Spec = @import("types.zig").Spec;
+const l = @import("../../lexer.zig");
+const python = @import("../python.zig");
+const Spec = @import("../../types.zig").Spec;
 const Export = struct { name: []const u8, base: Spec, child: Spec };
 fn top(text: []const u8, offset: usize) bool {
     return offset == 0 or text[offset - 1] == '\n';
@@ -86,7 +86,7 @@ fn targets(a: std.mem.Allocator, source: []const u8, from: []const u8, ctx: anyt
     }
     return out.toOwnedSlice(a);
 }
-pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?@import("types.zig").Recovery, strings: std.mem.Allocator, progress: *@import("scan_diagnostic.zig").Progress, recorder: *@import("tokens.zig").Recorder) !std.StringHashMapUnmanaged([]const []const u8) {
+pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?@import("../../types.zig").Recovery, strings: std.mem.Allocator, progress: *@import("../../scan/diagnostic.zig").Progress, recorder: *@import("../../tokens.zig").Recorder) !std.StringHashMapUnmanaged([]const []const u8) {
     progress.at(.python_exports, null);
     var out: std.StringHashMapUnmanaged([]const []const u8) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);

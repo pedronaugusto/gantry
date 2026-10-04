@@ -3,7 +3,7 @@
 const std = @import("std");
 const t = @import("../types.zig");
 const Graph = @import("../Graph.zig").Graph;
-const Violation = @import("../rules/rules_check.zig").Violation;
+const Violation = @import("../rules/check.zig").Violation;
 const Writer = std.Io.Writer;
 
 /// The length of the UTF-8 sequence that starts at `s[i]`, or null for a

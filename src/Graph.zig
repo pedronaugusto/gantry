@@ -1,7 +1,7 @@
 //! An owned graph. Results are read only and live until deinit.
 const std = @import("std");
 const t = @import("types.zig");
-const store = @import("Graph/graph_store.zig");
+const store = @import("Graph/storage.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
 pub const Graph = enum(usize) {
@@ -45,7 +45,7 @@ pub const Graph = enum(usize) {
     pub fn unread(g: *const Graph) []const []const u8 {
         return store.get(g.*).unread;
     }
-    pub fn goFiles(g: *const Graph) []const @import("go_build.zig").File {
+    pub fn goFiles(g: *const Graph) []const @import("lang/go/build.zig").File {
         return store.get(g.*).go_files;
     }
     /// Membership by exact normalized spelling, including directory nodes in aggregates.
@@ -70,9 +70,9 @@ pub const Graph = enum(usize) {
     /// was not scanned for is `error.UnscannedToken`, never a silent pass,
     /// and a dependency rule on a graph scanned without manifests is
     /// `error.UnscannedManifests`.
-    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules/rules_check.zig").Rules) ![]const @import("rules/rules_check.zig").Violation {
+    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules/check.zig").Rules) ![]const @import("rules/check.zig").Violation {
         for (rules.tokens) |rule| if (!store.get(g.*).scannedFor(rule)) return error.UnscannedToken;
         if (rules.dependencies.len > 0 and !store.get(g.*).manifests) return error.UnscannedManifests;
-        return @import("rules/rules_check.zig").check(g, gpa, rules, @import("rules/dependency_check.zig"));
+        return @import("rules/check.zig").check(g, gpa, rules, @import("rules/dependency_check.zig"));
     }
 };

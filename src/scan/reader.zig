@@ -7,7 +7,7 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
         context: Context,
         allocator: std.mem.Allocator,
         unread: std.StringHashMapUnmanaged(void) = .empty,
-        progress: *@import("scan_diagnostic.zig").Progress,
+        progress: *@import("diagnostic.zig").Progress,
 
         pub fn deinit(self: *Self) void {
             self.unread.deinit(self.allocator);
@@ -24,7 +24,7 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
             var keys = self.unread.keyIterator();
             var i: usize = 0;
             while (keys.next()) |key| : (i += 1) paths[i] = files.getKey(key.*).?;
-            std.mem.sort([]const u8, paths, {}, @import("types.zig").stringsLess);
+            std.mem.sort([]const u8, paths, {}, @import("../types.zig").stringsLess);
             return paths;
         }
     };

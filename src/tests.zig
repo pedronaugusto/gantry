@@ -13,26 +13,26 @@ test "empty graph owns its result" {
 }
 
 test {
-    _ = @import("lexers_test.zig");
-    _ = @import("unsupported_test.zig");
-    _ = @import("resolution_test.zig");
-    _ = @import("configs_test.zig");
-    _ = @import("scan_diagnostic_test.zig");
-    _ = @import("go_modules_test.zig");
-    _ = @import("kinds_test.zig");
-    _ = @import("constraints_test.zig");
-    _ = @import("python_policy_test.zig");
-    _ = @import("graph_test.zig");
+    _ = @import("testing/lexers_test.zig");
+    _ = @import("testing/unsupported_test.zig");
+    _ = @import("testing/resolution_test.zig");
+    _ = @import("testing/configs_test.zig");
+    _ = @import("scan/diagnostic_test.zig");
+    _ = @import("testing/go_modules_test.zig");
+    _ = @import("testing/kinds_test.zig");
+    _ = @import("testing/constraints_test.zig");
+    _ = @import("testing/python_policy_test.zig");
+    _ = @import("Graph_test.zig");
     _ = @import("rules_test.zig");
     _ = @import("report_test.zig");
-    _ = @import("queries_test.zig");
-    _ = @import("dependencies_test.zig");
+    _ = @import("testing/queries_test.zig");
+    _ = @import("testing/dependencies_test.zig");
     _ = @import("tokens_test.zig");
-    _ = @import("fuzz_test.zig");
+    _ = @import("testing/fuzz_test.zig");
     _ = @import("manifests_test.zig");
-    _ = @import("nim_test.zig");
-    _ = @import("java_test.zig");
-    _ = @import("recovery_test.zig");
-    _ = @import("properties_test.zig");
-    _ = @import("memory_test.zig");
+    _ = @import("lang/nim_test.zig");
+    _ = @import("lang/java_test.zig");
+    _ = @import("testing/recovery_test.zig");
+    _ = @import("testing/properties_test.zig");
+    _ = @import("testing/memory_test.zig");
 }

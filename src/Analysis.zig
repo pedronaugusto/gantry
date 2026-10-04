@@ -1,7 +1,7 @@
 //! Owned layers, components and cycle witnesses, independent of the graph.
 const std = @import("std");
 const t = @import("types.zig");
-const store = @import("Analysis/analysis_store.zig");
+const store = @import("Analysis/state.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
 pub const Analysis = enum(usize) {
@@ -93,7 +93,7 @@ pub const Analysis = enum(usize) {
     /// endpoints, InvalidCount for zero counts, and CountOverflow when counts merge
     /// past usize. Results are sorted independently of input order and borrow nothing.
     pub fn init(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) (std.mem.Allocator.Error || error{ InvalidPath, UnknownPath, InvalidCount, CountOverflow })!Analysis {
-        const graph = try @import("Graph/graph_store.zig").fromEdges(gpa, paths, edges);
+        const graph = try @import("Graph/storage.zig").fromEdges(gpa, paths, edges);
         defer graph.deinit();
         return @enumFromInt(@intFromPtr(try @import("Analysis/analyze.zig").analyze(graph, gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }

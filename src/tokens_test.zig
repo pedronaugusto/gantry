@@ -1,6 +1,6 @@
 const std = @import("std");
 const g = @import("gantry.zig");
-const f = @import("testing/test_support.zig");
+const f = @import("testing/support.zig");
 const a = std.testing.allocator;
 const eq = std.testing.expectEqual;
 const eqs = std.testing.expectEqualStrings;

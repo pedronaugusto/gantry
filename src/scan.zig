@@ -3,12 +3,12 @@ const std = @import("std");
 const t = @import("types.zig");
 const resolver = @import("resolve.zig");
 const recover = @import("recover.zig");
-const Graph = @import("Graph/graph_store.zig");
-const diagnostics = @import("scan_diagnostic.zig");
+const Graph = @import("Graph/storage.zig");
+const diagnostics = @import("scan/diagnostic.zig");
 const manifests = @import("manifests.zig");
 const path = @import("path.zig");
 const languages = @import("languages.zig");
-const api = @import("scan_options.zig");
+const api = @import("scan/options.zig");
 const languageOf = api.languageOf;
 const Options = api.Options;
 const Language = t.Language;
@@ -16,7 +16,7 @@ const Kind = t.Kind;
 const Reference = t.Reference;
 const Dependency = t.Dependency;
 const GoFile = api.GoFile;
-const ImportStore = @import("Imports/import_store.zig");
+const ImportStore = @import("Imports/state.zig");
 const PathStore = @import("owned_slice.zig").Store([]const u8);
 const Recorder = @import("tokens.zig").Recorder;
 pub const Imports = @import("Imports.zig").Imports;
@@ -92,7 +92,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     var workspace: std.heap.ArenaAllocator = .init(gpa);
     defer workspace.deinit();
     const w = workspace.allocator();
-    const Reader = @import("scan_reader.zig").Reader(@TypeOf(context), read);
+    const Reader = @import("scan/reader.zig").Reader(@TypeOf(context), read);
     var reader: Reader = .{ .context = context, .allocator = gpa, .progress = &progress };
     defer reader.deinit();
     var scratch: std.heap.ArenaAllocator = .init(gpa);
@@ -109,7 +109,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     };
     var recorder: Recorder = try .init(w, a, options.tokens, g.paths.len);
     if (recorder.active()) {
-        const scanned = try a.alloc(@import("rules/rules_check.zig").TokenRule, options.tokens.len);
+        const scanned = try a.alloc(@import("rules/check.zig").TokenRule, options.tokens.len);
         for (options.tokens, scanned) |rule, *dest| dest.* = .{ .name = "", .kind = rule.kind, .token = try a.dupe(u8, rule.token) };
         g.scanned_tokens = scanned;
     }
@@ -122,7 +122,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         if (try reader.readFile(p, s)) |text| {
             progress.at(.go_constraints, p);
             const tokens = try recorder.lex(languages.go, s, file_index, p, .go, text);
-            var info = try @import("go_build.zig").parseTokens(s, p, text, options.go_target, tokens);
+            var info = try @import("lang/go/build.zig").parseTokens(s, p, text, options.go_target, tokens);
             info.package = try a.dupe(u8, info.package);
             if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
             try go_files.append(a, info);
@@ -145,7 +145,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         try entry.value_ptr.append(w, p);
     };
     var modules: std.ArrayList(resolver.GoModule) = .empty;
-    var workspaces: std.ArrayList(@import("go_config.zig").Workspace) = .empty;
+    var workspaces: std.ArrayList(@import("lang/go/config.zig").Workspace) = .empty;
     var deps: std.ArrayList(Dependency) = .empty;
     var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     // Read manifests first: Go imports need the module identity even when
@@ -158,7 +158,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         if (try reader.readFile(p, s)) |text| {
             progress.at(.manifests, p);
             if (is_mod or is_work) {
-                const parsed = try @import("go_config.zig").parse(w, path.dir(p), try w.dupe(u8, text));
+                const parsed = try @import("lang/go/config.zig").parse(w, path.dir(p), try w.dupe(u8, text));
                 if (is_mod) if (parsed.name) |name| {
                     try modules.append(w, .{ .root = path.dir(p), .name = name, .requires = parsed.requires, .replacements = parsed.replacements });
                 };
@@ -177,13 +177,13 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     }
     const configs = try @import("tsconfig.zig").load(w, gpa, g.paths, &g.files, &reader, Reader.readFile, &progress);
-    const nim_configs = try @import("nim_config.zig").load(w, gpa, g.paths, &reader, Reader.readFile, &progress);
+    const nim_configs = try @import("lang/nim/config.zig").load(w, gpa, g.paths, &reader, Reader.readFile, &progress);
     progress.at(.resolution, null);
     const index = try recover.names(w, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs, .nim_configs = nim_configs };
     const test_files = try @import("code_kind.zig").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress, &recorder);
-    const java_packages = if (code_enabled) try @import("java_packages.zig").index(w, gpa, g.paths, &reader, Reader.readFile, cached, a, &progress, &recorder) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
-    const reexports = if (options.python_star_reexports) try @import("python_exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress, &recorder) else std.StringHashMapUnmanaged([]const []const u8).empty;
+    const java_packages = if (code_enabled) try @import("lang/java/packages.zig").index(w, gpa, g.paths, &reader, Reader.readFile, cached, a, &progress, &recorder) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
+    const reexports = if (options.python_star_reexports) try @import("lang/python/exports.zig").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress, &recorder) else std.StringHashMapUnmanaged([]const []const u8).empty;
     // Edges wait as path positions outside graph storage: a quarter of an
     // `Edge`, and their outgrown buffers go back to the allocator.
     const position = try Graph.positions(w, g.paths);
@@ -302,7 +302,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     g.dependencies = try deps.toOwnedSlice(a);
     g.manifests = options.manifests;
     g.unread = try reader.unreadPaths(a, &g.files);
-    return @import("Graph/graph_store.zig").owner(@import("Graph.zig").Graph, g);
+    return @import("Graph/storage.zig").owner(@import("Graph.zig").Graph, g);
 }
 pub fn walk(gpa: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, context: anytype, comptime keep: anytype) !Paths {
     const result = try PathStore.create(gpa);

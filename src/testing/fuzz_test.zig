@@ -8,10 +8,10 @@
 //! the same result twice.
 const std = @import("std");
 const testing = std.testing;
-const g = @import("gantry.zig");
-const lexer = @import("lexer.zig");
-const tokens = @import("tokens.zig");
-const manifests = @import("manifests.zig");
+const g = @import("../gantry.zig");
+const lexer = @import("../lexer.zig");
+const tokens = @import("../tokens.zig");
+const manifests = @import("../manifests.zig");
 
 /// The longest input a property reads.
 const most = 4096;
@@ -363,7 +363,7 @@ test "fuzz: jsconfig.json" {
 }
 
 test "fuzz: package names in import spellings" {
-    const dependencies = @import("rules/dependency_check.zig");
+    const dependencies = @import("../rules/dependency_check.zig");
     const Property = struct {
         fn one(_: void, smith: *testing.Smith) anyerror!void {
             var buffer: [most]u8 = undefined;

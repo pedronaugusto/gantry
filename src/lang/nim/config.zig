@@ -2,8 +2,8 @@
 //! configs. Only literal paths are read; `$` substitutions and computed
 //! NimScript values are not evaluated, and conditions are not either.
 const std = @import("std");
-const l = @import("lexer.zig");
-const p = @import("path.zig");
+const l = @import("../../lexer.zig");
+const p = @import("../../path.zig");
 /// The paths one config adds, joined to its folder, in the order it adds them.
 /// A config applies to the files below its folder.
 pub const Config = struct { dir: []const u8, paths: []const []const u8 };
@@ -15,7 +15,7 @@ pub fn name(file: []const u8) bool {
 }
 
 /// Configs ordered from the root down, so a nearer one comes later.
-pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, progress: *@import("scan_diagnostic.zig").Progress) ![]const Config {
+pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, progress: *@import("../../scan/diagnostic.zig").Progress) ![]const Config {
     var out: std.ArrayList(Config) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
@@ -29,7 +29,7 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         var joined: std.ArrayList([]const u8) = .empty;
         for (values) |value| {
             if (value.len == 0 or std.mem.indexOfScalar(u8, value, '$') != null) continue;
-            const full = @import("resolve_path.zig").join(a, p.dir(file), value, "") catch |err| switch (err) {
+            const full = @import("../../resolve/path.zig").join(a, p.dir(file), value, "") catch |err| switch (err) {
                 error.InvalidPath => continue,
                 else => return err,
             };

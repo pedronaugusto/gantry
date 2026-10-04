@@ -4,9 +4,9 @@
 const std = @import("std");
 const t = @import("../types.zig");
 const p = @import("../path.zig");
-const engine = @import("rules_check.zig");
+const engine = @import("check.zig");
 const builtins = @import("../builtins.zig");
-const languageOf = @import("../scan_options.zig").languageOf;
+const languageOf = @import("../scan/options.zig").languageOf;
 
 pub const Ecosystem = enum {
     npm,

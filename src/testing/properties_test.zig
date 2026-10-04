@@ -1,5 +1,5 @@
 const std = @import("std");
-const g = @import("gantry.zig");
+const g = @import("../gantry.zig");
 const a = std.testing.allocator;
 test "generated graphs agree with transitive reachability and longest condensation paths" {
     const n = 10;

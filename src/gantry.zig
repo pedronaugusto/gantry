@@ -19,16 +19,16 @@ pub const Coupling = t.Coupling;
 pub const Cycle = t.Cycle;
 pub const Spec = t.Spec;
 pub const PythonInitializers = resolver.PythonInitializers;
-pub const GoTarget = @import("go_build.zig").Target;
-pub const GoFile = @import("go_build.zig").File;
+pub const GoTarget = @import("lang/go/build.zig").Target;
+pub const GoFile = @import("lang/go/build.zig").File;
 pub const NamedModule = resolver.NamedModule;
 pub const rules = @import("rules.zig");
 pub const manifests = @import("manifests.zig");
 pub const path = @import("path.zig");
 /// DOT, Mermaid, JSON and SARIF text for a graph and its findings.
 pub const report = @import("report.zig");
-pub const Options = @import("scan_options.zig").Options;
-pub const languageOf = @import("scan_options.zig").languageOf;
+pub const Options = @import("scan/options.zig").Options;
+pub const languageOf = @import("scan/options.zig").languageOf;
 /// The reference kinds a scan reads from a path, by its name alone.
 pub const kindsOf = @import("scan.zig").kindsOf;
 /// Raw lexical recovery, owning source bytes and every slice until deinit.
@@ -42,7 +42,7 @@ pub const scan = @import("scan.zig").scan;
 /// The same atomic scan, with a caller-owned file, phase, optional byte offset
 /// and cause on failure.
 pub const scanWithDiagnostic = @import("scan.zig").scanWithDiagnostic;
-pub const ScanDiagnostic = @import("scan_diagnostic.zig").ScanDiagnostic;
+pub const ScanDiagnostic = @import("scan/diagnostic.zig").ScanDiagnostic;
 /// Reader over an already-open directory; directory ownership stays with caller.
 /// The byte limit is caller policy. A missing selected file is an I/O error.
 pub const DirReader = struct {
