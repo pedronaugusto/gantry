@@ -51,9 +51,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
+      - uses: actions/checkout@v4
         with:
-          version: 0.16.0
+          repository: pedronaugusto/preflight
+          ref: c9402c40326a17daaeb579293960b44c8eb2132b
+          path: .preflight
+      - uses: ./.preflight/.github/actions/setup
       - uses: actions/setup-node@v4
         with:
           node-version: 22
