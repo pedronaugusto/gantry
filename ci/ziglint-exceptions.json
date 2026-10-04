@@ -1,0 +1,1101 @@
+[
+  {
+    "rule": "Z023",
+    "path": "src/tests.zig",
+    "source": "fn read(_: void, _: []const u8, _: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/Graph_test.zig",
+    "source": "fn read(text: []const u8, _: []const u8, _: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/Analysis/analyze.zig",
+    "source": "while (std.mem.indexOfScalarPos(u8, path, at, '/')) |slash| : (at = slash + 1) {",
+    "detail": "'indexOfScalarPos' is deprecated: Deprecated in favor of `findScalarPos`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Analysis/analyze.zig",
+    "source": "pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*@import(\"state.zig\") {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Analysis/analyze.zig",
+    "source": "const self = try @import(\"state.zig\").init(gpa);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z009",
+    "path": "src/Analysis/state.zig",
+    "source": "//! Construction storage for the public analysis owner.",
+    "detail": "file 'state.zig' has top-level fields and should be PascalCase",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z030",
+    "path": "src/Analysis/state.zig",
+    "source": "pub fn deinit(self: *State) void {",
+    "detail": "deinit should set self.* = undefined",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/tsconfig.zig",
+    "source": "return @import(\"resolve/path.zig\").join(a, root, name, \"\") catch |err| switch (err) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/tsconfig.zig",
+    "source": "pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype, progress: *@import(\"scan/diagnostic.zig\").Progress) ![]const Config {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/tsconfig.zig",
+    "source": "const value = try @import(\"jsonc.zig\").parse(a, s, text);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/code_kind.zig",
+    "source": "pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import(\"scan/diagnostic.zig\").Progress, recorder: *@import(\"tokens.zig\").Recorder) !std.StringHashMapUnmanaged(void) {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/code_kind.zig",
+    "source": "pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import(\"scan/diagnostic.zig\").Progress, recorder: *@import(\"tokens.zig\").Recorder) !std.StringHashMapUnmanaged(void) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/code_kind.zig",
+    "source": "pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import(\"scan/diagnostic.zig\").Progress, recorder: *@import(\"tokens.zig\").Recorder) !std.StringHashMapUnmanaged(void) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/code_kind.zig",
+    "source": "const rust = @import(\"lang/rust.zig\");",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/recover.zig",
+    "source": "i = if (std.mem.indexOfPos(u8, text, i + 4, \"-->\")) |end| end + 3 else text.len;",
+    "detail": "'indexOfPos' is deprecated: Deprecated in favor of `findPos`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/recover.zig",
+    "source": "i = if (std.mem.indexOfPos(u8, text, end, marker)) |close| close + marker.len else end;",
+    "detail": "'indexOfPos' is deprecated: Deprecated in favor of `findPos`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/report_test.zig",
+    "source": "fn read(_: void, p: []const u8, _: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/report_test.zig",
+    "source": "fn read(_: void, _: []const u8, _: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z009",
+    "path": "src/Graph/storage.zig",
+    "source": "//! A graph owns every path and slice it exposes until deinit.",
+    "detail": "file 'storage.zig' has top-level fields and should be PascalCase",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z030",
+    "path": "src/Graph/storage.zig",
+    "source": "pub fn deinit(g: *Graph) void {",
+    "detail": "deinit should set g.* = undefined",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z021",
+    "path": "src/Graph/storage.zig",
+    "source": "const Graph = @This();",
+    "detail": "@This() alias 'Graph' should match filename 'storage' or be 'Self'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "scanned_tokens: []const @import(\"../rules/check.zig\").TokenRule = &.{},",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "go_files: []const @import(\"../lang/go/build.zig\").File = &.{},",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: ?*@import(\"../scan/diagnostic.zig\").Progress) !*Graph {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "const path = try @import(\"../path.zig\").normalize(a, raw);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "pub fn scannedFor(g: *const Graph, rule: @import(\"../rules/check.zig\").TokenRule) bool {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "const from = try @import(\"../path.zig\").normalize(a, edge.from);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "const to = try @import(\"../path.zig\").normalize(a, edge.to);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "for (g.paths, paths) |path, *dest| dest.* = @import(\"../path.zig\").directory(path, depth);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "for (g.edges, edges) |edge, *dest| dest.* = .{ .from = @import(\"../path.zig\").directory(edge.from, depth), .to = @import(\"../path.zig\").directory(edge.to, depth), .kind = edge.kind, .count = edge.count };",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph/storage.zig",
+    "source": "for (g.edges, edges) |edge, *dest| dest.* = .{ .from = @import(\"../path.zig\").directory(edge.from, depth), .to = @import(\"../path.zig\").directory(edge.to, depth), .kind = edge.kind, .count = edge.count };",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z009",
+    "path": "src/Imports/state.zig",
+    "source": "//! One owner for lexical references and the constructs recovery could not read.",
+    "detail": "file 'state.zig' has top-level fields and should be PascalCase",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z030",
+    "path": "src/Imports/state.zig",
+    "source": "pub fn deinit(state: *State) void {",
+    "detail": "deinit should set state.* = undefined",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan/reader.zig",
+    "source": "progress: *@import(\"diagnostic.zig\").Progress,",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan/reader.zig",
+    "source": "std.mem.sort([]const u8, paths, {}, @import(\"../types.zig\").stringsLess);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z030",
+    "path": "src/scan/diagnostic.zig",
+    "source": "pub fn deinit(diagnostic: *ScanDiagnostic) void {",
+    "detail": "deinit should set diagnostic.* = undefined",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/scan/diagnostic_test.zig",
+    "source": "fn read(self: *@This(), _: []const u8, _: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/scan/diagnostic_test.zig",
+    "source": "fn read(self: *@This(), _: []const u8, _: std.mem.Allocator) !?[]const u8 {",
+    "detail": "inline @This() in named struct; use 'Reader' instead",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan/options.zig",
+    "source": "tokens: []const @import(\"../rules/check.zig\").TokenRule = &.{},",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/rules.zig",
+    "source": "pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Violation {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/lang/javascript.zig",
+    "source": "if (std.mem.indexOfScalar(u8, m.pattern, '*')) |star| {",
+    "detail": "'indexOfScalar' is deprecated: Deprecated in favor of `findScalar`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/javascript.zig",
+    "source": "} else if (@import(\"../tsconfig.zig\").nearest(c.ts_configs, from)) |cfg| {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/javascript.zig",
+    "source": "var best: ?@import(\"../tsconfig.zig\").Mapping = null;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/go/config.zig",
+    "source": "return @import(\"../../resolve/path.zig\").join(a, root, name, \"\") catch |err| switch (err) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/lang/go/build.zig",
+    "source": "if (std.mem.lastIndexOfScalar(u8, stem, '_')) |last| {",
+    "detail": "'lastIndexOfScalar' is deprecated: Deprecated in favor of `findScalarLast`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/lang/go/build.zig",
+    "source": "if (std.mem.lastIndexOfScalar(u8, stem[0..last], '_')) |previous| {",
+    "detail": "'lastIndexOfScalar' is deprecated: Deprecated in favor of `findScalarLast`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/nim/config.zig",
+    "source": "pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, progress: *@import(\"../../scan/diagnostic.zig\").Progress) ![]const Config {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/nim/config.zig",
+    "source": "const full = @import(\"../../resolve/path.zig\").join(a, p.dir(file), value, \"\") catch |err| switch (err) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/lang/java.zig",
+    "source": "while (std.mem.lastIndexOfScalar(u8, name[0..end], '.')) |dot| : (end = dot) {",
+    "detail": "'lastIndexOfScalar' is deprecated: Deprecated in favor of `findScalarLast`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/lang/python/exports.zig",
+    "source": "pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?@import(\"../../types.zig\").Recovery, strings: std.mem.Allocator, progress: *@import(\"../../scan/diagnostic.zig\").Progress, recorder: *@import(\"../../tokens.zig\").Recorder) !std.StringHashMapUnmanaged([]const []const u8) {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/python/exports.zig",
+    "source": "pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?@import(\"../../types.zig\").Recovery, strings: std.mem.Allocator, progress: *@import(\"../../scan/diagnostic.zig\").Progress, recorder: *@import(\"../../tokens.zig\").Recorder) !std.StringHashMapUnmanaged([]const []const u8) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/python/exports.zig",
+    "source": "pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?@import(\"../../types.zig\").Recovery, strings: std.mem.Allocator, progress: *@import(\"../../scan/diagnostic.zig\").Progress, recorder: *@import(\"../../tokens.zig\").Recorder) !std.StringHashMapUnmanaged([]const []const u8) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/python/exports.zig",
+    "source": "pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?@import(\"../../types.zig\").Recovery, strings: std.mem.Allocator, progress: *@import(\"../../scan/diagnostic.zig\").Progress, recorder: *@import(\"../../tokens.zig\").Recorder) !std.StringHashMapUnmanaged([]const []const u8) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z017",
+    "path": "src/lang/nim.zig",
+    "source": "return try name.toOwnedSlice(a);",
+    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try name.toOwnedSlice(a); return value;`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/lang/python.zig",
+    "source": "const begin = if (std.mem.lastIndexOfScalar(u8, source[0..t.offset], '\\n')) |nl| nl + 1 else 0;",
+    "detail": "'lastIndexOfScalar' is deprecated: Deprecated in favor of `findScalarLast`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/zig.zig",
+    "source": "if (std.mem.eql(u8, name, m.name) and @import(\"../rules/check.zig\").matches(m.from, from)) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/lang/java/packages.zig",
+    "source": "pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import(\"../../scan/diagnostic.zig\").Progress, recorder: *@import(\"../../tokens.zig\").Recorder) !Packages {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/java/packages.zig",
+    "source": "pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import(\"../../scan/diagnostic.zig\").Progress, recorder: *@import(\"../../tokens.zig\").Recorder) !Packages {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/java/packages.zig",
+    "source": "pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, cached: []?t.Recovery, strings: std.mem.Allocator, progress: *@import(\"../../scan/diagnostic.zig\").Progress, recorder: *@import(\"../../tokens.zig\").Recorder) !Packages {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/java/packages.zig",
+    "source": "const base = @import(\"../../path.zig\").base(file);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/lang/java_test.zig",
+    "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z017",
+    "path": "src/lang/java_test.zig",
+    "source": "return try scratch.dupe(u8, if (std.mem.eql(u8, name, \"A.java\")) \"package a; import b.B;\" else \"package b; class B {}\");",
+    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try scratch.dupe(u8, if (std.mem.eql; return value;`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/lang/java_test.zig",
+    "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/go.zig",
+    "source": "var owner: ?@import(\"go/config.zig\").Module = null;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/go.zig",
+    "source": "const config = @import(\"go/config.zig\");",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/go.zig",
+    "source": "const key = try @import(\"../resolve/path.zig\").join(a, main.root, tail, \"\");",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/lang/go.zig",
+    "source": "const key = try @import(\"../resolve/path.zig\").join(a, root, tail, \"\");",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/testing/kinds_test.zig",
+    "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z017",
+    "path": "src/testing/kinds_test.zig",
+    "source": "return try scratch.dupe(u8, if (std.mem.eql(u8, name, \"src/lib.rs\")) \"#[cfg(test)] mod helper;\" else if (std.mem.eql(u8, name, \"src/helper.rs\")) \"mod child; use crate::util;\" else if (std.mem.eql(u8, name, \"src/helper/child.rs\")) \"use crate::util;\" else \"\");",
+    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try scratch.dupe(u8, if (std.mem.eql; return value;`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/testing/kinds_test.zig",
+    "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z013",
+    "path": "src/testing/recovery_test.zig",
+    "source": "const g = @import(\"../gantry.zig\");",
+    "detail": "unused import 'g'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z013",
+    "path": "src/testing/go_modules_test.zig",
+    "source": "const g = @import(\"../gantry.zig\");",
+    "detail": "unused import 'g'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/testing/support.zig",
+    "source": "pub fn read(self: Fixture, path: []const u8, a: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z007",
+    "path": "src/testing/lexers_test.zig",
+    "source": "const lexer = @import(\"../lexer.zig\");",
+    "detail": "duplicate import '\"../lexer.zig\"'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/testing/lexers_test.zig",
+    "source": "const tokens = try @import(\"../lexer.zig\").lex(.javascript, std.testing.allocator, \"if (f(`a${ g({}) }`)) /x/.test(y);\");",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/testing/fuzz_test.zig",
+    "source": "fn read(one: One, path: []const u8, a: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z017",
+    "path": "src/testing/fuzz_test.zig",
+    "source": "if (std.mem.eql(u8, path, one.path)) return try a.dupe(u8, one.text);",
+    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try a.dupe(u8, one.text); return value;`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/testing/memory_test.zig",
+    "source": "fn read(self: *Module, path: []const u8, s: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z017",
+    "path": "src/testing/memory_test.zig",
+    "source": "return try s.dupe(u8, \"package lib\\n\");",
+    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try s.dupe(u8, \"package lib\\n\"); return value;`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/testing/memory_test.zig",
+    "source": "const tokens = 100_002 * @sizeOf(@import(\"../lexer.zig\").Token);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/testing/resolution_test.zig",
+    "source": "fn read(self: *ScratchReader, _: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/testing/constraints_test.zig",
+    "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z017",
+    "path": "src/testing/constraints_test.zig",
+    "source": "return try scratch.dupe(u8, if (std.mem.eql(u8, name, \"go.mod\")) \"module example.org/app\" else if (std.mem.eql(u8, name, \"main.go\")) \"//go:build linux\\n\\npackage app\\nimport \\\"example.org/app/lib\\\"\" else \"package lib\");",
+    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try scratch.dupe(u8, if (std.mem.eql; return value;`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/testing/constraints_test.zig",
+    "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/testing/python_policy_test.zig",
+    "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z017",
+    "path": "src/testing/python_policy_test.zig",
+    "source": "return try scratch.dupe(u8, if (std.mem.eql(u8, name, \"pkg/__init__.py\")) \"from .api import *\" else if (std.mem.eql(u8, name, \"pkg/api.py\")) \"from .impl import Public as Exposed\\n__all__ = ['Exposed']\" else \"\");",
+    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try scratch.dupe(u8, if (std.mem.eql; return value;`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/testing/python_policy_test.zig",
+    "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z030",
+    "path": "src/report.zig",
+    "source": "fn deinit(m: *Marks, gpa: std.mem.Allocator) void {",
+    "detail": "deinit should set m.* = undefined",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/report.zig",
+    "source": "fn indent(o: *@This()) Writer.Error!void {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/report.zig",
+    "source": "fn open(o: *@This(), dir: []const u8, label: []const u8) Writer.Error!void {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/report.zig",
+    "source": "fn openLayer(o: *@This(), index: usize, name: []const u8) Writer.Error!void {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/report.zig",
+    "source": "fn close(o: *@This()) Writer.Error!void {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/report.zig",
+    "source": "fn node(o: *@This(), index: usize, p: []const u8) Writer.Error!void {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/report.zig",
+    "source": "fn edge(o: *@This(), index: usize, e: t.Edge, from: usize, to: usize) Writer.Error!void {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const PathStore = @import(\"owned_slice.zig\").Store([]const u8);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options) !@import(\"Graph.zig\").Graph {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, diagnostic: ?*diagnostics.ScanDiagnostic) !@import(\"Graph.zig\").Graph {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const Reader = @import(\"scan/reader.zig\").Reader(@TypeOf(context), read);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const scanned = try a.alloc(@import(\"rules/check.zig\").TokenRule, options.tokens.len);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "var info = try @import(\"lang/go/build.zig\").parseTokens(s, p, text, options.go_target, tokens);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const recovery = try @import(\"lang/go.zig\").recoverTokens(s, text, tokens);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "var workspaces: std.ArrayList(@import(\"lang/go/config.zig\").Workspace) = .empty;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const parsed = try @import(\"lang/go/config.zig\").parse(w, path.dir(p), try w.dupe(u8, text));",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const configs = try @import(\"tsconfig.zig\").load(w, gpa, g.paths, &g.files, &reader, Reader.readFile, &progress);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const nim_configs = try @import(\"lang/nim/config.zig\").load(w, gpa, g.paths, &reader, Reader.readFile, &progress);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const test_files = try @import(\"code_kind.zig\").rustFiles(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress, &recorder);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const java_packages = if (code_enabled) try @import(\"lang/java/packages.zig\").index(w, gpa, g.paths, &reader, Reader.readFile, cached, a, &progress, &recorder) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const reexports = if (options.python_star_reexports) try @import(\"lang/python/exports.zig\").index(w, gpa, g.paths, base_ctx, &reader, Reader.readFile, cached, a, &progress, &recorder) else std.StringHashMapUnmanaged([]const []const u8).empty;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const kind: Kind = if (spec.kind == .@\"test\" or test_files.contains(p) or @import(\"code_kind.zig\").file(language.?, p)) .@\"test\" else spec.kind;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "const edge_kind: Kind = if (kind == .@\"test\" or test_files.contains(target) or @import(\"code_kind.zig\").file(language.?, target)) .@\"test\" else kind;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "return @import(\"Graph/storage.zig\").owner(@import(\"Graph.zig\").Graph, g);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/scan.zig",
+    "source": "return @import(\"Graph/storage.zig\").owner(@import(\"Graph.zig\").Graph, g);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Analysis.zig",
+    "source": "const walk = @import(\"Analysis/reach.zig\");",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Analysis.zig",
+    "source": "const graph = try @import(\"Graph/storage.zig\").fromEdges(gpa, paths, edges);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Analysis.zig",
+    "source": "return @enumFromInt(@intFromPtr(try @import(\"Analysis/analyze.zig\").analyze(graph, gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Analysis.zig",
+    "source": "try @import(\"Analysis/reach.zig\").closure(gpa, adjacency, positions.items, marks);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/resolve.zig",
+    "source": "go_workspaces: []const @import(\"lang/go/config.zig\").Workspace = &.{},",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/resolve.zig",
+    "source": "ts_configs: []const @import(\"tsconfig.zig\").Config = &.{},",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/resolve.zig",
+    "source": "nim_configs: []const @import(\"lang/nim/config.zig\").Config = &.{},",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/resolve.zig",
+    "source": "const norm = @import(\"resolve/path.zig\").join(c.allocator, root, name, suffix) catch |err| switch (err) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/resolve.zig",
+    "source": "inline else => |lang| @field(@import(\"languages.zig\"), @tagName(lang)).resolve(c, from, spec),",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/manifests_test.zig",
+    "source": "try std.testing.expectEqual(@as(?usize, std.mem.indexOf(u8, text, \"requires \\\"a\\\"\")), diagnostic.failure.?.offset);",
+    "detail": "'indexOf' is deprecated: Deprecated in favor of `find`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/rules/dependency_check.zig",
+    "source": "pub fn check(g: anytype, a: std.mem.Allocator, rule: engine.DependencyRule, out: *engine.Findings) !void {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z012",
+    "path": "src/rules/dependency_check.zig",
+    "source": "pub fn hash(_: @This(), k: Key) u64 {",
+    "detail": "public function exposes private type 'Key'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z012",
+    "path": "src/rules/dependency_check.zig",
+    "source": "pub fn eql(_: @This(), x: Key, y: Key) bool {",
+    "detail": "public function exposes private type 'Key'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z012",
+    "path": "src/rules/dependency_check.zig",
+    "source": "pub fn eql(_: @This(), x: Key, y: Key) bool {",
+    "detail": "public function exposes private type 'Key'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/rules/dependency_check.zig",
+    "source": "pub fn hash(_: @This(), k: Key) u64 {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/rules/dependency_check.zig",
+    "source": "pub fn eql(_: @This(), x: Key, y: Key) bool {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/rules/check.zig",
+    "source": "pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependencies: type) ![]const Violation {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/rules/check.zig",
+    "source": "pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependencies: type) ![]const Violation {",
+    "detail": "'type' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z030",
+    "path": "src/rules/check.zig",
+    "source": "fn deinit(f: *Findings) void {",
+    "detail": "deinit should set f.* = undefined",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/rules/check.zig",
+    "source": "const dir = @import(\"../path.zig\").dir(ref.from);",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/rules/check.zig",
+    "source": "normalized = @import(\"../path.zig\").normalize(a, raw) catch |err| switch (err) {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/rules/check.zig",
+    "source": "const walk = @import(\"../Analysis/reach.zig\");",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/rules/check.zig",
+    "source": "if (std.mem.indexOfScalar(u8, pattern, '/') == null and !std.mem.eql(u8, pattern, \"**\")) return component(pattern, @import(\"../path.zig\").base(path));",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/manifests.zig",
+    "source": "const comment_at = std.mem.indexOf(u8, line, \"//\");",
+    "detail": "'indexOf' is deprecated: Deprecated in favor of `find`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/manifests.zig",
+    "source": "const sub = std.mem.indexOfScalar(u8, tail, '.');",
+    "detail": "'indexOfScalar' is deprecated: Deprecated in favor of `findScalar`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/manifests.zig",
+    "source": "const url = std.mem.indexOf(u8, raw, \" @ \");",
+    "detail": "'indexOf' is deprecated: Deprecated in favor of `find`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/manifests.zig",
+    "source": "if (std.mem.eql(u8, name, \"package.json\")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, \"build.zig.zon\")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, \"go.mod\")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, \"Cargo.toml\") or std.mem.eql(u8, name, \"pyproject.toml\")) try toml(a, path, text, &out) else if (supported(path) and std.mem.endsWith(u8, name, \".nimble\")) try @import(\"manifests/nimble.zig\").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, \"pom.xml\")) try @import(\"manifests/maven.zig\").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, \"build.gradle\") or std.mem.eql(u8, name, \"build.gradle.kts\")) try @import(\"manifests/gradle.zig\").parse(a, path, text, &out, &unsupported) else return error.UnsupportedManifest;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/manifests.zig",
+    "source": "if (std.mem.eql(u8, name, \"package.json\")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, \"build.zig.zon\")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, \"go.mod\")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, \"Cargo.toml\") or std.mem.eql(u8, name, \"pyproject.toml\")) try toml(a, path, text, &out) else if (supported(path) and std.mem.endsWith(u8, name, \".nimble\")) try @import(\"manifests/nimble.zig\").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, \"pom.xml\")) try @import(\"manifests/maven.zig\").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, \"build.gradle\") or std.mem.eql(u8, name, \"build.gradle.kts\")) try @import(\"manifests/gradle.zig\").parse(a, path, text, &out, &unsupported) else return error.UnsupportedManifest;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/manifests.zig",
+    "source": "if (std.mem.eql(u8, name, \"package.json\")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, \"build.zig.zon\")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, \"go.mod\")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, \"Cargo.toml\") or std.mem.eql(u8, name, \"pyproject.toml\")) try toml(a, path, text, &out) else if (supported(path) and std.mem.endsWith(u8, name, \".nimble\")) try @import(\"manifests/nimble.zig\").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, \"pom.xml\")) try @import(\"manifests/maven.zig\").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, \"build.gradle\") or std.mem.eql(u8, name, \"build.gradle.kts\")) try @import(\"manifests/gradle.zig\").parse(a, path, text, &out, &unsupported) else return error.UnsupportedManifest;",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/report/json.zig",
+    "source": "_ = std.unicode.utf8Decode(s[i..][0..n]) catch return null;",
+    "detail": "'utf8Decode' is deprecated: Deprecated. This function has an awkward API that is too easy to use incorrectly.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/report/json.zig",
+    "source": "fn less(_: void, a: @This(), b: @This()) bool {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z020",
+    "path": "src/report/json.zig",
+    "source": "fn less(_: void, a: @This(), b: @This()) bool {",
+    "detail": "inline @This(); assign it to `const Self = @This();`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "src/gantry.zig",
+    "source": "pub fn read(self: DirReader, p: []const u8, a: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z017",
+    "path": "src/gantry.zig",
+    "source": "return try self.dir.readFileAlloc(self.io, p, a, self.limit);",
+    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try self.dir.readFileAlloc(self.io, ; return value;`",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/manifests/maven.zig",
+    "source": "const end = if (text[i] == '&') std.mem.indexOfScalarPos(u8, text, i, ';') else null;",
+    "detail": "'indexOfScalarPos' is deprecated: Deprecated in favor of `findScalarPos`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z011",
+    "path": "src/manifests/nimble.zig",
+    "source": "const line = if (std.mem.lastIndexOfScalar(u8, text[0..token.offset], '\\n')) |n| n + 1 else 0;",
+    "detail": "'lastIndexOfScalar' is deprecated: Deprecated in favor of `findScalarLast`.",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z032",
+    "path": "src/lexer.zig",
+    "source": "pub fn decodeJS(a: std.mem.Allocator, text: []const u8) ![]const u8 {",
+    "detail": "acronym in 'decodeJS' should use standard casing: 'decodeJs'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph.zig",
+    "source": "pub fn goFiles(g: *const Graph) []const @import(\"lang/go/build.zig\").File {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph.zig",
+    "source": "pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import(\"Analysis.zig\").Analysis {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph.zig",
+    "source": "return @enumFromInt(@intFromPtr(try @import(\"Analysis/analyze.zig\").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph.zig",
+    "source": "pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import(\"rules/check.zig\").Rules) ![]const @import(\"rules/check.zig\").Violation {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph.zig",
+    "source": "pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import(\"rules/check.zig\").Rules) ![]const @import(\"rules/check.zig\").Violation {",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph.zig",
+    "source": "return @import(\"rules/check.zig\").check(g, gpa, rules, @import(\"rules/dependency_check.zig\"));",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z028",
+    "path": "src/Graph.zig",
+    "source": "return @import(\"rules/check.zig\").check(g, gpa, rules, @import(\"rules/dependency_check.zig\"));",
+    "detail": "inline @import; assign to a top-level const",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  },
+  {
+    "rule": "Z023",
+    "path": "examples/usage.zig",
+    "source": "fn read(_: void, path: []const u8, _: std.mem.Allocator) !?[]const u8 {",
+    "detail": "'Allocator' parameter should come before 'other'",
+    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
+  }
+]

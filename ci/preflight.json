@@ -1,0 +1,58 @@
+{
+  "sources": [
+    "src"
+  ],
+  "test_roots": [
+    "src/tests.zig"
+  ],
+  "test_support": [
+    "src/testing/*"
+  ],
+  "function_exceptions": {
+    "src/Analysis/analyze.zig:analyze": {
+      "lines": 177,
+      "reason": "Existing main implementation at preflight adoption; this exact bound cannot grow and shrinks when split."
+    },
+    "src/lexer.zig:tokenize": {
+      "lines": 250,
+      "reason": "Existing main implementation at preflight adoption; this exact bound cannot grow and shrinks when split."
+    },
+    "src/scan.zig:scanWithDiagnostic": {
+      "lines": 225,
+      "reason": "Existing main implementation at preflight adoption; this exact bound cannot grow and shrinks when split."
+    }
+  },
+  "layout_exceptions": {
+    "src/lang": {
+      "files": [
+        "src/lang/c.zig",
+        "src/lang/go.zig",
+        "src/lang/java.zig",
+        "src/lang/javascript.zig",
+        "src/lang/nim.zig",
+        "src/lang/python.zig",
+        "src/lang/rust.zig",
+        "src/lang/zig.zig"
+      ],
+      "reason": "Existing language parser owners on main have no common entry; retain these exact members while adopting the shared checker."
+    }
+  },
+  "docs": {
+    "zig build docs -- usage": {
+      "source": "examples/usage.zig",
+      "region": "usage",
+      "imports": [
+        "gantry"
+      ]
+    },
+    "zig build docs -- diagnostic": {
+      "source": "examples/usage.zig",
+      "region": "diagnostic",
+      "imports": [
+        "gantry"
+      ]
+    }
+  },
+  "ziglint_exceptions": "ci/ziglint-exceptions.json",
+  "extra_checks": []
+}

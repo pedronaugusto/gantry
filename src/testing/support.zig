@@ -37,25 +37,25 @@ pub const Peak = struct {
         self.peak = @max(self.peak, self.live);
     }
     fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret: usize) ?[*]u8 {
-        const self: *Peak = @ptrCast(@alignCast(ctx));
+        const self: *Peak = @ptrCast(@alignCast(ctx)); // safe: allocator() stores the original aligned Peak pointer as its callback context.
         const result = self.child.rawAlloc(len, alignment, ret) orelse return null;
         self.grow(0, len);
         return result;
     }
     fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, len: usize, ret: usize) bool {
-        const self: *Peak = @ptrCast(@alignCast(ctx));
+        const self: *Peak = @ptrCast(@alignCast(ctx)); // safe: allocator() stores the original aligned Peak pointer as its callback context.
         if (!self.child.rawResize(memory, alignment, len, ret)) return false;
         self.grow(memory.len, len);
         return true;
     }
     fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, len: usize, ret: usize) ?[*]u8 {
-        const self: *Peak = @ptrCast(@alignCast(ctx));
+        const self: *Peak = @ptrCast(@alignCast(ctx)); // safe: allocator() stores the original aligned Peak pointer as its callback context.
         const result = self.child.rawRemap(memory, alignment, len, ret) orelse return null;
         self.grow(memory.len, len);
         return result;
     }
     fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret: usize) void {
-        const self: *Peak = @ptrCast(@alignCast(ctx));
+        const self: *Peak = @ptrCast(@alignCast(ctx)); // safe: allocator() stores the original aligned Peak pointer as its callback context.
         self.child.rawFree(memory, alignment, ret);
         self.grow(memory.len, 0);
     }

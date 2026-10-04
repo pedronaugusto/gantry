@@ -1,143 +1,66 @@
 name: CI
-
 on:
   push:
-    branches: [main, layers]
-  pull_request:
+    branches: [main]
   workflow_dispatch:
-
+    inputs:
+      full:
+        description: Run the full merge gate
+        type: boolean
+        default: false
+  pull_request:
+  merge_group:
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
+  # Main status runs must not share the replaceable branch queue.
+  group: ci-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('main-status-{0}', github.run_id) || github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 permissions:
   contents: read
-
-env:
-  ZIG_VERSION: 0.16.0
-
+  actions: read
 jobs:
-  # Debug catches safety faults; ReleaseSafe checks optimized code and timing on each host.
-  # The fixtures expect the same answers in every mode; filtering just repeats a subset.
-  # The full test target already builds and runs the examples.
-  test:
-    name: test (${{ matrix.os }}, ${{ matrix.optimize }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        optimize: [Debug, ReleaseSafe]
-        include:
-          # One unchecked run catches optimizer-dependent behaviour; the other hosts have ReleaseSafe.
-          - os: ubuntu-latest
-            optimize: ReleaseFast
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ env.ZIG_VERSION }}
-      - name: Test — ${{ matrix.optimize }}
-        run: zig build test -Doptimize=${{ matrix.optimize }}
-
-  # ReleaseSmall must build; its unchecked tests add no distinct assertion to ReleaseFast.
-  small:
-    name: compile (ReleaseSmall)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ env.ZIG_VERSION }}
-      - run: zig build -Doptimize=ReleaseSmall
-
-  # Formatting and source-policy checks read the same files on every host; once is enough.
-  source:
-    name: source checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ env.ZIG_VERSION }}
-      - name: Formatting
-        run: zig fmt --check build.zig build.zig.zon src examples ci
-      - name: Casts out of the type system carry their reason
-        run: python3 ci/casts.py
-      - name: Source import boundaries
-        run: zig build check-imports
-      - name: Import gate regression checks
-        run: python3 ci/test_imports.py
-
-  # Compile the supported targets the native jobs cannot execute.
-  cross-compile:
-    name: cross (${{ matrix.target }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - x86_64-linux-gnu
-          - aarch64-linux-gnu
-          - x86_64-linux-musl
-          - x86_64-windows-gnu
-          - x86_64-windows-msvc
-          - aarch64-windows-gnu
-          - x86_64-macos
-          - aarch64-macos
-          - x86_64-freebsd
-          - x86_64-netbsd
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ env.ZIG_VERSION }}
-      - run: zig build -Dtarget=${{ matrix.target }}
-
-  # The report goldens the suite compares against must read in the tools they are for.
+  skip:
+    if: github.event_name != 'push'
+    uses: pedronaugusto/preflight/.github/workflows/skip.yml@c9402c40326a17daaeb579293960b44c8eb2132b
+    with:
+      full: ${{ github.event_name != 'workflow_dispatch' || inputs.full }}
+      preflight-ref: c9402c40326a17daaeb579293960b44c8eb2132b
+  gate:
+    needs: skip
+    if: always() && (github.event_name == 'push' || (needs.skip.result == 'success' && needs.skip.outputs.docs-only != 'true'))
+    uses: pedronaugusto/preflight/.github/workflows/zig.yml@c9402c40326a17daaeb579293960b44c8eb2132b
+    with:
+      preflight-ref: c9402c40326a17daaeb579293960b44c8eb2132b
+      full: ${{ github.event_name != 'workflow_dispatch' || inputs.full }}
+      attest: ${{ github.event_name == 'push' }}
+      # Generated from ci/workflow.json with zig build plan -- --full false.
+      fast-matrix: >-
+        {"include":[{"os":"ubuntu-latest","name":"Linux Debug","step":"preflight-fast","args":"-Doptimize=Debug","cases":"","timeout":"","setup":true,"job_timeout":20,"cache_key":"fast-linux-debug-0","artifact":""}]}
+      # Generated from ci/workflow.json with zig build plan -- --full true.
+      full-matrix: >-
+        {"include":[{"os":"ubuntu-latest","name":"test (ubuntu-latest, Debug)","step":"ci","args":"-Doptimize=Debug -Dci-lint=false -Dci-timings=true","cases":"","timeout":"","setup":true,"job_timeout":20,"cache_key":"0dc96c7aa5b8dbd7","artifact":""},{"os":"ubuntu-latest","name":"test (ubuntu-latest, ReleaseSafe)","step":"ci","args":"-Doptimize=ReleaseSafe -Dci-lint=false -Dci-timings=true","cases":"","timeout":"","setup":true,"job_timeout":20,"cache_key":"2d572e8719d44f39","artifact":""},{"os":"ubuntu-latest","name":"test (ubuntu-latest, ReleaseFast)","step":"ci","args":"-Doptimize=ReleaseFast -Dci-lint=false -Dci-timings=true","cases":"","timeout":"","setup":true,"job_timeout":20,"cache_key":"8206d5a705df8f65","artifact":""},{"os":"ubuntu-latest","name":"source checks and documented snippets","step":"lint","args":"","cases":"","timeout":"","setup":false,"job_timeout":20,"cache_key":"10bdf2590c7a0117","artifact":""},{"os":"ubuntu-latest","name":"compile (ReleaseSmall)","step":"check","args":"-Doptimize=ReleaseSmall","cases":"","timeout":"","setup":false,"job_timeout":20,"cache_key":"2d9a4fde819ce492","artifact":""},{"os":"ubuntu-latest","name":"cross (all configured targets)","step":"preflight-cross","args":"","cases":"","timeout":"","setup":false,"job_timeout":20,"cache_key":"0abaad5bfb3ff7f9","artifact":""}]}
+      compile-matrix: >-
+        {"include":[{"os":"ubuntu-latest","name":"compile for test (macos-latest, Debug)","step":"ci-build","args":"-Doptimize=Debug -Dci-lint=false -Dci-timings=true -Dtarget=aarch64-macos","cases":"","timeout":"","setup":false,"job_timeout":20,"cache_key":"compile-856b401ed5dfdcc7","artifact":"preflight-856b401ed5dfdcc7"},{"os":"ubuntu-latest","name":"compile for test (macos-latest, ReleaseSafe)","step":"ci-build","args":"-Doptimize=ReleaseSafe -Dci-lint=false -Dci-timings=true -Dtarget=aarch64-macos","cases":"","timeout":"","setup":false,"job_timeout":20,"cache_key":"compile-2379a1e7a1df7841","artifact":"preflight-2379a1e7a1df7841"},{"os":"ubuntu-latest","name":"compile for test (windows-latest, Debug)","step":"ci-build","args":"-Doptimize=Debug -Dci-lint=false -Dci-timings=true -Dtarget=x86_64-windows-gnu","cases":"","timeout":"","setup":false,"job_timeout":20,"cache_key":"compile-fdf46551155f42b8","artifact":"preflight-fdf46551155f42b8"},{"os":"ubuntu-latest","name":"compile for test (windows-latest, ReleaseSafe)","step":"ci-build","args":"-Doptimize=ReleaseSafe -Dci-lint=false -Dci-timings=true -Dtarget=x86_64-windows-gnu","cases":"","timeout":"","setup":false,"job_timeout":20,"cache_key":"compile-0894f776de4f698d","artifact":"preflight-0894f776de4f698d"}]}
+      run-matrix: >-
+        {"include":[{"os":"macos-latest","name":"test (macos-latest, Debug)","step":"ci-run","args":"-Doptimize=Debug -Dci-lint=false -Dci-timings=true","cases":"","timeout":"","setup":true,"job_timeout":20,"cache_key":"856b401ed5dfdcc7","artifact":"preflight-856b401ed5dfdcc7"},{"os":"macos-latest","name":"test (macos-latest, ReleaseSafe)","step":"ci-run","args":"-Doptimize=ReleaseSafe -Dci-lint=false -Dci-timings=true","cases":"","timeout":"","setup":true,"job_timeout":20,"cache_key":"2379a1e7a1df7841","artifact":"preflight-2379a1e7a1df7841"},{"os":"windows-latest","name":"test (windows-latest, Debug)","step":"ci-run","args":"-Doptimize=Debug -Dci-lint=false -Dci-timings=true","cases":"","timeout":"","setup":true,"job_timeout":20,"cache_key":"fdf46551155f42b8","artifact":"preflight-fdf46551155f42b8"},{"os":"windows-latest","name":"test (windows-latest, ReleaseSafe)","step":"ci-run","args":"-Doptimize=ReleaseSafe -Dci-lint=false -Dci-timings=true","cases":"","timeout":"","setup":true,"job_timeout":20,"cache_key":"0894f776de4f698d","artifact":"preflight-0894f776de4f698d"}]}
+      compile-once: true
   reports:
+    needs: skip
+    if: needs.skip.outputs.docs-only != 'true' && github.event_name != 'push' && (github.event_name != 'workflow_dispatch' || inputs.full)
     name: report formats
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Graphviz lays out the DOT goldens
-        run: |
-          sudo apt-get update -q && sudo apt-get install -y -q graphviz
-          for f in src/testing/golden/*.dot; do dot -Tsvg "$f" -o /dev/null || exit 1; done
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Mermaid renders the flowchart goldens
-        run: |
-          echo '{"args": ["--no-sandbox"]}' > "$RUNNER_TEMP/puppeteer.json"
-          for f in src/testing/golden/*.mmd; do
-            npx -y -p @mermaid-js/mermaid-cli@11 mmdc -q -p "$RUNNER_TEMP/puppeteer.json" -i "$f" -o "$RUNNER_TEMP/out.svg" || exit 1
-          done
-      - name: JSON goldens parse and SARIF goldens match the SARIF 2.1.0 schema
-        run: |
-          python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install -q jsonschema
-          curl -fsSL https://json.schemastore.org/sarif-2.1.0.json -o "$RUNNER_TEMP/sarif-schema.json"
-          "$RUNNER_TEMP/venv/bin/python" - "$RUNNER_TEMP/sarif-schema.json" src/testing/golden/*.json src/testing/golden/*.sarif <<'PY'
-          import json, sys, jsonschema
-          schema = json.load(open(sys.argv[1], encoding="utf-8"))
-          for name in sys.argv[2:]:
-              document = json.load(open(name, encoding="utf-8"))
-              if name.endswith(".sarif"):
-                  jsonschema.validate(document, schema)
-              print("ok", name)
-          PY
-
-  # Keep the documented snippets equal to the examples the suite runs.
-  docs:
-    name: documented snippets
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - run: ci/check-docs.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install downstream validators
+        run: sudo apt-get update -q && sudo apt-get install -y -q graphviz && pip install -q jsonschema
+      - name: Validate DOT, Mermaid, JSON and SARIF goldens
+        run: zig build check-reports

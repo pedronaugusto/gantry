@@ -16,7 +16,7 @@ settings.
 [examples/usage.zig](examples/usage.zig) supplies `read` from an in-memory file store.
 Its reader callback is `read(context, path, scratch_allocator) !?[]const u8`.
 
-<!-- BEGIN GENERATED ci/readme_usage.sh -->
+<!-- BEGIN GENERATED zig build docs -- usage -->
 ```zig
 const gantry = @import("gantry");
 
@@ -67,7 +67,7 @@ retains the failed path, phase, optional byte offset and original cause in a
 caller-owned `ScanDiagnostic`. Reporting preserves the cause even if copying the path
 fails.
 
-<!-- BEGIN GENERATED ci/readme_usage.sh diagnostic -->
+<!-- BEGIN GENERATED zig build docs -- diagnostic -->
 ```zig
 const gantry = @import("gantry");
 
@@ -288,7 +288,7 @@ config reader, and the package names dependency rules read from import spellings
 `std.testing.fuzz` property (no panic or leak, only documented errors, output bounded
 by the input, the same result twice): `zig build test` runs their seeds and `zig build test
 --fuzz` searches from them. `zig build examples` runs the example
-separately; `zig build check` compiles the tests only. CI also runs `ci/check-docs.sh`.
+separately; `zig build check` compiles the tests only. CI also runs `zig build lint`.
 Reports are compared with golden files in `src/testing/golden`, which CI reads with Graphviz's
 `dot`, Mermaid's CLI and the SARIF 2.1.0 schema.
 
