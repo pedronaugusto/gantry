@@ -186,6 +186,9 @@ fn spelled(e: Ecosystem, rule: engine.DependencyRule, package: []const u8) ?[]co
     return null;
 }
 
+/// Ecosystem and directory used to group governing manifests.
+pub const Key = struct { Ecosystem, []const u8 };
+
 /// The manifests that govern files of one ecosystem in one directory.
 const Manifests = struct { first: usize, end: usize };
 
@@ -198,7 +201,6 @@ pub fn check(g: anytype, a: std.mem.Allocator, rule: engine.DependencyRule, out:
     for (g.unread()) |path| try unread.put(a, path, {});
     // Manifests by ecosystem and directory, each with its declarations:
     // `deps` is sorted by manifest, so a manifest's are one run.
-    const Key = struct { Ecosystem, []const u8 };
     var governing: std.HashMapUnmanaged(Key, std.ArrayList([]const u8), struct {
         pub fn hash(_: @This(), k: Key) u64 {
             return std.hash.Wyhash.hash(@intFromEnum(k[0]), k[1]);

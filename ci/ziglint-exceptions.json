@@ -861,27 +861,6 @@
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
-    "rule": "Z012",
-    "path": "src/rules/dependency_check.zig",
-    "source": "pub fn hash(_: @This(), k: Key) u64 {",
-    "detail": "public function exposes private type 'Key'",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
-    "rule": "Z012",
-    "path": "src/rules/dependency_check.zig",
-    "source": "pub fn eql(_: @This(), x: Key, y: Key) bool {",
-    "detail": "public function exposes private type 'Key'",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
-    "rule": "Z012",
-    "path": "src/rules/dependency_check.zig",
-    "source": "pub fn eql(_: @This(), x: Key, y: Key) bool {",
-    "detail": "public function exposes private type 'Key'",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
     "rule": "Z020",
     "path": "src/rules/dependency_check.zig",
     "source": "pub fn hash(_: @This(), k: Key) u64 {",
