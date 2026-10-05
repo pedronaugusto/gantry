@@ -50,7 +50,8 @@ pub const DirReader = struct {
     dir: std.Io.Dir,
     limit: std.Io.Limit = .unlimited,
     pub fn read(self: DirReader, p: []const u8, a: std.mem.Allocator) !?[]const u8 {
-        return try self.dir.readFileAlloc(self.io, p, a, self.limit);
+        const value = try self.dir.readFileAlloc(self.io, p, a, self.limit);
+        return value;
     }
 };
 /// Convenience listing. keep(context, slash_path, entry_kind) may prune a

@@ -122,7 +122,8 @@ fn path(a: std.mem.Allocator, ts: []const l.Token, j: *usize) !?[]const u8 {
         } else break;
         try name.appendSlice(a, t.text);
     }
-    return try name.toOwnedSlice(a);
+    const value = try name.toOwnedSlice(a);
+    return value;
 }
 
 const p = @import("../path.zig");

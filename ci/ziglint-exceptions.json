@@ -343,13 +343,6 @@
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
-    "rule": "Z017",
-    "path": "src/lang/nim.zig",
-    "source": "return try name.toOwnedSlice(a);",
-    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try name.toOwnedSlice(a); return value;`",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
     "rule": "Z011",
     "path": "src/lang/python.zig",
     "source": "const begin = if (std.mem.lastIndexOfScalar(u8, source[0..t.offset], '\\n')) |nl| nl + 1 else 0;",
@@ -399,13 +392,6 @@
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
-    "rule": "Z017",
-    "path": "src/lang/java_test.zig",
-    "source": "return try scratch.dupe(u8, if (std.mem.eql(u8, name, \"A.java\")) \"package a; import b.B;\" else \"package b; class B {}\");",
-    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try scratch.dupe(u8, if (std.mem.eql; return value;`",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
     "rule": "Z020",
     "path": "src/lang/java_test.zig",
     "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
@@ -445,13 +431,6 @@
     "path": "src/testing/kinds_test.zig",
     "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
     "detail": "'Allocator' parameter should come before 'other'",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
-    "rule": "Z017",
-    "path": "src/testing/kinds_test.zig",
-    "source": "return try scratch.dupe(u8, if (std.mem.eql(u8, name, \"src/lib.rs\")) \"#[cfg(test)] mod helper;\" else if (std.mem.eql(u8, name, \"src/helper.rs\")) \"mod child; use crate::util;\" else if (std.mem.eql(u8, name, \"src/helper/child.rs\")) \"use crate::util;\" else \"\");",
-    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try scratch.dupe(u8, if (std.mem.eql; return value;`",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
@@ -504,24 +483,10 @@
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
-    "rule": "Z017",
-    "path": "src/testing/fuzz_test.zig",
-    "source": "if (std.mem.eql(u8, path, one.path)) return try a.dupe(u8, one.text);",
-    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try a.dupe(u8, one.text); return value;`",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
     "rule": "Z023",
     "path": "src/testing/memory_test.zig",
     "source": "fn read(self: *Module, path: []const u8, s: std.mem.Allocator) !?[]const u8 {",
     "detail": "'Allocator' parameter should come before 'other'",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
-    "rule": "Z017",
-    "path": "src/testing/memory_test.zig",
-    "source": "return try s.dupe(u8, \"package lib\\n\");",
-    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try s.dupe(u8, \"package lib\\n\"); return value;`",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
@@ -546,13 +511,6 @@
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
-    "rule": "Z017",
-    "path": "src/testing/constraints_test.zig",
-    "source": "return try scratch.dupe(u8, if (std.mem.eql(u8, name, \"go.mod\")) \"module example.org/app\" else if (std.mem.eql(u8, name, \"main.go\")) \"//go:build linux\\n\\npackage app\\nimport \\\"example.org/app/lib\\\"\" else \"package lib\");",
-    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try scratch.dupe(u8, if (std.mem.eql; return value;`",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
     "rule": "Z020",
     "path": "src/testing/constraints_test.zig",
     "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
@@ -564,13 +522,6 @@
     "path": "src/testing/python_policy_test.zig",
     "source": "fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {",
     "detail": "'Allocator' parameter should come before 'other'",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
-    "rule": "Z017",
-    "path": "src/testing/python_policy_test.zig",
-    "source": "return try scratch.dupe(u8, if (std.mem.eql(u8, name, \"pkg/__init__.py\")) \"from .api import *\" else if (std.mem.eql(u8, name, \"pkg/api.py\")) \"from .impl import Public as Exposed\\n__all__ = ['Exposed']\" else \"\");",
-    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try scratch.dupe(u8, if (std.mem.eql; return value;`",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
@@ -949,13 +900,6 @@
     "path": "src/gantry.zig",
     "source": "pub fn read(self: DirReader, p: []const u8, a: std.mem.Allocator) !?[]const u8 {",
     "detail": "'Allocator' parameter should come before 'other'",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
-    "rule": "Z017",
-    "path": "src/gantry.zig",
-    "source": "return try self.dir.readFileAlloc(self.io, p, a, self.limit);",
-    "detail": "avoid try in return; hoist it to preserve payload coercion: `const value = try self.dir.readFileAlloc(self.io, ; return value;`",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {

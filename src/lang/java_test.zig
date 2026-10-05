@@ -107,7 +107,8 @@ test "Java sources are read once for packages and imports" {
         calls: usize = 0,
         fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {
             self.calls += 1;
-            return try scratch.dupe(u8, if (std.mem.eql(u8, name, "A.java")) "package a; import b.B;" else "package b; class B {}");
+            const value = try scratch.dupe(u8, if (std.mem.eql(u8, name, "A.java")) "package a; import b.B;" else "package b; class B {}");
+            return value;
         }
     };
     var reader: Reader = .{};

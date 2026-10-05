@@ -47,7 +47,8 @@ test "Go constraints and imports share one source read" {
         calls: usize = 0,
         fn read(self: *@This(), name: []const u8, scratch: std.mem.Allocator) !?[]const u8 {
             self.calls += 1;
-            return try scratch.dupe(u8, if (std.mem.eql(u8, name, "go.mod")) "module example.org/app" else if (std.mem.eql(u8, name, "main.go")) "//go:build linux\n\npackage app\nimport \"example.org/app/lib\"" else "package lib");
+            const value = try scratch.dupe(u8, if (std.mem.eql(u8, name, "go.mod")) "module example.org/app" else if (std.mem.eql(u8, name, "main.go")) "//go:build linux\n\npackage app\nimport \"example.org/app/lib\"" else "package lib");
+            return value;
         }
     };
     var reader: Reader = .{};

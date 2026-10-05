@@ -20,7 +20,8 @@ const Module = struct {
         }
         if (std.mem.eql(u8, path, "lib/l0.go") and self.after_big == 0) self.after_big = self.counter.live;
         if (std.mem.startsWith(u8, path, "app/")) return "package app\nimport \"example.org/m/lib\"\n";
-        return try s.dupe(u8, "package lib\n");
+        const value = try s.dupe(u8, "package lib\n");
+        return value;
     }
     /// The edges scanned, with the most bytes the scan held at once.
     fn scan(self: *Module) !struct { usize, usize } {

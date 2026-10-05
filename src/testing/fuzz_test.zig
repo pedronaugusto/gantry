@@ -37,7 +37,10 @@ const One = struct {
     path: []const u8,
     text: []const u8,
     fn read(one: One, path: []const u8, a: std.mem.Allocator) !?[]const u8 {
-        if (std.mem.eql(u8, path, one.path)) return try a.dupe(u8, one.text);
+        if (std.mem.eql(u8, path, one.path)) {
+            const value = try a.dupe(u8, one.text);
+            return value;
+        }
         return "";
     }
 };
