@@ -47,6 +47,7 @@ pub fn scannedFor(g: *const Graph, rule: @import("../rules/check.zig").TokenRule
 pub fn deinit(g: *Graph) void {
     const gpa = g.allocator;
     g.arena.deinit();
+    g.* = undefined;
     gpa.destroy(g);
 }
 /// Build a graph from caller edges. Endpoints must be among paths.

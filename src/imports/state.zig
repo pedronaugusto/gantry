@@ -13,6 +13,7 @@ pub fn create(gpa: std.mem.Allocator) !*State {
 pub fn deinit(state: *State) void {
     const gpa = state.arena.child_allocator;
     state.arena.deinit();
+    state.* = undefined;
     gpa.destroy(state);
 }
 pub fn owner(comptime Owner: type, state: *State) Owner {

@@ -42,13 +42,6 @@
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
-    "rule": "Z030",
-    "path": "src/analysis/state.zig",
-    "source": "pub fn deinit(self: *State) void {",
-    "detail": "deinit should set self.* = undefined",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
     "rule": "Z028",
     "path": "src/tsconfig.zig",
     "source": "return @import(\"resolve/path.zig\").join(a, root, name, \"\") catch |err| switch (err) {",
@@ -130,13 +123,6 @@
     "path": "src/graph/storage.zig",
     "source": "//! A graph owns every path and slice it exposes until deinit.",
     "detail": "file 'storage.zig' has top-level fields and should be PascalCase",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
-    "rule": "Z030",
-    "path": "src/graph/storage.zig",
-    "source": "pub fn deinit(g: *Graph) void {",
-    "detail": "deinit should set g.* = undefined",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
@@ -224,13 +210,6 @@
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
-    "rule": "Z030",
-    "path": "src/imports/state.zig",
-    "source": "pub fn deinit(state: *State) void {",
-    "detail": "deinit should set state.* = undefined",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
     "rule": "Z028",
     "path": "src/scan/reader.zig",
     "source": "progress: *@import(\"diagnostic.zig\").Progress,",
@@ -242,13 +221,6 @@
     "path": "src/scan/reader.zig",
     "source": "std.mem.sort([]const u8, paths, {}, @import(\"../types.zig\").stringsLess);",
     "detail": "inline @import; assign to a top-level const",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
-    "rule": "Z030",
-    "path": "src/scan/diagnostic.zig",
-    "source": "pub fn deinit(diagnostic: *ScanDiagnostic) void {",
-    "detail": "deinit should set diagnostic.* = undefined",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
@@ -609,13 +581,6 @@
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
-    "rule": "Z030",
-    "path": "src/report.zig",
-    "source": "fn deinit(m: *Marks, gpa: std.mem.Allocator) void {",
-    "detail": "deinit should set m.* = undefined",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
     "rule": "Z020",
     "path": "src/report.zig",
     "source": "fn indent(o: *@This()) Writer.Error!void {",
@@ -886,13 +851,6 @@
     "path": "src/rules/check.zig",
     "source": "pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependencies: type) ![]const Violation {",
     "detail": "'type' parameter should come before 'other'",
-    "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
-  },
-  {
-    "rule": "Z030",
-    "path": "src/rules/check.zig",
-    "source": "fn deinit(f: *Findings) void {",
-    "detail": "deinit should set f.* = undefined",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {

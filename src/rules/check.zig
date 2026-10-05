@@ -269,6 +269,7 @@ pub const Findings = struct {
         f.items.deinit(f.a);
         f.chains.deinit(f.a);
         f.spans.deinit(f.a);
+        f.* = undefined;
     }
 };
 /// The graph as adjacency arrays labelled by edge index, for the rules

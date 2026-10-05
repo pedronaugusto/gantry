@@ -24,6 +24,7 @@ pub fn init(gpa: std.mem.Allocator) !*State {
 pub fn deinit(self: *State) void {
     const gpa = self.allocator;
     self.arena.deinit();
+    self.* = undefined;
     gpa.destroy(self);
 }
 pub fn owner(comptime Owner: type, self: *State) Owner {

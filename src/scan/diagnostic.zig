@@ -56,6 +56,7 @@ pub const ScanDiagnostic = struct {
     }
     pub fn deinit(diagnostic: *ScanDiagnostic) void {
         diagnostic.clear();
+        diagnostic.* = undefined;
     }
     fn clear(diagnostic: *ScanDiagnostic) void {
         if (diagnostic.failure) |failure| if (failure.path) |path| diagnostic.gpa.free(path);

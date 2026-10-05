@@ -274,6 +274,7 @@ const Marks = struct {
     fn deinit(m: *Marks, gpa: std.mem.Allocator) void {
         m.nodes.deinit(gpa);
         m.edges.deinit(gpa);
+        m.* = undefined;
     }
     fn same(e: t.Edge, from: []const u8, to: []const u8) bool {
         return std.mem.eql(u8, e.from, from) and std.mem.eql(u8, e.to, to);
