@@ -177,8 +177,8 @@ const Reader = struct {
     }
     /// `group:name`, then the version and any classifier or `@extension`.
     fn coordinates(r: *Reader, configuration: []const u8, value: []const u8) !void {
-        const first = std.mem.indexOfScalar(u8, value, ':') orelse return error.Computed;
-        const second = std.mem.indexOfScalarPos(u8, value, first + 1, ':') orelse value.len;
+        const first = std.mem.findScalar(u8, value, ':') orelse return error.Computed;
+        const second = std.mem.findScalarPos(u8, value, first + 1, ':') orelse value.len;
         if (first == 0 or second == first + 1) return error.Computed;
         try r.out.append(r.a, .{
             .manifest = r.path,

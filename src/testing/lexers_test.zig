@@ -1,3 +1,4 @@
+const lexer_module = @import("../lexer.zig");
 const std = @import("std");
 const g = @import("../gantry.zig");
 const expect = std.testing.expect;
@@ -165,22 +166,20 @@ test "Java package and imports ignore comments strings text blocks characters an
 test "Groovy and Kotlin interpolation keeps nested braces and strings inside one template" {
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
-    const lexer = @import("../lexer.zig");
-    const groovy = try lexer.lex(.groovy, arena.allocator(), "x \"${ f { a } + \"y\" }\" 'z' \"$w\" \"plain\"");
+    const groovy = try lexer_module.lex(.groovy, arena.allocator(), "x \"${ f { a } + \"y\" }\" 'z' \"$w\" \"plain\"");
     try std.testing.expectEqual(5, groovy.len);
     try expect(groovy[1].kind == .template and groovy[3].kind == .template);
     try expect(groovy[2].kind == .string and groovy[4].kind == .string);
-    const kotlin = try lexer.lex(.kotlin, arena.allocator(), "/* a /* b */ c */ `if` 'q' \"${'$'}{v}\" \"\"\"raw $x\"\"\" \"plain\"");
+    const kotlin = try lexer_module.lex(.kotlin, arena.allocator(), "/* a /* b */ c */ `if` 'q' \"${'$'}{v}\" \"\"\"raw $x\"\"\" \"plain\"");
     try std.testing.expectEqual(3, kotlin.len);
     try expect(kotlin[0].kind == .word and kotlin[1].kind == .template and kotlin[2].kind == .string);
 }
 test "compaction drops newlines in place without copying the stream" {
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
-    const lexer = @import("../lexer.zig");
-    const tokens = try lexer.lex(.go, arena.allocator(), "package a\n\nimport \"b\"\n");
+    const tokens = try lexer_module.lex(.go, arena.allocator(), "package a\n\nimport \"b\"\n");
     try std.testing.expectEqual(7, tokens.len);
-    const compact = lexer.compact(tokens);
+    const compact = lexer_module.compact(tokens);
     try std.testing.expectEqual(tokens.ptr, compact.ptr);
     try std.testing.expectEqual(4, compact.len);
     for (compact, [_][]const u8{ "package", "a", "import", "b" }) |token, text| try eq(text, token.text);
@@ -223,7 +222,7 @@ test "unterminated strings and comments do not invent imports" {
 test "ordinary escapes decode unicode and reject malformed paths" {
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
-    const decode = @import("../lexer.zig").decode;
+    const decode = lexer_module.decode;
     try eq("xé", try decode(arena.allocator(), "x\\u00e9"));
     try std.testing.expectError(error.InvalidEscape, decode(arena.allocator(), "\\uD800"));
     try std.testing.expectError(error.InvalidEscape, decode(arena.allocator(), "\\x"));
@@ -286,6 +285,6 @@ test "JS escapes retain Unicode characters and identity escapes in specifiers" {
 test "lexing returns only its tokens to a caller's allocator" {
     // Found by the JavaScript fuzz property: the call and template stacks
     // were left for an arena to reclaim.
-    const tokens = try @import("../lexer.zig").lex(.javascript, std.testing.allocator, "if (f(`a${ g({}) }`)) /x/.test(y);");
+    const tokens = try lexer_module.lex(.javascript, std.testing.allocator, "if (f(`a${ g({}) }`)) /x/.test(y);");
     std.testing.allocator.free(tokens);
 }

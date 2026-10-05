@@ -1,12 +1,13 @@
 //! Dependency rules: unresolved imports joined to the declarations of the
 //! manifests that govern them, per ecosystem. An import names a package by
 //! its ecosystem's own spelling rule; nothing is installed or looked up.
+const options_module = @import("../scan/options.zig");
 const std = @import("std");
 const t = @import("../types.zig");
 const p = @import("../path.zig");
 const engine = @import("check.zig");
 const builtins = @import("../builtins.zig");
-const languageOf = @import("../scan/options.zig").languageOf;
+const languageOf = options_module.languageOf;
 
 pub const Ecosystem = enum {
     npm,
@@ -53,12 +54,12 @@ pub fn packageOf(e: Ecosystem, name: []const u8) ?[]const u8 {
         .npm => {
             // npm names start with a letter, a digit or a scope's `@`.
             if (!(std.ascii.isAlphanumeric(name[0]) or name[0] == '@')) return null;
-            if (std.mem.indexOfScalar(u8, name, ':') != null) return null;
-            const slash = std.mem.indexOfScalar(u8, name, '/');
+            if (std.mem.findScalar(u8, name, ':') != null) return null;
+            const slash = std.mem.findScalar(u8, name, '/');
             if (name[0] == '@') {
                 const first = slash orelse return null;
                 if (first == 1 or first + 1 == name.len) return null;
-                const second = std.mem.indexOfScalarPos(u8, name, first + 1, '/') orelse name.len;
+                const second = std.mem.findScalarPos(u8, name, first + 1, '/') orelse name.len;
                 return name[0..second];
             }
             const package = name[0 .. slash orelse name.len];
@@ -66,19 +67,19 @@ pub fn packageOf(e: Ecosystem, name: []const u8) ?[]const u8 {
         },
         .python => {
             if (name[0] == '.') return null;
-            const top = name[0 .. std.mem.indexOfScalar(u8, name, '.') orelse name.len];
+            const top = name[0 .. std.mem.findScalar(u8, name, '.') orelse name.len];
             return if (builtins.python.has(top)) null else top;
         },
         .cargo => {
             const path = if (std.mem.startsWith(u8, name, "::")) name[2..] else name;
-            const root = path[0 .. std.mem.indexOf(u8, path, "::") orelse path.len];
+            const root = path[0 .. std.mem.find(u8, path, "::") orelse path.len];
             for ([_][]const u8{ "std", "core", "alloc", "proc_macro", "test", "crate", "self", "super" }) |own| if (std.mem.eql(u8, root, own)) return null;
             return if (root.len == 0) null else root;
         },
         .go => {
             // The standard library's paths have no dot in their first element.
-            const first = name[0 .. std.mem.indexOfScalar(u8, name, '/') orelse name.len];
-            return if (std.mem.indexOfScalar(u8, first, '.') == null) null else name;
+            const first = name[0 .. std.mem.findScalar(u8, name, '/') orelse name.len];
+            return if (std.mem.findScalar(u8, first, '.') == null) null else name;
         },
         .zig => {
             if (std.mem.endsWith(u8, name, ".zig") or std.mem.endsWith(u8, name, ".zon")) return null;
@@ -88,7 +89,7 @@ pub fn packageOf(e: Ecosystem, name: []const u8) ?[]const u8 {
         .nim => {
             if (name[0] == '.' or name[0] == '/' or std.mem.startsWith(u8, name, "std/") or std.mem.eql(u8, name, "system") or std.mem.startsWith(u8, name, "system/")) return null;
             const rest = if (std.mem.startsWith(u8, name, "pkg/")) name[4..] else name;
-            const first = rest[0 .. std.mem.indexOfScalar(u8, rest, '/') orelse rest.len];
+            const first = rest[0 .. std.mem.findScalar(u8, rest, '/') orelse rest.len];
             if (first.len == 0) return null;
             return if (first.len == rest.len and builtins.nim.has(first)) null else first;
         },
@@ -120,7 +121,7 @@ pub fn declares(e: Ecosystem, dep: t.Dependency, package: []const u8) bool {
         .go => within(package, dep.name, '/'),
         .nim => std.ascii.eqlIgnoreCase(dep.name, package),
         // A Java package inside the declaration's group.
-        .java => dep.origin != .workspace and within(package, dep.name[0 .. std.mem.indexOfScalar(u8, dep.name, ':') orelse dep.name.len], '.'),
+        .java => dep.origin != .workspace and within(package, dep.name[0 .. std.mem.findScalar(u8, dep.name, ':') orelse dep.name.len], '.'),
     };
 }
 /// A `names` entry's package against a declaration: its whole name, or
@@ -140,8 +141,8 @@ fn within(inner: []const u8, outer: []const u8, separator: u8) bool {
 fn sameBytes(x: []const u8, y: []const u8, from: []const u8, to: u8) bool {
     if (x.len != y.len) return false;
     for (x, y) |c, d| {
-        const c2 = if (std.mem.indexOfScalar(u8, from, c) != null) to else c;
-        const d2 = if (std.mem.indexOfScalar(u8, from, d) != null) to else d;
+        const c2 = if (std.mem.findScalar(u8, from, c) != null) to else c;
+        const d2 = if (std.mem.findScalar(u8, from, d) != null) to else d;
         if (c2 != d2) return false;
     }
     return true;
@@ -194,7 +195,7 @@ const Manifests = struct { first: usize, end: usize };
 
 /// Undeclared imports in reference order, then unused declarations in
 /// declaration order. Findings borrow the graph and the rule.
-pub fn check(g: anytype, a: std.mem.Allocator, rule: engine.DependencyRule, out: *engine.Findings) !void {
+pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out: *engine.Findings) !void {
     const paths = g.paths();
     const deps = g.dependencies();
     var unread: std.StringHashMapUnmanaged(void) = .empty;
@@ -202,10 +203,11 @@ pub fn check(g: anytype, a: std.mem.Allocator, rule: engine.DependencyRule, out:
     // Manifests by ecosystem and directory, each with its declarations:
     // `deps` is sorted by manifest, so a manifest's are one run.
     var governing: std.HashMapUnmanaged(Key, std.ArrayList([]const u8), struct {
-        pub fn hash(_: @This(), k: Key) u64 {
+        pub const Self = @This();
+        pub fn hash(_: Self, k: Key) u64 {
             return std.hash.Wyhash.hash(@intFromEnum(k[0]), k[1]);
         }
-        pub fn eql(_: @This(), x: Key, y: Key) bool {
+        pub fn eql(_: Self, x: Key, y: Key) bool {
             return x[0] == y[0] and std.mem.eql(u8, x[1], y[1]);
         }
     }, std.hash_map.default_max_load_percentage) = .empty;

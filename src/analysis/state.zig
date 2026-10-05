@@ -1,4 +1,5 @@
 //! Construction storage for the public analysis owner.
+const reach_module = @import("reach.zig");
 const std = @import("std");
 const t = @import("../types.zig");
 const State = @This();
@@ -13,7 +14,7 @@ forward: Adjacency = empty,
 backward: Adjacency = empty,
 coupling: []const t.Coupling = &.{},
 directory_coupling: []const t.Coupling = &.{},
-const Adjacency = @import("reach.zig").Adjacency;
+const Adjacency = reach_module.Adjacency;
 const empty: Adjacency = .{ .offsets = &.{}, .targets = &.{} };
 
 pub fn init(gpa: std.mem.Allocator) !*State {
@@ -24,8 +25,8 @@ pub fn init(gpa: std.mem.Allocator) !*State {
 pub fn deinit(self: *State) void {
     const gpa = self.allocator;
     self.arena.deinit();
+    defer gpa.destroy(self);
     self.* = undefined;
-    gpa.destroy(self);
 }
 pub fn owner(comptime Owner: type, self: *State) Owner {
     return @enumFromInt(@intFromPtr(self)); // safe: the owning handle preserves the allocated state's address.

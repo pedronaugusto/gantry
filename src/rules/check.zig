@@ -1,4 +1,6 @@
 //! Rules are caller data. All matching restrictions report, in rule order.
+const path_module = @import("../path.zig");
+const reach_module = @import("../analysis/reach.zig");
 const std = @import("std");
 const t = @import("../types.zig");
 pub const Layer = struct { name: []const u8, patterns: []const []const u8 };
@@ -159,7 +161,7 @@ fn named(r: OrderedLayers, path: []const u8) ?usize {
 /// Keep the graph and those caller strings alive until findings are freed
 /// with `free`; a.free alone frees them when no rule is transitive.
 /// `dependencies` joins imports to manifests: `check(g, a, rule, out)`.
-pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependencies: type) ![]const Violation {
+pub fn check(comptime dependencies: type, a: std.mem.Allocator, g: anytype, rules: Rules) ![]const Violation {
     var out: Findings = .{ .a = a };
     errdefer out.deinit();
     var scratch: std.heap.ArenaAllocator = .init(a);
@@ -190,10 +192,10 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
         var normalized: ?[]const u8 = null;
         defer if (normalized) |path| a.free(path);
         if (r.relative) {
-            const dir = @import("../path.zig").dir(ref.from);
+            const dir = path_module.dir(ref.from);
             const raw = try std.mem.join(a, "/", if (dir.len == 0) &.{ref.name} else &.{ dir, ref.name });
             defer a.free(raw);
-            normalized = @import("../path.zig").normalize(a, raw) catch |err| switch (err) {
+            normalized = path_module.normalize(a, raw) catch |err| switch (err) {
                 error.InvalidPath => null,
                 else => return err,
             };
@@ -240,7 +242,7 @@ pub fn check(g: anytype, a: std.mem.Allocator, rules: Rules, comptime dependenci
         if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
         try walks.?.unreached(&out, g.edges(), r);
     }
-    for (rules.dependencies) |r| try dependencies.check(g, scratch.allocator(), r, &out);
+    for (rules.dependencies) |r| try dependencies.check(scratch.allocator(), g, r, &out);
     return out.finish();
 }
 /// Findings, appended in place to `items`, and their chains gathered
@@ -279,7 +281,7 @@ const Walks = struct {
     paths: []const []const u8,
     forward: walk.Adjacency,
     backward: walk.Adjacency,
-    const walk = @import("../analysis/reach.zig");
+    const walk = reach_module;
     fn init(a: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) !Walks {
         var ids: std.StringHashMapUnmanaged(u32) = .empty;
         if (paths.len >= std.math.maxInt(u32)) return error.OutOfMemory;
@@ -362,7 +364,7 @@ const Walks = struct {
 /// component across zero or more directories. A pattern without '/' matches
 /// the basename. Byte and case exact on every platform; no regex engine.
 pub fn matches(pattern: []const u8, path: []const u8) bool {
-    if (std.mem.indexOfScalar(u8, pattern, '/') == null and !std.mem.eql(u8, pattern, "**")) return component(pattern, @import("../path.zig").base(path));
+    if (std.mem.findScalar(u8, pattern, '/') == null and !std.mem.eql(u8, pattern, "**")) return component(pattern, path_module.base(path));
     return matchesFull(pattern, path);
 }
 /// A raw import name is matched in full; unlike file rules, an unqualified
@@ -403,7 +405,7 @@ pub fn matchesToken(pattern: []const u8, text: []const u8) bool {
     return component(pattern, text);
 }
 fn end(s: []const u8, i: usize) usize {
-    return std.mem.indexOfScalarPos(u8, s, i, '/') orelse s.len;
+    return std.mem.findScalarPos(u8, s, i, '/') orelse s.len;
 }
 fn component(pattern: []const u8, text: []const u8) bool {
     var i: usize = 0;

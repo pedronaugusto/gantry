@@ -1,6 +1,6 @@
 //! Owned lexical recovery from an anonymous source buffer.
 const t = @import("types.zig");
-const store = @import("imports/state.zig");
+const store = @import("imports/State.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
 pub const Imports = enum(usize) {

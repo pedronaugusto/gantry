@@ -1,4 +1,7 @@
 //! Dependency declarations, not lockfiles or package-manager evaluation.
+const gradle_module = @import("manifests/gradle.zig");
+const maven_module = @import("manifests/maven.zig");
+const nimble_module = @import("manifests/nimble.zig");
 const std = @import("std");
 const l = @import("lexer.zig");
 const t = @import("types.zig");
@@ -32,7 +35,7 @@ pub fn read(a: std.mem.Allocator, path: []const u8, text: []const u8) !Declarati
     var out: std.ArrayList(t.Dependency) = .empty;
     var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     const name = p.base(path);
-    if (std.mem.eql(u8, name, "package.json")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, "build.zig.zon")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, "go.mod")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, "Cargo.toml") or std.mem.eql(u8, name, "pyproject.toml")) try toml(a, path, text, &out) else if (supported(path) and std.mem.endsWith(u8, name, ".nimble")) try @import("manifests/nimble.zig").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, "pom.xml")) try @import("manifests/maven.zig").parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, "build.gradle") or std.mem.eql(u8, name, "build.gradle.kts")) try @import("manifests/gradle.zig").parse(a, path, text, &out, &unsupported) else return error.UnsupportedManifest;
+    if (std.mem.eql(u8, name, "package.json")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, "build.zig.zon")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, "go.mod")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, "Cargo.toml") or std.mem.eql(u8, name, "pyproject.toml")) try toml(a, path, text, &out) else if (supported(path) and std.mem.endsWith(u8, name, ".nimble")) try nimble_module.parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, "pom.xml")) try maven_module.parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, "build.gradle") or std.mem.eql(u8, name, "build.gradle.kts")) try gradle_module.parse(a, path, text, &out, &unsupported) else return error.UnsupportedManifest;
     return .{ .dependencies = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
 fn json(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) !void {
@@ -58,13 +61,13 @@ fn npmOrigin(s: []const u8) t.Dependency.Origin {
     if (std.mem.startsWith(u8, s, "workspace:")) return .workspace;
     if (std.mem.startsWith(u8, s, "npm:")) return .registry;
     for ([_][]const u8{ "file:", "link:", "./", "../", "/", "~/" }) |prefix| if (std.mem.startsWith(u8, s, prefix)) return .local;
-    if (std.mem.indexOf(u8, s, "://") != null or std.mem.startsWith(u8, s, "git") or std.mem.indexOfScalar(u8, s, ':') != null) return .remote;
+    if (std.mem.find(u8, s, "://") != null or std.mem.startsWith(u8, s, "git") or std.mem.findScalar(u8, s, ':') != null) return .remote;
     // `owner/repo`, GitHub's shorthand
-    if (std.mem.indexOfScalar(u8, s, '/') != null) return .remote;
+    if (std.mem.findScalar(u8, s, '/') != null) return .remote;
     return .registry;
 }
 fn place(s: []const u8) bool {
-    return std.mem.indexOfScalar(u8, s, '/') != null or std.mem.startsWith(u8, s, "git") or std.mem.startsWith(u8, s, "file:") or std.mem.startsWith(u8, s, "github:") or std.mem.startsWith(u8, s, "workspace:");
+    return std.mem.findScalar(u8, s, '/') != null or std.mem.startsWith(u8, s, "git") or std.mem.startsWith(u8, s, "file:") or std.mem.startsWith(u8, s, "github:") or std.mem.startsWith(u8, s, "workspace:");
 }
 fn zon(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) !void {
     const source = try a.dupeZ(u8, text);
@@ -125,7 +128,7 @@ fn goMod(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arr
     var lines = std.mem.splitScalar(u8, text, '\n');
     var block = false;
     while (lines.next()) |line| {
-        const comment_at = std.mem.indexOf(u8, line, "//");
+        const comment_at = std.mem.find(u8, line, "//");
         const clean = line[0 .. comment_at orelse line.len];
         var words = std.mem.tokenizeAny(u8, clean, " \t\r");
         var name = words.next() orelse continue;
@@ -193,7 +196,7 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
         if (cargo) {
             const dep_at = dependencyTable(group) orelse continue;
             const tail = group[dep_at..];
-            const sub = std.mem.indexOfScalar(u8, tail, '.');
+            const sub = std.mem.findScalar(u8, tail, '.');
             if (sub) |dot| {
                 const dep_name = tail[dot + 1 ..];
                 var entry: ?*t.Dependency = null;
@@ -270,8 +273,8 @@ fn pythonDep(a: std.mem.Allocator, path: []const u8, group: []const u8, requirem
     const raw = std.mem.trim(u8, requirement, " \t");
     const end = std.mem.indexOfAny(u8, raw, "<>=!~[; @(") orelse raw.len;
     if (end == 0) return error.InvalidManifest;
-    const url = std.mem.indexOf(u8, raw, " @ ");
-    const source = if (url) |u| std.mem.trim(u8, raw[u + 3 .. std.mem.indexOfScalarPos(u8, raw, u + 3, ';') orelse raw.len], " ") else "";
+    const url = std.mem.find(u8, raw, " @ ");
+    const source = if (url) |u| std.mem.trim(u8, raw[u + 3 .. std.mem.findScalarPos(u8, raw, u + 3, ';') orelse raw.len], " ") else "";
     const origin: t.Dependency.Origin = if (source.len == 0) .registry else if (std.mem.startsWith(u8, source, "file:")) .local else .remote;
     try out.append(a, .{ .manifest = path, .name = raw[0..end], .requirement = raw, .source = source, .group = group, .origin = origin });
 }

@@ -21,7 +21,7 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     // Most files never spell it: their blocks are not looked for.
-    const checking = if (std.mem.indexOf(u8, source, "TYPE_CHECKING") != null) try typeChecking(a, source, ts) else &.{};
+    const checking = if (std.mem.find(u8, source, "TYPE_CHECKING") != null) try typeChecking(a, source, ts) else &.{};
     // Loader calls are read across line breaks, as if the stream had none.
     var previous: ?l.Token = null;
     for (ts, 0..) |token, i| {
@@ -133,7 +133,7 @@ fn loaded(a: std.mem.Allocator, args: []const l.Token, importlib: bool) !?[]cons
     var dots: usize = 0;
     while (dots < name.len and name[dots] == '.') : (dots += 1) {}
     var anchor = base;
-    for (1..dots) |_| anchor = anchor[0 .. std.mem.lastIndexOfScalar(u8, anchor, '.') orelse return null];
+    for (1..dots) |_| anchor = anchor[0 .. std.mem.findScalarLast(u8, anchor, '.') orelse return null];
     if (anchor.len == 0) return null;
     return if (dots == name.len) anchor else try std.fmt.allocPrint(a, "{s}.{s}", .{ anchor, name[dots..] });
 }
@@ -157,7 +157,7 @@ fn typeChecking(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !
         }
         if (line_start) {
             line_start = false;
-            const begin = if (std.mem.lastIndexOfScalar(u8, source[0..t.offset], '\n')) |nl| nl + 1 else 0;
+            const begin = if (std.mem.findScalarLast(u8, source[0..t.offset], '\n')) |nl| nl + 1 else 0;
             const indent = t.offset - begin;
             if (open) |block| if (indent <= block.indent) {
                 try ranges.append(a, .{ .start = block.start, .end = t.offset });

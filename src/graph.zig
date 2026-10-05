@@ -1,7 +1,12 @@
 //! An owned graph. Results are read only and live until deinit.
+const build_module = @import("lang/go/build.zig");
+const analysis_module = @import("analysis.zig");
+const analyze_module = @import("analysis/analyze.zig");
+const check_module = @import("rules/check.zig");
+const dependency_check_module = @import("rules/dependency_check.zig");
 const std = @import("std");
 const t = @import("types.zig");
-const store = @import("graph/storage.zig");
+const store = @import("graph/Storage.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
 pub const Graph = enum(usize) {
@@ -45,7 +50,7 @@ pub const Graph = enum(usize) {
     pub fn unread(g: *const Graph) []const []const u8 {
         return store.get(g.*).unread;
     }
-    pub fn goFiles(g: *const Graph) []const @import("lang/go/build.zig").File {
+    pub fn goFiles(g: *const Graph) []const build_module.File {
         return store.get(g.*).go_files;
     }
     /// Membership by exact normalized spelling, including directory nodes in aggregates.
@@ -60,8 +65,8 @@ pub const Graph = enum(usize) {
         return store.owner(Graph, try store.get(g.*).aggregate(gpa, depth));
     }
     /// Analysis owns its results independently of the graph.
-    pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import("analysis.zig").Analysis {
-        return @enumFromInt(@intFromPtr(try @import("analysis/analyze.zig").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
+    pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !analysis_module.Analysis {
+        return @enumFromInt(@intFromPtr(try analyze_module.analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
     /// Findings borrow graph storage, rule names and required-path strings.
     /// Keep the graph and those caller strings alive until findings are freed
@@ -70,9 +75,9 @@ pub const Graph = enum(usize) {
     /// was not scanned for is `error.UnscannedToken`, never a silent pass,
     /// and a dependency rule on a graph scanned without manifests is
     /// `error.UnscannedManifests`.
-    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import("rules/check.zig").Rules) ![]const @import("rules/check.zig").Violation {
+    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: check_module.Rules) ![]const check_module.Violation {
         for (rules.tokens) |rule| if (!store.get(g.*).scannedFor(rule)) return error.UnscannedToken;
         if (rules.dependencies.len > 0 and !store.get(g.*).manifests) return error.UnscannedManifests;
-        return @import("rules/check.zig").check(g, gpa, rules, @import("rules/dependency_check.zig"));
+        return check_module.check(dependency_check_module, gpa, g, rules);
     }
 };

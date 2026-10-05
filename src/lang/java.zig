@@ -81,7 +81,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
         if (spec.form != .java_static) if (c.java_packages.get(name)) |files| return a.dupe([]const u8, files.items);
     }
     var end = name.len;
-    while (std.mem.lastIndexOfScalar(u8, name[0..end], '.')) |dot| : (end = dot) {
+    while (std.mem.findScalarLast(u8, name[0..end], '.')) |dot| : (end = dot) {
         const files = c.java_packages.get(name[0..dot]) orelse continue;
         const simple = name[dot + 1 .. end];
         var out: std.ArrayList([]const u8) = .empty;

@@ -1,26 +1,31 @@
+const config_module = @import("lang/go/config.zig");
+const tsconfig_module = @import("tsconfig.zig");
+const config_module_ = @import("lang/nim/config.zig");
+const path_module = @import("resolve/path.zig");
+const languages_module = @import("languages.zig");
 const std = @import("std");
 const p = @import("path.zig");
 const t = @import("types.zig");
 pub const PythonInitializers = enum { ancestors, explicit, modulefinder };
 pub const NamedModule = struct { name: []const u8, path: []const u8, from: []const u8 = "**" };
-pub const GoModule = @import("lang/go/config.zig").Module;
+pub const GoModule = config_module.Module;
 pub const Context = struct {
     allocator: std.mem.Allocator,
     files: *const std.StringHashMapUnmanaged(void),
     packages: *const std.StringHashMapUnmanaged(std.ArrayList([]const u8)),
     go_modules: []const GoModule,
-    go_workspaces: []const @import("lang/go/config.zig").Workspace = &.{},
+    go_workspaces: []const config_module.Workspace = &.{},
     named_modules: []const NamedModule,
     include_roots: []const []const u8,
     python_roots: []const []const u8,
     python_initializers: PythonInitializers = .ancestors,
     python_reexports: *const std.StringHashMapUnmanaged([]const []const u8) = &.empty,
-    ts_configs: []const @import("tsconfig.zig").Config = &.{},
-    nim_configs: []const @import("lang/nim/config.zig").Config = &.{},
+    ts_configs: []const tsconfig_module.Config = &.{},
+    nim_configs: []const config_module_.Config = &.{},
     java_packages: *const std.StringHashMapUnmanaged(std.ArrayList([]const u8)) = &.empty,
     pub fn candidate(c: Context, root: []const u8, name: []const u8, suffixes: []const []const u8) !?[]const u8 {
         for (suffixes) |suffix| {
-            const norm = @import("resolve/path.zig").join(c.allocator, root, name, suffix) catch |err| switch (err) {
+            const norm = path_module.join(c.allocator, root, name, suffix) catch |err| switch (err) {
                 error.InvalidPath => continue,
                 else => return err,
             };
@@ -30,7 +35,7 @@ pub const Context = struct {
     }
     pub fn targets(c: Context, from: []const u8, language: t.Language, spec: t.Spec) ![]const []const u8 {
         return switch (language) {
-            inline else => |lang| @field(@import("languages.zig"), @tagName(lang)).resolve(c, from, spec),
+            inline else => |lang| @field(languages_module, @tagName(lang)).resolve(c, from, spec),
         };
     }
     pub fn python(c: Context, out: *std.ArrayList([]const u8), root: []const u8, rel: []const u8) !void {

@@ -1,5 +1,6 @@
+const config_module = @import("../lang/go/config.zig");
+const config = config_module;
 const std = @import("std");
-const g = @import("../gantry.zig");
 const f = @import("support.zig");
 const a = std.testing.allocator;
 
@@ -37,7 +38,6 @@ test "Go replacement routes module aliases and versions inside the repository" {
 }
 
 test "Go exact replacement precedes wildcard and workspace members cannot be replaced" {
-    const config = @import("../lang/go/config.zig");
     const replacements = &[_]config.Replacement{
         .{ .name = "lib", .version = "v1.0.0", .root = "exact" },
         .{ .name = "lib", .version = "", .root = "wildcard" },

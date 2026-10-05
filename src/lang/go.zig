@@ -1,3 +1,6 @@
+const config_module = @import("go/config.zig");
+const config = config_module;
+const path_module = @import("../resolve/path.zig");
 const std = @import("std");
 const l = @import("../lexer.zig");
 const types = @import("../types.zig");
@@ -34,12 +37,11 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     const a = c.allocator;
     const name = spec.name;
-    var owner: ?@import("go/config.zig").Module = null;
+    var owner: ?config_module.Module = null;
     for (c.go_modules) |m| if (p.within(m.root, from) and (owner == null or m.root.len > owner.?.root.len)) {
         owner = m;
     };
     const m = owner orelse return &.{};
-    const config = @import("go/config.zig");
     var work: ?config.Workspace = null;
     for (c.go_workspaces) |w| if (p.within(w.root, from) and config.used(w, m.root) and (work == null or w.root.len > work.?.root.len)) {
         work = w;
@@ -75,7 +77,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
         // Workspace members (and the importing main module itself) use their
         // workspace version, regardless of requirements or replacements.
         const tail = if (name.len == main.name.len) "" else name[main.name.len + 1 ..];
-        const key = try @import("../resolve/path.zig").join(a, main.root, tail, "");
+        const key = try path_module.join(a, main.root, tail, "");
         for (c.go_modules) |other| if (other.root.len > main.root.len and p.within(other.root, key)) return &.{};
         if (c.packages.get(key)) |files| try out.appendSlice(a, files.items);
         return out.toOwnedSlice(a);
@@ -96,7 +98,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     }
     const root = if (route) |r| r.root orelse return &.{} else if (chosen) |v| v.root else return &.{};
     const tail = if (name.len == dependency.len) "" else name[dependency.len + 1 ..];
-    const key = try @import("../resolve/path.zig").join(a, root, tail, "");
+    const key = try path_module.join(a, root, tail, "");
     for (c.go_modules) |other| if (other.root.len > root.len and p.within(other.root, key)) return &.{};
     if (c.packages.get(key)) |files| try out.appendSlice(a, files.items);
     return out.toOwnedSlice(a);

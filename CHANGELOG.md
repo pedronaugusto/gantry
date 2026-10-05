@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Reader callbacks now take `read(scratch_allocator, context, path)`; `DirReader.read` follows the same order. Rename `lexer.decodeJS` to `decodeJs`. `rules.check` takes the allocator before the graph. Internal language indexes take all allocators before their data parameters; the rule engine takes its comptime dependency module first.
+
 - Expose `rules/dependency_check.Key`, the ecosystem/directory key accepted by manifest grouping hash and equality functions.
 
 - Run source checks and the Linux fast gate through the pinned Zig preflight, retaining all full test targets and downstream report validation.

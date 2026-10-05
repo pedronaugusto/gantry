@@ -1,9 +1,10 @@
 //! Token rule occurrences, taken from the token streams recovery lexes anyway.
+const check_module = @import("rules/check.zig");
 const std = @import("std");
 const t = @import("types.zig");
 const l = @import("lexer.zig");
-const TokenRule = @import("rules/check.zig").TokenRule;
-const matchesToken = @import("rules/check.zig").matchesToken;
+const TokenRule = check_module.TokenRule;
+const matchesToken = check_module.matchesToken;
 
 /// Collects the identifiers and string values the rules name, at most once
 /// per file. With no rules every call returns at once.
@@ -159,7 +160,7 @@ fn raw(language: t.Language, source: []const u8, tokens: []const l.Token, i: usi
 /// unknown escape kept as written. Code points are UTF-8; `\x` is a byte
 /// in Zig, C, Go, Rust and Nim and a code point in Python and JavaScript.
 pub fn value(a: std.mem.Allocator, language: t.Language, text: []const u8, keep: bool) ![]const u8 {
-    if (keep or std.mem.indexOfScalar(u8, text, '\\') == null) return text;
+    if (keep or std.mem.findScalar(u8, text, '\\') == null) return text;
     var out: std.ArrayList(u8) = try .initCapacity(a, text.len);
     var i: usize = 0;
     while (i < text.len) {
@@ -227,7 +228,7 @@ fn escape(language: t.Language, text: []const u8, i: usize) ?Escape {
         'u', 'U' => {
             if (c == 'u' and i + 2 < text.len and text[i + 2] == '{') {
                 if (language != .zig and language != .rust and language != .javascript and language != .nim) return null;
-                const close = std.mem.indexOfScalarPos(u8, text, i + 3, '}') orelse return null;
+                const close = std.mem.findScalarPos(u8, text, i + 3, '}') orelse return null;
                 const code = std.fmt.parseInt(u21, text[i + 3 .. close], 16) catch return null;
                 return .{ .code = code, .end = close + 1, .byte = false };
             }

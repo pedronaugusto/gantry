@@ -47,7 +47,7 @@ fn scanDiagnosed(gpa: std.mem.Allocator, paths: []const []const u8) !gantry.Grap
 
 // Replace this with bytes from your own file store. The supplied allocator
 // lives for one file; returned bytes are consumed before the next read.
-fn read(_: void, path: []const u8, _: std.mem.Allocator) !?[]const u8 {
+fn read(_: std.mem.Allocator, _: void, path: []const u8) !?[]const u8 {
     if (std.mem.eql(u8, path, "src/main.zig")) return "const store = @import(\"store.zig\");";
     if (std.mem.eql(u8, path, "src/store.zig")) return "const model = @import(\"model.zig\");";
     return "";

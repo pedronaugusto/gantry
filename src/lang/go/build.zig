@@ -109,7 +109,7 @@ pub fn parseTokens(a: std.mem.Allocator, file: []const u8, text: []const u8, tar
         var line = std.mem.trim(u8, raw, " \t\r");
         while (line.len > 0) {
             if (in_block) {
-                const end = std.mem.indexOf(u8, line, "*/") orelse break;
+                const end = std.mem.find(u8, line, "*/") orelse break;
                 line = std.mem.trimStart(u8, line[end + 2 ..], " \t\r");
                 in_block = false;
             } else if (std.mem.startsWith(u8, line, "/*")) {
@@ -128,12 +128,12 @@ pub fn parseTokens(a: std.mem.Allocator, file: []const u8, text: []const u8, tar
     const base = p.base(file);
     var stem = base[0 .. base.len - 3];
     if (std.mem.endsWith(u8, stem, "_test")) stem = stem[0 .. stem.len - 5];
-    if (std.mem.lastIndexOfScalar(u8, stem, '_')) |last| {
+    if (std.mem.findScalarLast(u8, stem, '_')) |last| {
         const suffix = stem[last + 1 ..];
         if (contains(systems, suffix)) result.os = suffix;
         if (contains(arches, suffix)) {
             result.arch = suffix;
-            if (std.mem.lastIndexOfScalar(u8, stem[0..last], '_')) |previous| {
+            if (std.mem.findScalarLast(u8, stem[0..last], '_')) |previous| {
                 const os = stem[previous + 1 .. last];
                 if (contains(systems, os)) result.os = os;
             }

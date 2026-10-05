@@ -1,14 +1,16 @@
 //! Iterative SCC discovery, condensation depths and real cycle witnesses.
+const reach_module = @import("reach.zig");
+const State_module = @import("State.zig");
 const std = @import("std");
 const t = @import("../types.zig");
-const Graph = @import("../graph/storage.zig");
-const Adjacency = @import("reach.zig").Adjacency;
+const Graph = @import("../graph/Storage.zig");
+const Adjacency = reach_module.Adjacency;
 const Frame = struct { node: usize, next: usize };
 /// The graph supplies unique sorted paths and validated, coalesced edges.
-pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*@import("state.zig") {
+pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*State_module {
     const paths = g.paths;
     const edges = g.edges;
-    const self = try @import("state.zig").init(gpa);
+    const self = try State_module.init(gpa);
     errdefer self.deinit();
     const a = self.arena.allocator();
     var scratch: std.heap.ArenaAllocator = .init(gpa);
@@ -208,7 +210,7 @@ fn directoryCoupling(a: std.mem.Allocator, s: std.mem.Allocator, paths: []const 
     for (paths, 0..) |path, v| {
         var depth: usize = 0;
         var at: usize = 0;
-        while (std.mem.indexOfScalarPos(u8, path, at, '/')) |slash| : (at = slash + 1) {
+        while (std.mem.findScalarPos(u8, path, at, '/')) |slash| : (at = slash + 1) {
             const name = path[0..slash];
             if (depth < stack.items.len and std.mem.eql(u8, names.items[stack.items[depth]], name)) {
                 depth += 1;

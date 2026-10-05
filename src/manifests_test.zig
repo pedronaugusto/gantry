@@ -621,7 +621,7 @@ test "Gradle statements that are not declarations, even malformed ones, end wher
         "}}} dependencies { add(\"x\", ) }",
     }) |text| {
         const declared = try g.manifests.read(arena.allocator(), "build.gradle", text);
-        try std.testing.expect(declared.unsupported.len > 0 or declared.dependencies.len > 0 or std.mem.indexOf(u8, text, "constraints") != null);
+        try std.testing.expect(declared.unsupported.len > 0 or declared.dependencies.len > 0 or std.mem.find(u8, text, "constraints") != null);
     }
 }
 test "Gradle Kotlin declarations read string templates and helpers as computed" {
@@ -732,5 +732,5 @@ test "Nimble requirements that are not string literals declare nothing and are k
     defer diagnostic.deinit();
     try std.testing.expectError(error.UnsupportedImport, g.scanWithDiagnostic(a, &.{"x.nimble"}, fixture, f.Fixture.read, options, &diagnostic));
     try std.testing.expectEqual(g.ScanDiagnostic.Phase.manifests, diagnostic.failure.?.phase);
-    try std.testing.expectEqual(@as(?usize, std.mem.indexOf(u8, text, "requires \"a\"")), diagnostic.failure.?.offset);
+    try std.testing.expectEqual(@as(?usize, std.mem.find(u8, text, "requires \"a\"")), diagnostic.failure.?.offset);
 }

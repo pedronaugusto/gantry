@@ -6,6 +6,7 @@
 //! For each input: nothing panics or leaks, a scan fails only with an error a
 //! reader documents, output is bounded by the input, and the same bytes give
 //! the same result twice.
+const dependency_check_module = @import("../rules/dependency_check.zig");
 const std = @import("std");
 const testing = std.testing;
 const g = @import("../gantry.zig");
@@ -36,7 +37,7 @@ fn bytesOf(smith: *testing.Smith, buffer: *[most]u8) []const u8 {
 const One = struct {
     path: []const u8,
     text: []const u8,
-    fn read(one: One, path: []const u8, a: std.mem.Allocator) !?[]const u8 {
+    fn read(a: std.mem.Allocator, one: One, path: []const u8) !?[]const u8 {
         if (std.mem.eql(u8, path, one.path)) {
             const value = try a.dupe(u8, one.text);
             return value;
@@ -366,7 +367,7 @@ test "fuzz: jsconfig.json" {
 }
 
 test "fuzz: package names in import spellings" {
-    const dependencies = @import("../rules/dependency_check.zig");
+    const dependencies = dependency_check_module;
     const Property = struct {
         fn one(_: void, smith: *testing.Smith) anyerror!void {
             var buffer: [most]u8 = undefined;

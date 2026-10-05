@@ -13,8 +13,8 @@ pub fn create(gpa: std.mem.Allocator) !*State {
 pub fn deinit(state: *State) void {
     const gpa = state.arena.child_allocator;
     state.arena.deinit();
+    defer gpa.destroy(state);
     state.* = undefined;
-    gpa.destroy(state);
 }
 pub fn owner(comptime Owner: type, state: *State) Owner {
     return @enumFromInt(@intFromPtr(state)); // safe: the owning handle preserves the allocated state's address.

@@ -21,23 +21,23 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
     var i: usize = 0;
     while (i < text.len) {
         if (text[i] != '<') {
-            const end = std.mem.indexOfScalarPos(u8, text, i, '<') orelse text.len;
+            const end = std.mem.findScalarPos(u8, text, i, '<') orelse text.len;
             try entities(a, text[i..end], &content);
             i = end;
             continue;
         }
         if (std.mem.startsWith(u8, text[i..], "<!--")) {
-            i = (std.mem.indexOfPos(u8, text, i + 4, "-->") orelse return error.InvalidManifest) + 3;
+            i = (std.mem.findPos(u8, text, i + 4, "-->") orelse return error.InvalidManifest) + 3;
         } else if (std.mem.startsWith(u8, text[i..], "<![CDATA[")) {
-            const end = std.mem.indexOfPos(u8, text, i + 9, "]]>") orelse return error.InvalidManifest;
+            const end = std.mem.findPos(u8, text, i + 9, "]]>") orelse return error.InvalidManifest;
             try content.appendSlice(a, text[i + 9 .. end]);
             i = end + 3;
         } else if (std.mem.startsWith(u8, text[i..], "<?")) {
-            i = (std.mem.indexOfPos(u8, text, i + 2, "?>") orelse return error.InvalidManifest) + 2;
+            i = (std.mem.findPos(u8, text, i + 2, "?>") orelse return error.InvalidManifest) + 2;
         } else if (std.mem.startsWith(u8, text[i..], "<!")) {
-            i = (std.mem.indexOfScalarPos(u8, text, i + 2, '>') orelse return error.InvalidManifest) + 1;
+            i = (std.mem.findScalarPos(u8, text, i + 2, '>') orelse return error.InvalidManifest) + 1;
         } else if (std.mem.startsWith(u8, text[i..], "</")) {
-            const end = std.mem.indexOfScalarPos(u8, text, i + 2, '>') orelse return error.InvalidManifest;
+            const end = std.mem.findScalarPos(u8, text, i + 2, '>') orelse return error.InvalidManifest;
             const name = std.mem.trim(u8, text[i + 2 .. end], " \t\r\n");
             const open = stack.pop() orelse return error.InvalidManifest;
             if (!std.mem.eql(u8, open, name)) return error.InvalidManifest;
@@ -118,8 +118,8 @@ fn dependency(in: []const []const u8) bool {
 fn interpolate(a: std.mem.Allocator, properties: *const std.StringHashMapUnmanaged([]const u8), value: []const u8) !?[]const u8 {
     var current = value;
     for (0..8) |_| {
-        const open = std.mem.indexOf(u8, current, "${") orelse return current;
-        const close = std.mem.indexOfScalarPos(u8, current, open, '}') orelse return null;
+        const open = std.mem.find(u8, current, "${") orelse return current;
+        const close = std.mem.findScalarPos(u8, current, open, '}') orelse return null;
         const replacement = properties.get(current[open + 2 .. close]) orelse return null;
         current = try std.mem.concat(a, u8, &.{ current[0..open], replacement, current[close + 1 ..] });
     }
@@ -129,7 +129,7 @@ fn interpolate(a: std.mem.Allocator, properties: *const std.StringHashMapUnmanag
 fn entities(a: std.mem.Allocator, text: []const u8, out: *std.ArrayList(u8)) !void {
     var i: usize = 0;
     while (i < text.len) {
-        const end = if (text[i] == '&') std.mem.indexOfScalarPos(u8, text, i, ';') else null;
+        const end = if (text[i] == '&') std.mem.findScalarPos(u8, text, i, ';') else null;
         const name = if (end) |e| text[i + 1 .. e] else "";
         const named: ?u8 = if (std.mem.eql(u8, name, "lt")) '<' else if (std.mem.eql(u8, name, "gt")) '>' else if (std.mem.eql(u8, name, "amp")) '&' else if (std.mem.eql(u8, name, "quot")) '"' else if (std.mem.eql(u8, name, "apos")) '\'' else null;
         if (named) |c| {

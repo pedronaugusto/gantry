@@ -1,7 +1,11 @@
 //! A graph owns every path and slice it exposes until deinit.
+const check_module = @import("../rules/check.zig");
+const build_module = @import("../lang/go/build.zig");
+const diagnostic_module = @import("../scan/diagnostic.zig");
+const path_module = @import("../path.zig");
 const std = @import("std");
 const t = @import("../types.zig");
-const Graph = @This();
+const Storage = @This();
 allocator: std.mem.Allocator,
 arena: std.heap.ArenaAllocator,
 paths: []const []const u8 = &.{},
@@ -11,26 +15,26 @@ references: []const t.Reference = &.{},
 unsupported: []const t.UnsupportedReference = &.{},
 tokens: []const t.Token = &.{},
 /// The token rules the scan recorded occurrences for, by kind and text.
-scanned_tokens: []const @import("../rules/check.zig").TokenRule = &.{},
+scanned_tokens: []const check_module.TokenRule = &.{},
 /// Whether the scan read manifest declarations, which dependency rules need.
 manifests: bool = false,
 /// Selected files for which the caller returned null; never silently omitted.
 unread: []const []const u8 = &.{},
-go_files: []const @import("../lang/go/build.zig").File = &.{},
+go_files: []const build_module.File = &.{},
 files: std.StringHashMapUnmanaged(void) = .empty,
 
-pub fn init(gpa: std.mem.Allocator, paths: []const []const u8) !*Graph {
+pub fn init(gpa: std.mem.Allocator, paths: []const []const u8) !*Storage {
     return initTracked(gpa, paths, null);
 }
-pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: ?*@import("../scan/diagnostic.zig").Progress) !*Graph {
-    const g = try gpa.create(Graph);
+pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: ?*diagnostic_module.Progress) !*Storage {
+    const g = try gpa.create(Storage);
     g.* = .{ .allocator = gpa, .arena = .init(gpa) };
     errdefer g.deinit();
     const a = g.arena.allocator();
     var list: std.ArrayList([]const u8) = .empty;
     for (paths) |raw| {
         if (progress) |current| current.at(.paths, raw);
-        const path = try @import("../path.zig").normalize(a, raw);
+        const path = try path_module.normalize(a, raw);
         if (path.len == 0) return error.InvalidPath;
         const entry = try g.files.getOrPut(a, path);
         if (!entry.found_existing) try list.append(a, path);
@@ -40,26 +44,26 @@ pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: 
     g.paths = try list.toOwnedSlice(a);
     return g;
 }
-pub fn scannedFor(g: *const Graph, rule: @import("../rules/check.zig").TokenRule) bool {
+pub fn scannedFor(g: *const Storage, rule: check_module.TokenRule) bool {
     for (g.scanned_tokens) |scanned| if (scanned.kind == rule.kind and std.mem.eql(u8, scanned.token, rule.token)) return true;
     return false;
 }
-pub fn deinit(g: *Graph) void {
+pub fn deinit(g: *Storage) void {
     const gpa = g.allocator;
     g.arena.deinit();
+    defer gpa.destroy(g);
     g.* = undefined;
-    gpa.destroy(g);
 }
 /// Build a graph from caller edges. Endpoints must be among paths.
-pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) !*Graph {
+pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) !*Storage {
     const g = try init(gpa, paths);
     errdefer g.deinit();
     const a = g.arena.allocator();
     const owned = try a.alloc(t.Edge, edges.len);
     for (edges, owned) |edge, *dest| {
         if (edge.count == 0) return error.InvalidCount;
-        const from = try @import("../path.zig").normalize(a, edge.from);
-        const to = try @import("../path.zig").normalize(a, edge.to);
+        const from = try path_module.normalize(a, edge.from);
+        const to = try path_module.normalize(a, edge.to);
         if (!g.files.contains(from) or !g.files.contains(to)) return error.UnknownPath;
         dest.* = .{ .from = from, .to = to, .kind = edge.kind, .count = edge.count };
     }
@@ -70,16 +74,16 @@ pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []con
 /// The returned graph is independent of this one, with no manifest references.
 /// Unsupported imports retain their original source paths and byte offsets.
 /// Directory self edges are retained: they describe coupling within a directory.
-pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) !*Graph {
+pub fn aggregate(g: *const Storage, gpa: std.mem.Allocator, depth: usize) !*Storage {
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
     const a = scratch.allocator();
     const paths = try a.alloc([]const u8, g.paths.len);
-    for (g.paths, paths) |path, *dest| dest.* = @import("../path.zig").directory(path, depth);
+    for (g.paths, paths) |path, *dest| dest.* = path_module.directory(path, depth);
     const edges = try a.alloc(t.Edge, g.edges.len);
-    for (g.edges, edges) |edge, *dest| dest.* = .{ .from = @import("../path.zig").directory(edge.from, depth), .to = @import("../path.zig").directory(edge.to, depth), .kind = edge.kind, .count = edge.count };
+    for (g.edges, edges) |edge, *dest| dest.* = .{ .from = path_module.directory(edge.from, depth), .to = path_module.directory(edge.to, depth), .kind = edge.kind, .count = edge.count };
     // '.' is a graph node for the root, not a file path.
-    const result = try Graph.init(gpa, &.{});
+    const result = try Storage.init(gpa, &.{});
     errdefer result.deinit();
     const ra = result.arena.allocator();
     var list: std.ArrayList([]const u8) = .empty;
@@ -157,9 +161,9 @@ pub fn coalescePending(a: std.mem.Allocator, paths: []const []const u8, pending:
     return edges;
 }
 
-pub fn owner(comptime Owner: type, state: *Graph) Owner {
+pub fn owner(comptime Owner: type, state: *Storage) Owner {
     return @enumFromInt(@intFromPtr(state)); // safe: the owning handle preserves the allocated state's address.
 }
-pub fn get(g: anytype) *Graph {
+pub fn get(g: anytype) *Storage {
     return @ptrFromInt(@intFromEnum(g));
 }

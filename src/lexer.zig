@@ -149,7 +149,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
         if (lang == .c) {
             const prefix: ?usize = if (std.mem.startsWith(u8, text[i..], "R\"")) 2 else if (std.mem.startsWith(u8, text[i..], "u8R\"")) 4 else if (std.mem.startsWith(u8, text[i..], "uR\"") or std.mem.startsWith(u8, text[i..], "UR\"") or std.mem.startsWith(u8, text[i..], "LR\"")) 3 else null;
             if (prefix) |width| {
-                const open = std.mem.indexOfScalarPos(u8, text, i + width, '(') orelse text.len;
+                const open = std.mem.findScalarPos(u8, text, i + width, '(') orelse text.len;
                 if (open -| (i + width) <= 16 and open < text.len) {
                     const delimiter = text[i + width .. open];
                     i = open + 1;
@@ -271,7 +271,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
         i += 1;
         try out.push(a, .{ .kind = .punctuation, .text = text[start..i], .offset = start, .end = i });
         if (lang == .javascript) {
-            regex_allowed = std.mem.indexOfScalar(u8, "=(:,;!&|?{}", c) != null;
+            regex_allowed = std.mem.findScalar(u8, "=(:,;!&|?{}", c) != null;
             if (c == '(') {
                 try controls.append(a, control_pending);
                 control_pending = false;
@@ -338,7 +338,7 @@ fn identIn(comptime lang: Syntax, c: u8) bool {
     return ident(c) and !(lang == .nim and c == '$');
 }
 fn lineEnd(t: []const u8, i: usize) usize {
-    return std.mem.indexOfScalarPos(u8, t, i, '\n') orelse t.len;
+    return std.mem.findScalarPos(u8, t, i, '\n') orelse t.len;
 }
 /// Nim block comments `#[ ]#` and `##[ ]##` nest.
 fn nimComment(t: []const u8, start: usize) usize {
@@ -423,7 +423,7 @@ fn interpolation(a: std.mem.Allocator, t: []const u8, from: usize) !Scanned {
     return .{ .end = @min(i, t.len), .closed = false, .code = code };
 }
 fn tripleEnd(t: []const u8, from: usize, quote: []const u8) usize {
-    const close = std.mem.indexOfPos(u8, t, from, quote) orelse return t.len;
+    const close = std.mem.findPos(u8, t, from, quote) orelse return t.len;
     var end = close + quote.len;
     // Nim keeps extra quotes before the closing three inside the string.
     while (end < t.len and t[end] == quote[0]) : (end += 1) {}
@@ -466,11 +466,11 @@ pub fn compact(tokens: []Token) []Token {
 pub fn decode(a: std.mem.Allocator, text: []const u8) ![]const u8 {
     return decodeImpl(a, text, false);
 }
-pub fn decodeJS(a: std.mem.Allocator, text: []const u8) ![]const u8 {
+pub fn decodeJs(a: std.mem.Allocator, text: []const u8) ![]const u8 {
     return decodeImpl(a, text, true);
 }
 fn decodeImpl(a: std.mem.Allocator, text: []const u8, javascript: bool) ![]const u8 {
-    if (std.mem.indexOfScalar(u8, text, '\\') == null) return text;
+    if (std.mem.findScalar(u8, text, '\\') == null) return text;
     var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
     while (i < text.len) : (i += 1) {
@@ -494,7 +494,7 @@ fn decodeImpl(a: std.mem.Allocator, text: []const u8, javascript: bool) ![]const
                 const escape = text[i];
                 const brace = javascript and escape == 'u' and i + 1 < text.len and text[i + 1] == '{';
                 const begin = i + (if (brace) @as(usize, 2) else 1);
-                const finish = if (brace) std.mem.indexOfScalarPos(u8, text, begin, '}') orelse return error.InvalidEscape else begin + (if (escape == 'x') @as(usize, 2) else if (escape == 'u') @as(usize, 4) else 8);
+                const finish = if (brace) std.mem.findScalarPos(u8, text, begin, '}') orelse return error.InvalidEscape else begin + (if (escape == 'x') @as(usize, 2) else if (escape == 'u') @as(usize, 4) else 8);
                 if (finish > text.len or finish == begin) return error.InvalidEscape;
                 var code = std.fmt.parseInt(u21, text[begin..finish], 16) catch return error.InvalidEscape;
                 i = if (brace) finish else finish - 1;

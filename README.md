@@ -14,7 +14,7 @@ settings.
 ## Usage
 
 [examples/usage.zig](examples/usage.zig) supplies `read` from an in-memory file store.
-Its reader callback is `read(context, path, scratch_allocator) !?[]const u8`.
+Its reader callback is `read(scratch_allocator, context, path) !?[]const u8`.
 
 <!-- BEGIN GENERATED zig build docs -- usage -->
 ```zig
@@ -25,12 +25,12 @@ var graph = try gantry.scan(gpa, paths, {}, read, .{});
 defer graph.deinit();
 
 for (graph.edges()) |edge| {
-    std.debug.print("{s} -> {s} ({d})\n", .{ edge.from, edge.to, edge.count });
+    std.log.info("{s} -> {s} ({d})", .{ edge.from, edge.to, edge.count });
 }
 var analysis = try graph.analyze(gpa);
 defer analysis.deinit();
 for (analysis.layers()) |layer| {
-    std.debug.print("{s}: depth {d}\n", .{ layer.path, layer.depth });
+    std.log.info("{s}: depth {d}", .{ layer.path, layer.depth });
 }
 
 const findings = try graph.check(gpa, .{
@@ -38,7 +38,7 @@ const findings = try graph.check(gpa, .{
     .no_cycles = "no cycles",
 });
 defer gpa.free(findings);
-for (findings) |finding| std.debug.print("{s}: {s}\n", .{ finding.rule, @tagName(finding.reason) });
+for (findings) |finding| std.log.info("{s}: {s}", .{ finding.rule, @tagName(finding.reason) });
 ```
 <!-- END GENERATED -->
 
@@ -75,7 +75,7 @@ var diagnostic = gantry.ScanDiagnostic.init(gpa);
 defer diagnostic.deinit();
 return gantry.scanWithDiagnostic(gpa, paths, {}, read, .{}, &diagnostic) catch |cause| {
     if (diagnostic.failure) |failure| {
-        std.debug.print("{s}: {s}: {s}\n", .{
+        std.log.info("{s}: {s}: {s}", .{
             failure.path orelse "<scan>",
             @tagName(failure.phase),
             @errorName(failure.cause),

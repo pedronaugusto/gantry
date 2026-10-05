@@ -99,7 +99,7 @@ test "sarif with source places reference and token findings at a line and code p
     // Without source, a token keeps its line and a reference is about its file.
     out.clearRetainingCapacity();
     try report.sarif(a, &out.writer, findings, .{});
-    try expect(std.mem.indexOf(u8, out.written(), "\"region\": {\"startLine\": 4}") != null);
+    try expect(std.mem.find(u8, out.written(), "\"region\": {\"startLine\": 4}") != null);
     try eq(1, std.mem.count(u8, out.written(), "\"region\""));
 }
 
@@ -117,13 +117,13 @@ test "sarif with source keeps a finding whose file reads null or is shorter than
     var out: std.Io.Writer.Allocating = .init(a);
     defer out.deinit();
     try report.sarifWithSource(a, &out.writer, &findings, {}, struct {
-        fn read(_: void, p: []const u8, _: std.mem.Allocator) !?[]const u8 {
+        fn read(_: std.mem.Allocator, _: void, p: []const u8) !?[]const u8 {
             return if (std.mem.eql(u8, p, "a.zig")) "ab" else null;
         }
     }.read, .{});
     try eq(0, std.mem.count(u8, out.written(), "\"region\""));
     try std.testing.expectError(error.Unreadable, report.sarifWithSource(a, &out.writer, &findings, {}, struct {
-        fn read(_: void, _: []const u8, _: std.mem.Allocator) !?[]const u8 {
+        fn read(_: std.mem.Allocator, _: void, _: []const u8) !?[]const u8 {
             return error.Unreadable;
         }
     }.read, .{}));
@@ -179,7 +179,7 @@ test "hostile paths: dot quotes close, ids stay distinct and no raw control byte
             if (quoted and line[i] == '\\') {
                 i += 1;
             } else if (line[i] == '"') {
-                if (quoted and std.mem.endsWith(u8, line, "\";") and std.mem.indexOf(u8, line, "->") == null) try ids.append(a, line[start..i]);
+                if (quoted and std.mem.endsWith(u8, line, "\";") and std.mem.find(u8, line, "->") == null) try ids.append(a, line[start..i]);
                 quoted = !quoted;
                 start = i + 1;
             }

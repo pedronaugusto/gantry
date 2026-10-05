@@ -1,4 +1,7 @@
 //! Selected repository configs only: JSONC, local extends and compilerOptions.
+const path_module = @import("resolve/path.zig");
+const diagnostic_module = @import("scan/diagnostic.zig");
+const jsonc_module = @import("jsonc.zig");
 const std = @import("std");
 const p = @import("path.zig");
 const Value = std.json.Value;
@@ -33,7 +36,7 @@ fn validate(value: Value) error{InvalidConfig}!void {
     }
 }
 fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
-    return @import("resolve/path.zig").join(a, root, name, "") catch |err| switch (err) {
+    return path_module.join(a, root, name, "") catch |err| switch (err) {
         error.InvalidPath => null,
         else => return err,
     };
@@ -41,7 +44,7 @@ fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
 fn configName(name: []const u8) bool {
     return std.mem.eql(u8, name, "tsconfig.json") or std.mem.eql(u8, name, "jsconfig.json");
 }
-pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype, progress: *@import("scan/diagnostic.zig").Progress) ![]const Config {
+pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype, progress: *diagnostic_module.Progress) ![]const Config {
     progress.at(.configs, null);
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
@@ -57,9 +60,9 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         const file = entries.items[i].config.path;
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
-        const text = (try read(context, file, s)) orelse continue;
+        const text = (try read(s, context, file)) orelse continue;
         progress.at(.configs, file);
-        const value = try @import("jsonc.zig").parse(a, s, text);
+        const value = try jsonc_module.parse(a, s, text);
         try validate(value);
         entries.items[i].value = value;
         const ext = field(value, "extends");

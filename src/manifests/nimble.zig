@@ -18,7 +18,7 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
         if (token.kind == .newline) continue;
         const first = i == 0 or ts[i - 1].kind == .newline;
         if (first) {
-            const line = if (std.mem.lastIndexOfScalar(u8, text[0..token.offset], '\n')) |n| n + 1 else 0;
+            const line = if (std.mem.findScalarLast(u8, text[0..token.offset], '\n')) |n| n + 1 else 0;
             const column = token.offset - line;
             while (features.items.len > 0 and features.items[features.items.len - 1].column >= column) _ = features.pop();
             if (token.is("feature") and i + 1 < ts.len and ts[i + 1].kind == .string) {
@@ -71,11 +71,11 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
 /// `name`, `name >= 1.0`, `name#head`, or a URL with an optional `#revision`.
 fn requirement(a: std.mem.Allocator, path: []const u8, group: []const u8, raw: []const u8, out: *std.ArrayList(t.Dependency)) !void {
     const value = std.mem.trim(u8, raw, " \t");
-    const url = std.mem.indexOf(u8, value, "://") != null or std.mem.startsWith(u8, value, "git@");
+    const url = std.mem.find(u8, value, "://") != null or std.mem.startsWith(u8, value, "git@");
     const end = if (url) std.mem.indexOfAny(u8, value, " \t") orelse value.len else std.mem.indexOfAny(u8, value, " \t<>=~^#@") orelse value.len;
     if (end == 0) return error.InvalidManifest;
     const spelled = value[0..end];
-    const name = if (url) spelled[0 .. std.mem.indexOfScalar(u8, spelled, '#') orelse spelled.len] else spelled;
+    const name = if (url) spelled[0 .. std.mem.findScalar(u8, spelled, '#') orelse spelled.len] else spelled;
     if (!url and std.ascii.eqlIgnoreCase(name, "nim")) return;
     try out.append(a, .{
         .manifest = path,

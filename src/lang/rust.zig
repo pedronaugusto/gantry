@@ -131,7 +131,7 @@ fn emit(a: std.mem.Allocator, raw: []const u8, names: *Names, scope: []const u8,
     // `::serde::X` names a crate whatever this module declares.
     const global = std.mem.startsWith(u8, raw, "::");
     const name = if (global) raw[2..] else raw;
-    const root = name[0 .. std.mem.indexOf(u8, name, "::") orelse name.len];
+    const root = name[0 .. std.mem.find(u8, name, "::") orelse name.len];
     if (!crateName(root)) return;
     if (!global) {
         const found = try names.get(a);
@@ -233,7 +233,7 @@ fn crateRoot(ts: []const l.Token, i: usize) bool {
     // `::` first: most words are not followed by one.
     if (i + 3 >= ts.len or ts[i + 1].offset != t.end or !ts[i + 1].is(":") or !ts[i + 2].is(":") or ts[i + 2].offset != ts[i + 1].end) return false;
     // Inside a path, after a method's `.`, or in a macro's `$crate`.
-    if (i > 0 and ts[i - 1].kind == .punctuation and std.mem.indexOfScalar(u8, ":.$", ts[i - 1].text[0]) != null) return false;
+    if (i > 0 and ts[i - 1].kind == .punctuation and std.mem.findScalar(u8, ":.$", ts[i - 1].text[0]) != null) return false;
     if (ts[i + 3].is("<")) return false;
     return t.kind == .word and crateName(t.text);
 }

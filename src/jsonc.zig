@@ -11,11 +11,11 @@ pub fn parse(a: std.mem.Allocator, scratch: std.mem.Allocator, text: []const u8)
             continue;
         }
         if (std.mem.startsWith(u8, clean[i..], "//")) {
-            const end = std.mem.indexOfScalarPos(u8, clean, i + 2, '\n') orelse clean.len;
+            const end = std.mem.findScalarPos(u8, clean, i + 2, '\n') orelse clean.len;
             @memset(clean[i..end], ' ');
             i = end;
         } else if (std.mem.startsWith(u8, clean[i..], "/*")) {
-            const end = (std.mem.indexOfPos(u8, clean, i + 2, "*/") orelse return error.SyntaxError) + 2;
+            const end = (std.mem.findPos(u8, clean, i + 2, "*/") orelse return error.SyntaxError) + 2;
             for (clean[i..end]) |*byte| if (byte.* != '\n' and byte.* != '\r') {
                 byte.* = ' ';
             };

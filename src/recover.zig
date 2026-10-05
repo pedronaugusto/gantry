@@ -1,8 +1,10 @@
 //! Markdown and asset recovery have separate lexical rules from source code.
+const types_module = @import("types.zig");
+const resolve_module = @import("resolve.zig");
 const std = @import("std");
 const p = @import("path.zig");
-const Spec = @import("types.zig").Spec;
-const Context = @import("resolve.zig").Context;
+const Spec = types_module.Spec;
+const Context = resolve_module.Context;
 pub const Names = std.StringHashMapUnmanaged(?[]const u8);
 pub fn names(a: std.mem.Allocator, paths: []const []const u8) !Names {
     var map: Names = .empty;
@@ -31,7 +33,7 @@ pub fn links(a: std.mem.Allocator, text: []const u8) ![]const Spec {
                         fence = text[start];
                         fence_len = end - start;
                     } else fence = 0;
-                    i = std.mem.indexOfScalarPos(u8, text, end, '\n') orelse text.len;
+                    i = std.mem.findScalarPos(u8, text, end, '\n') orelse text.len;
                     if (i < text.len) i += 1;
                     continue;
                 }
@@ -42,7 +44,7 @@ pub fn links(a: std.mem.Allocator, text: []const u8) ![]const Spec {
             continue;
         }
         if (std.mem.startsWith(u8, text[i..], "<!--")) {
-            i = if (std.mem.indexOfPos(u8, text, i + 4, "-->")) |end| end + 3 else text.len;
+            i = if (std.mem.findPos(u8, text, i + 4, "-->")) |end| end + 3 else text.len;
             continue;
         }
         if (text[i] == '\\') {
@@ -53,11 +55,11 @@ pub fn links(a: std.mem.Allocator, text: []const u8) ![]const Spec {
             var end = i;
             while (end < text.len and text[end] == '`') : (end += 1) {}
             const marker = text[i..end];
-            i = if (std.mem.indexOfPos(u8, text, end, marker)) |close| close + marker.len else end;
+            i = if (std.mem.findPos(u8, text, end, marker)) |close| close + marker.len else end;
             continue;
         }
         if (std.mem.startsWith(u8, text[i..], "[[")) {
-            const end = std.mem.indexOfPos(u8, text, i + 2, "]]") orelse {
+            const end = std.mem.findPos(u8, text, i + 2, "]]") orelse {
                 i += 2;
                 continue;
             };
@@ -92,8 +94,8 @@ pub fn links(a: std.mem.Allocator, text: []const u8) ![]const Spec {
                 }
             }
             const raw = text[start..end];
-            const name = raw[0 .. std.mem.indexOfScalar(u8, raw, '#') orelse raw.len];
-            if (name.len > 0 and std.mem.indexOfScalar(u8, name, ':') == null and name[0] != '/') try out.append(a, .{ .name = try unescape(a, name), .offset = i });
+            const name = raw[0 .. std.mem.findScalar(u8, raw, '#') orelse raw.len];
+            if (name.len > 0 and std.mem.findScalar(u8, name, ':') == null and name[0] != '/') try out.append(a, .{ .name = try unescape(a, name), .offset = i });
             i = end;
             continue;
         }
@@ -134,7 +136,7 @@ pub fn assets(a: std.mem.Allocator, text: []const u8) ![]const Spec {
     return out.toOwnedSlice(a);
 }
 fn pathByte(c: u8) bool {
-    return std.ascii.isAlphanumeric(c) or c >= 128 or std.mem.indexOfScalar(u8, "./_-@", c) != null;
+    return std.ascii.isAlphanumeric(c) or c >= 128 or std.mem.findScalar(u8, "./_-@", c) != null;
 }
 pub fn assetText(path: []const u8) bool {
     const ext = std.fs.path.extension(path);

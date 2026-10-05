@@ -1,3 +1,4 @@
+const lexer_module = @import("../lexer.zig");
 const std = @import("std");
 const g = @import("../gantry.zig");
 const f = @import("support.zig");
@@ -12,7 +13,7 @@ const Module = struct {
     counter: f.Peak = .{ .child = a },
     before_big: usize = 0,
     after_big: usize = 0,
-    fn read(self: *Module, path: []const u8, s: std.mem.Allocator) !?[]const u8 {
+    fn read(s: std.mem.Allocator, self: *Module, path: []const u8) !?[]const u8 {
         if (std.mem.eql(u8, path, "go.mod")) return "module example.org/m";
         if (std.mem.eql(u8, path, "big/big.go")) {
             self.before_big = self.counter.live;
@@ -54,7 +55,7 @@ test "scan returns a large file's scratch before reading the next" {
     for (0..20_000) |_| try source.appendSlice(a, "var x = 1\n");
     var module: Module = .{ .importers = 1, .members = 1, .big = source.items };
     _ = try module.scan();
-    const tokens = 100_002 * @sizeOf(@import("../lexer.zig").Token);
+    const tokens = 100_002 * @sizeOf(lexer_module.Token);
     try std.testing.expect(module.counter.peak > tokens);
     try std.testing.expect(module.after_big - module.before_big < tokens / 2);
 }

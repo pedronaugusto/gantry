@@ -1,12 +1,14 @@
 //! Scan inputs and language selection, below scanning and the public facade.
+const build_module = @import("../lang/go/build.zig");
+const check_module = @import("../rules/check.zig");
 const std = @import("std");
 const t = @import("../types.zig");
 const Kind = t.Kind;
 const Language = t.Language;
 const resolver = @import("../resolve.zig");
 const NamedModule = resolver.NamedModule;
-const GoTarget = @import("../lang/go/build.zig").Target;
-pub const GoFile = @import("../lang/go/build.zig").File;
+const GoTarget = build_module.Target;
+pub const GoFile = build_module.File;
 const PythonInitializers = resolver.PythonInitializers;
 const languages = @import("../languages.zig");
 
@@ -27,7 +29,7 @@ pub const Options = struct {
     /// Record the identifiers and string values these rules name, from
     /// source files in a supported language, for `graph.tokens()` and the
     /// same rules in `rules.Rules.tokens`. Only `kind` and `token` are read.
-    tokens: []const @import("../rules/check.zig").TokenRule = &.{},
+    tokens: []const check_module.TokenRule = &.{},
 };
 
 pub fn languageOf(p: []const u8) ?Language {

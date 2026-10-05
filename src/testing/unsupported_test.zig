@@ -391,7 +391,7 @@ test "unsupported Python loader detection follows implicit line continuation" {
     try std.testing.expectEqual(g.ImportExpression.python_importlib, result.unsupported()[0].expression);
     try std.testing.expectEqual(@as(usize, 1), result.unsupported()[0].offset);
     try std.testing.expectEqual(g.ImportExpression.python_import, result.unsupported()[1].expression);
-    try std.testing.expectEqual(std.mem.indexOf(u8, source, "__import__").?, result.unsupported()[1].offset);
+    try std.testing.expectEqual(std.mem.find(u8, source, "__import__").?, result.unsupported()[1].offset);
 }
 
 fn strictAllocations(alloc: std.mem.Allocator) !void {

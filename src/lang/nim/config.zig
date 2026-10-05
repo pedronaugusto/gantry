@@ -1,6 +1,8 @@
 //! Nim search paths from selected `nim.cfg`, `config.nims` and project
 //! configs. Only literal paths are read; `$` substitutions and computed
 //! NimScript values are not evaluated, and conditions are not either.
+const diagnostic_module = @import("../../scan/diagnostic.zig");
+const path_module = @import("../../resolve/path.zig");
 const std = @import("std");
 const l = @import("../../lexer.zig");
 const p = @import("../../path.zig");
@@ -15,7 +17,7 @@ pub fn name(file: []const u8) bool {
 }
 
 /// Configs ordered from the root down, so a nearer one comes later.
-pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, progress: *@import("../../scan/diagnostic.zig").Progress) ![]const Config {
+pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, progress: *diagnostic_module.Progress) ![]const Config {
     var out: std.ArrayList(Config) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
@@ -23,13 +25,13 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
         progress.at(.configs, file);
-        const text = (try read(context, file, s)) orelse continue;
+        const text = (try read(s, context, file)) orelse continue;
         progress.at(.configs, file);
         const values = if (std.mem.endsWith(u8, file, ".nims")) try script(s, text) else try cfg(s, text);
         var joined: std.ArrayList([]const u8) = .empty;
         for (values) |value| {
-            if (value.len == 0 or std.mem.indexOfScalar(u8, value, '$') != null) continue;
-            const full = @import("../../resolve/path.zig").join(a, p.dir(file), value, "") catch |err| switch (err) {
+            if (value.len == 0 or std.mem.findScalar(u8, value, '$') != null) continue;
+            const full = path_module.join(a, p.dir(file), value, "") catch |err| switch (err) {
                 error.InvalidPath => continue,
                 else => return err,
             };
@@ -71,7 +73,7 @@ fn cfg(a: std.mem.Allocator, text: []const u8) ![]const []const u8 {
         if (!pathKey(std.mem.trim(u8, line[0..separator], " \t"))) continue;
         var value = std.mem.trim(u8, line[separator + 1 ..], " \t");
         if (value.len > 0 and value[0] == '"') {
-            const close = std.mem.indexOfScalarPos(u8, value, 1, '"') orelse continue;
+            const close = std.mem.findScalarPos(u8, value, 1, '"') orelse continue;
             value = value[1..close];
         } else {
             value = value[0 .. std.mem.indexOfAny(u8, value, " \t#") orelse value.len];

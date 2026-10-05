@@ -1,3 +1,4 @@
+const check_module = @import("../rules/check.zig");
 const std = @import("std");
 const l = @import("../lexer.zig");
 const types = @import("../types.zig");
@@ -50,7 +51,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     if (std.mem.endsWith(u8, name, ".zig")) {
         if (try c.candidate(dir, name, &.{""})) |v| try out.append(a, v);
     } else for (c.named_modules) |m| {
-        if (std.mem.eql(u8, name, m.name) and @import("../rules/check.zig").matches(m.from, from)) {
+        if (std.mem.eql(u8, name, m.name) and check_module.matches(m.from, from)) {
             if (try c.candidate("", m.path, &.{""})) |v| try out.append(a, v);
             break;
         }

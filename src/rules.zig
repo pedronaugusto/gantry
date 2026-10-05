@@ -1,7 +1,8 @@
 //! Public rule data and checking over an owned graph.
+const graph_module = @import("graph.zig");
 const engine = @import("rules/check.zig");
 const std = @import("std");
-const Graph = @import("graph.zig").Graph;
+const Graph = graph_module.Graph;
 pub const Layer = engine.Layer;
 pub const OrderedLayers = engine.OrderedLayers;
 pub const EdgeRule = engine.EdgeRule;
@@ -18,6 +19,6 @@ pub const matchesToken = engine.matchesToken;
 /// Frees `check`'s findings with the chains of transitive ones.
 pub const free = engine.free;
 
-pub fn check(g: *const Graph, a: std.mem.Allocator, rules: Rules) ![]const Violation {
+pub fn check(a: std.mem.Allocator, g: *const Graph, rules: Rules) ![]const Violation {
     return g.check(a, rules);
 }

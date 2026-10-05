@@ -14,7 +14,7 @@ fn failed(diagnostic: *const g.ScanDiagnostic, path: ?[]const u8, phase: g.ScanD
 const Reader = struct {
     fail_on: usize = 1,
     calls: usize = 0,
-    fn read(self: *@This(), _: []const u8, _: std.mem.Allocator) !?[]const u8 {
+    fn read(_: std.mem.Allocator, self: *Reader, _: []const u8) !?[]const u8 {
         self.calls += 1;
         if (self.calls == self.fail_on) return error.ReaderRefused;
         return "";

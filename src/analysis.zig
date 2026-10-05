@@ -1,7 +1,10 @@
 //! Owned layers, components and cycle witnesses, independent of the graph.
+const reach_module = @import("analysis/reach.zig");
+const Storage_module = @import("graph/Storage.zig");
+const analyze_module = @import("analysis/analyze.zig");
 const std = @import("std");
 const t = @import("types.zig");
-const store = @import("analysis/state.zig");
+const store = @import("analysis/State.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
 pub const Analysis = enum(usize) {
@@ -72,7 +75,7 @@ pub const Analysis = enum(usize) {
         const state = store.get(self.*);
         const source = try position(state, from);
         const target = try position(state, to);
-        const walk = @import("analysis/reach.zig");
+        const walk = reach_module;
         var scratch: std.heap.ArenaAllocator = .init(gpa);
         defer scratch.deinit();
         const s = scratch.allocator();
@@ -93,9 +96,9 @@ pub const Analysis = enum(usize) {
     /// endpoints, InvalidCount for zero counts, and CountOverflow when counts merge
     /// past usize. Results are sorted independently of input order and borrow nothing.
     pub fn init(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) (std.mem.Allocator.Error || error{ InvalidPath, UnknownPath, InvalidCount, CountOverflow })!Analysis {
-        const graph = try @import("graph/storage.zig").fromEdges(gpa, paths, edges);
+        const graph = try Storage_module.fromEdges(gpa, paths, edges);
         defer graph.deinit();
-        return @enumFromInt(@intFromPtr(try @import("analysis/analyze.zig").analyze(graph, gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
+        return @enumFromInt(@intFromPtr(try analyze_module.analyze(graph, gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
 };
 
@@ -118,7 +121,7 @@ fn closure(state: *const store, gpa: std.mem.Allocator, starts: []const []const 
         try positions.append(gpa, v);
     }
     const adjacency = if (direction == .dependencies) state.forward else state.backward;
-    try @import("analysis/reach.zig").closure(gpa, adjacency, positions.items, marks);
+    try reach_module.closure(gpa, adjacency, positions.items, marks);
     if (include) for (positions.items) |v| {
         marks[v] = true;
     };

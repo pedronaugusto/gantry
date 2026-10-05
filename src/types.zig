@@ -176,7 +176,7 @@ pub const Dependency = struct {
         }
         if (std.mem.eql(u8, manifest, "pom.xml")) {
             // `test` stays development even when optional; otherwise optional wins.
-            const maven = dep.group[0 .. std.mem.indexOfScalar(u8, dep.group, ',') orelse dep.group.len];
+            const maven = dep.group[0 .. std.mem.findScalar(u8, dep.group, ',') orelse dep.group.len];
             if (std.mem.eql(u8, maven, "test")) return .development;
             if (std.mem.endsWith(u8, dep.group, ",optional")) return .optional;
             if (std.mem.eql(u8, maven, "provided")) return .build;
@@ -184,7 +184,7 @@ pub const Dependency = struct {
         }
         if (std.mem.eql(u8, manifest, "build.gradle") or std.mem.eql(u8, manifest, "build.gradle.kts")) {
             const configuration = dep.group;
-            if (std.mem.startsWith(u8, configuration, "test") or std.mem.indexOf(u8, configuration, "Test") != null) return .development;
+            if (std.mem.startsWith(u8, configuration, "test") or std.mem.find(u8, configuration, "Test") != null) return .development;
             for ([_][]const u8{ "compileOnly", "compileOnlyApi", "annotationProcessor", "kapt", "ksp", "classpath" }) |name| if (std.mem.eql(u8, configuration, name)) return .build;
             if (std.mem.endsWith(u8, configuration, "CompileOnly") or std.mem.endsWith(u8, configuration, "AnnotationProcessor")) return .build;
             return .runtime;
@@ -215,7 +215,7 @@ pub const Dependency = struct {
         if (dep.origin != .remote) return "";
         if (std.mem.eql(u8, manifest, "go.mod")) return "";
         if (std.mem.eql(u8, manifest, "pyproject.toml")) return vcsRevision(dep.source);
-        const hash = std.mem.lastIndexOfScalar(u8, dep.source, '#') orelse return "";
+        const hash = std.mem.findScalarLast(u8, dep.source, '#') orelse return "";
         return dep.source[hash + 1 ..];
     }
 
@@ -229,18 +229,18 @@ pub const Dependency = struct {
         const manifest = baseName(dep.manifest);
         const name = dep.name;
         if (std.mem.eql(u8, manifest, "pom.xml") or std.mem.eql(u8, manifest, "build.gradle") or std.mem.eql(u8, manifest, "build.gradle.kts")) {
-            return name[if (std.mem.lastIndexOfScalar(u8, name, ':')) |colon| colon + 1 else 0..];
+            return name[if (std.mem.findScalarLast(u8, name, ':')) |colon| colon + 1 else 0..];
         }
         if (std.mem.eql(u8, manifest, "go.mod")) {
             const path = std.mem.trimEnd(u8, name, "/");
-            const slash = std.mem.lastIndexOfScalar(u8, path, '/') orelse return path;
+            const slash = std.mem.findScalarLast(u8, path, '/') orelse return path;
             const last = path[slash + 1 ..];
             if (!majorSuffix(last)) return last;
             const before = path[0..slash];
-            return before[if (std.mem.lastIndexOfScalar(u8, before, '/')) |s| s + 1 else 0..];
+            return before[if (std.mem.findScalarLast(u8, before, '/')) |s| s + 1 else 0..];
         }
         if (std.mem.eql(u8, manifest, "package.json") and std.mem.startsWith(u8, name, "@")) {
-            return name[if (std.mem.indexOfScalar(u8, name, '/')) |slash| slash + 1 else 0..];
+            return name[if (std.mem.findScalar(u8, name, '/')) |slash| slash + 1 else 0..];
         }
         return name;
     }
@@ -255,12 +255,12 @@ pub const Dependency = struct {
 
     /// `git+https://host/owner/x.git@v1#egg=x` → `v1`.
     fn vcsRevision(source: []const u8) []const u8 {
-        const plus = std.mem.indexOfScalar(u8, source, '+') orelse return "";
-        const scheme = std.mem.indexOf(u8, source, "://") orelse return "";
+        const plus = std.mem.findScalar(u8, source, '+') orelse return "";
+        const scheme = std.mem.find(u8, source, "://") orelse return "";
         if (plus > scheme) return "";
-        const url = source[0 .. std.mem.indexOfScalar(u8, source, '#') orelse source.len];
-        const path = std.mem.indexOfScalarPos(u8, url, scheme + 3, '/') orelse return "";
-        const at = std.mem.lastIndexOfScalar(u8, url[path..], '@') orelse return "";
+        const url = source[0 .. std.mem.findScalar(u8, source, '#') orelse source.len];
+        const path = std.mem.findScalarPos(u8, url, scheme + 3, '/') orelse return "";
+        const at = std.mem.findScalarLast(u8, url[path..], '@') orelse return "";
         return url[path + at + 1 ..];
     }
 

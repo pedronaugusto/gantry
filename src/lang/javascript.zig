@@ -1,3 +1,4 @@
+const tsconfig_module = @import("../tsconfig.zig");
 const std = @import("std");
 const l = @import("../lexer.zig");
 const types = @import("../types.zig");
@@ -17,7 +18,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         if (t.is("require") or t.is("import")) {
             if (i + 3 < ts.len and ts[i + 1].is("(") and ts[i + 2].kind == .string and (ts[i + 3].is(")") or ts[i + 3].is(","))) {
                 const kind: types.Kind = if (t.is("require")) (if (typeOnlyRequire(ts, i)) .type_only else .import) else callKind(ts, i);
-                try out.append(a, .{ .name = try l.decodeJS(a, ts[i + 2].text), .offset = t.offset, .kind = kind });
+                try out.append(a, .{ .name = try l.decodeJs(a, ts[i + 2].text), .offset = t.offset, .kind = kind });
                 continue;
             }
             if (i + 1 < ts.len and ts[i + 1].is("(")) {
@@ -26,14 +27,14 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
             }
             if (t.is("require")) continue;
             if (i + 1 < ts.len and ts[i + 1].kind == .string) {
-                try out.append(a, .{ .name = try l.decodeJS(a, ts[i + 1].text), .offset = t.offset });
+                try out.append(a, .{ .name = try l.decodeJs(a, ts[i + 1].text), .offset = t.offset });
                 continue;
             }
         } else if (!t.is("export")) continue;
         var j = i + 1;
         while (j < ts.len and !ts[j].is(";") and !ts[j].is("=")) : (j += 1) {
             if (ts[j].is("from") and j + 1 < ts.len and ts[j + 1].kind == .string) {
-                try out.append(a, .{ .name = try l.decodeJS(a, ts[j + 1].text), .offset = t.offset, .kind = if (typeOnlyClause(ts[i + 1 .. j])) .type_only else .import });
+                try out.append(a, .{ .name = try l.decodeJs(a, ts[j + 1].text), .offset = t.offset, .kind = if (typeOnlyClause(ts[i + 1 .. j])) .type_only else .import });
                 break;
             }
             if (ts[j].is("import") or ts[j].is("export")) break;
@@ -91,12 +92,12 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     var target: ?[]const u8 = null;
     if (std.mem.startsWith(u8, name, "./") or std.mem.startsWith(u8, name, "../")) {
         target = try file(c, p.dir(from), name);
-    } else if (@import("../tsconfig.zig").nearest(c.ts_configs, from)) |cfg| {
-        var best: ?@import("../tsconfig.zig").Mapping = null;
+    } else if (tsconfig_module.nearest(c.ts_configs, from)) |cfg| {
+        var best: ?tsconfig_module.Mapping = null;
         var capture: []const u8 = "";
         var length: usize = 0;
         if (cfg.mappings) |mappings| for (mappings) |m| {
-            if (std.mem.indexOfScalar(u8, m.pattern, '*')) |star| {
+            if (std.mem.findScalar(u8, m.pattern, '*')) |star| {
                 const tail = m.pattern[star + 1 ..];
                 if (name.len < star + tail.len or !std.mem.startsWith(u8, name, m.pattern[0..star]) or !std.mem.endsWith(u8, name, tail)) continue;
                 if (best == null or star > length) {

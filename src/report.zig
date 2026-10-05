@@ -1,9 +1,10 @@
 //! Text for the tools that lay out, draw and annotate: DOT and Mermaid
 //! for a graph, JSON for a graph with its findings, SARIF for findings.
 //! gantry draws nothing itself. Output is the same for the same input.
+const graph_module = @import("graph.zig");
 const std = @import("std");
 const t = @import("types.zig");
-const Graph = @import("graph.zig").Graph;
+const Graph = graph_module.Graph;
 const engine = @import("rules/check.zig");
 const text = @import("report/json.zig");
 const Writer = std.Io.Writer;
@@ -81,7 +82,7 @@ fn draw(comptime format: Format, gpa: std.mem.Allocator, w: *Writer, graph: *con
                 }
                 while (open.len != dir.len) {
                     const start = if (open.len == 0) 0 else open.len + 1;
-                    open = dir[0 .. std.mem.indexOfScalarPos(u8, dir, start, '/') orelse dir.len];
+                    open = dir[0 .. std.mem.findScalarPos(u8, dir, start, '/') orelse dir.len];
                     try out.open(open, open[start..]);
                 }
                 try out.node(i, p);
@@ -93,7 +94,7 @@ fn draw(comptime format: Format, gpa: std.mem.Allocator, w: *Writer, graph: *con
             defer gpa.free(layer);
             for (paths, layer) |p, *l| l.* = firstLayer(options.layers, p);
             for (options.layers, 0..) |l, li| {
-                if (std.mem.indexOfScalar(usize, layer, li) == null) continue;
+                if (std.mem.findScalar(usize, layer, li) == null) continue;
                 try out.openLayer(li, l.name);
                 for (paths, layer, 0..) |p, at, i| if (at == li) try out.node(i, p);
                 try out.close();
@@ -120,16 +121,17 @@ fn draw(comptime format: Format, gpa: std.mem.Allocator, w: *Writer, graph: *con
 
 fn Out(comptime format: Format) type {
     return struct {
+        const Self = @This();
         w: *Writer,
         marks: *const Marks,
         labels: bool,
         depth: usize = 0,
         clusters: usize = 0,
 
-        fn indent(o: *@This()) Writer.Error!void {
+        fn indent(o: *Self) Writer.Error!void {
             try o.w.splatByteAll(' ', 2 * (o.depth + 1));
         }
-        fn open(o: *@This(), dir: []const u8, label: []const u8) Writer.Error!void {
+        fn open(o: *Self, dir: []const u8, label: []const u8) Writer.Error!void {
             try o.indent();
             switch (format) {
                 .dot => {
@@ -151,7 +153,7 @@ fn Out(comptime format: Format) type {
             }
             o.clusters += 1;
         }
-        fn openLayer(o: *@This(), index: usize, name: []const u8) Writer.Error!void {
+        fn openLayer(o: *Self, index: usize, name: []const u8) Writer.Error!void {
             switch (format) {
                 .dot => {
                     try o.indent();
@@ -166,13 +168,13 @@ fn Out(comptime format: Format) type {
                 .mermaid => try o.open("", name),
             }
         }
-        fn close(o: *@This()) Writer.Error!void {
+        fn close(o: *Self) Writer.Error!void {
             o.depth -= 1;
             try o.indent();
             try o.w.writeAll(if (format == .dot) "}\n" else "end\n");
         }
-        fn node(o: *@This(), index: usize, p: []const u8) Writer.Error!void {
-            const label = if (o.labels) p[if (std.mem.lastIndexOfScalar(u8, p, '/')) |s| s + 1 else 0..] else p;
+        fn node(o: *Self, index: usize, p: []const u8) Writer.Error!void {
+            const label = if (o.labels) p[if (std.mem.findScalarLast(u8, p, '/')) |s| s + 1 else 0..] else p;
             const labelled = label.len != p.len;
             const marked = o.marks.nodes.isSet(index);
             try o.indent();
@@ -200,7 +202,7 @@ fn Out(comptime format: Format) type {
                 },
             }
         }
-        fn edge(o: *@This(), index: usize, e: t.Edge, from: usize, to: usize) Writer.Error!void {
+        fn edge(o: *Self, index: usize, e: t.Edge, from: usize, to: usize) Writer.Error!void {
             const marked = o.marks.edges.isSet(index);
             switch (format) {
                 .dot => {
@@ -306,7 +308,7 @@ fn firstLayer(layers: []const engine.Layer, p: []const u8) usize {
 }
 
 fn parent(p: []const u8) []const u8 {
-    return p[0 .. std.mem.lastIndexOfScalar(u8, p, '/') orelse 0];
+    return p[0 .. std.mem.findScalarLast(u8, p, '/') orelse 0];
 }
 
 /// `dir` is `open` or lies under it.

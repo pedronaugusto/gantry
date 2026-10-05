@@ -1,9 +1,11 @@
 //! JSON for a graph and its findings, SARIF 2.1.0 for findings, and the
 //! byte escapes every report shares.
+const graph_module = @import("../graph.zig");
+const check_module = @import("../rules/check.zig");
 const std = @import("std");
 const t = @import("../types.zig");
-const Graph = @import("../graph.zig").Graph;
-const Violation = @import("../rules/check.zig").Violation;
+const Graph = graph_module.Graph;
+const Violation = check_module.Violation;
 const Writer = std.Io.Writer;
 
 /// The length of the UTF-8 sequence that starts at `s[i]`, or null for a
@@ -11,7 +13,7 @@ const Writer = std.Io.Writer;
 pub fn sequence(s: []const u8, i: usize) ?usize {
     const n = std.unicode.utf8ByteSequenceLength(s[i]) catch return null;
     if (i + n > s.len) return null;
-    _ = std.unicode.utf8Decode(s[i..][0..n]) catch return null;
+    if (!std.unicode.utf8ValidateSlice(s[i..][0..n])) return null;
     return n;
 }
 
@@ -158,7 +160,7 @@ pub fn sarif(gpa: std.mem.Allocator, w: *Writer, findings: []const Violation, op
 }
 
 /// `sarif`, reading each file a reference or token finding names once,
-/// with `read(context, path, scratch_allocator) !?[]const u8` as `scan`
+/// with `read(scratch_allocator, context, path) !?[]const u8` as `scan`
 /// takes it, to place those findings at a line and column (in Unicode
 /// code points). A null read, or an offset past the bytes, leaves the
 /// finding where `sarif` puts it; a read error is returned.
@@ -167,10 +169,11 @@ pub fn sarifWithSource(gpa: std.mem.Allocator, w: *Writer, findings: []const Vio
     defer gpa.free(positions);
     for (findings, positions) |f, *p| p.* = if (f.token) |k| .{ .line = k.line } else null;
     const Spot = struct {
+        const Self = @This();
         path: []const u8,
         offset: usize,
         finding: usize,
-        fn less(_: void, a: @This(), b: @This()) bool {
+        fn less(_: void, a: Self, b: Self) bool {
             const order = std.mem.order(u8, a.path, b.path);
             return if (order != .eq) order == .lt else a.offset < b.offset;
         }
@@ -190,7 +193,7 @@ pub fn sarifWithSource(gpa: std.mem.Allocator, w: *Writer, findings: []const Vio
         while (end < spots.items.len and std.mem.eql(u8, spots.items[end].path, file)) end += 1;
         defer s = end;
         _ = scratch.reset(.retain_capacity);
-        const bytes = (try read(context, file, scratch.allocator())) orelse continue;
+        const bytes = (try read(scratch.allocator(), context, file)) orelse continue;
         var line: usize = 1;
         var start: usize = 0;
         var at: usize = 0;
