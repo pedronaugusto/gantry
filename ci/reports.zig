@@ -32,7 +32,7 @@ pub fn main(init: std.process.Init) !void {
 fn command(a: std.mem.Allocator, io: std.Io, argv: []const []const u8) !void {
     const result = try std.process.run(a, io, .{ .argv = argv });
     if (result.term != .exited or result.term.exited != 0) {
-        std.debug.print("report tool failed: {s}\n{s}{s}\n", .{ argv[0], result.stdout, result.stderr });
+        std.log.err("report tool failed: {s}\n{s}{s}", .{ argv[0], result.stdout, result.stderr });
         return error.ReportValidationFailed;
     }
 }
