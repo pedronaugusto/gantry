@@ -22,7 +22,7 @@ test {
     _ = @import("testing/kinds_test.zig");
     _ = @import("testing/constraints_test.zig");
     _ = @import("testing/python_policy_test.zig");
-    _ = @import("Graph_test.zig");
+    _ = @import("graph_test.zig");
     _ = @import("rules_test.zig");
     _ = @import("report_test.zig");
     _ = @import("testing/queries_test.zig");

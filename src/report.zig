@@ -3,7 +3,7 @@
 //! gantry draws nothing itself. Output is the same for the same input.
 const std = @import("std");
 const t = @import("types.zig");
-const Graph = @import("Graph.zig").Graph;
+const Graph = @import("graph.zig").Graph;
 const engine = @import("rules/check.zig");
 const text = @import("report/json.zig");
 const Writer = std.Io.Writer;

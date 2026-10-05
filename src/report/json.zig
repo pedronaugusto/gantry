@@ -2,7 +2,7 @@
 //! byte escapes every report shares.
 const std = @import("std");
 const t = @import("../types.zig");
-const Graph = @import("../Graph.zig").Graph;
+const Graph = @import("../graph.zig").Graph;
 const Violation = @import("../rules/check.zig").Violation;
 const Writer = std.Io.Writer;
 

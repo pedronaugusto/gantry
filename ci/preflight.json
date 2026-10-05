@@ -9,7 +9,7 @@
     "src/testing/*"
   ],
   "function_exceptions": {
-    "src/Analysis/analyze.zig:analyze": {
+    "src/analysis/analyze.zig:analyze": {
       "lines": 177,
       "reason": "Existing main implementation at preflight adoption; this exact bound cannot grow and shrinks when split."
     },

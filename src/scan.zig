@@ -3,7 +3,7 @@ const std = @import("std");
 const t = @import("types.zig");
 const resolver = @import("resolve.zig");
 const recover = @import("recover.zig");
-const Graph = @import("Graph/storage.zig");
+const Graph = @import("graph/storage.zig");
 const diagnostics = @import("scan/diagnostic.zig");
 const manifests = @import("manifests.zig");
 const path = @import("path.zig");
@@ -16,10 +16,10 @@ const Kind = t.Kind;
 const Reference = t.Reference;
 const Dependency = t.Dependency;
 const GoFile = api.GoFile;
-const ImportStore = @import("Imports/state.zig");
+const ImportStore = @import("imports/state.zig");
 const PathStore = @import("owned_slice.zig").Store([]const u8);
 const Recorder = @import("tokens.zig").Recorder;
-pub const Imports = @import("Imports.zig").Imports;
+pub const Imports = @import("imports.zig").Imports;
 pub const Paths = PathStore.Owner;
 
 /// Scratch kept between files. A larger file's tokens go back to the
@@ -72,14 +72,14 @@ fn enabled(options: Options, kind: Kind) bool {
 /// unread path; an error aborts without returning a partial graph. scratch
 /// allocations are released after each file. Input paths and options are copied
 /// where needed, so nothing returned borrows them or the file bytes.
-pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options) !@import("Graph.zig").Graph {
+pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options) !@import("graph.zig").Graph {
     return scanWithDiagnostic(gpa, paths, context, read, options, null);
 }
 /// Clears the caller's diagnostic on entry. On failure it owns the failed
 /// path, phase, optional byte offset and original cause after scan cleanup.
 /// A null diagnostic has the same behavior as `scan`. Reporting never changes
 /// the returned error; if its path copy runs out of memory, the path is null.
-pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, diagnostic: ?*diagnostics.ScanDiagnostic) !@import("Graph.zig").Graph {
+pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, diagnostic: ?*diagnostics.ScanDiagnostic) !@import("graph.zig").Graph {
     diagnostics.reset(diagnostic);
     var progress: diagnostics.Progress = .{ .diagnostic = diagnostic };
     const g = Graph.initTracked(gpa, paths, &progress) catch |cause| {
@@ -302,7 +302,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     g.dependencies = try deps.toOwnedSlice(a);
     g.manifests = options.manifests;
     g.unread = try reader.unreadPaths(a, &g.files);
-    return @import("Graph/storage.zig").owner(@import("Graph.zig").Graph, g);
+    return @import("graph/storage.zig").owner(@import("graph.zig").Graph, g);
 }
 pub fn walk(gpa: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, context: anytype, comptime keep: anytype) !Paths {
     const result = try PathStore.create(gpa);

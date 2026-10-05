@@ -278,7 +278,7 @@ const Walks = struct {
     paths: []const []const u8,
     forward: walk.Adjacency,
     backward: walk.Adjacency,
-    const walk = @import("../Analysis/reach.zig");
+    const walk = @import("../analysis/reach.zig");
     fn init(a: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) !Walks {
         var ids: std.StringHashMapUnmanaged(u32) = .empty;
         if (paths.len >= std.math.maxInt(u32)) return error.OutOfMemory;

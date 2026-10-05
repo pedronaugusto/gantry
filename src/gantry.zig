@@ -4,8 +4,8 @@
 const std = @import("std");
 const t = @import("types.zig");
 const resolver = @import("resolve.zig");
-pub const Graph = @import("Graph.zig").Graph;
-pub const Analysis = @import("Analysis.zig").Analysis;
+pub const Graph = @import("graph.zig").Graph;
+pub const Analysis = @import("analysis.zig").Analysis;
 pub const Language = t.Language;
 pub const Kind = t.Kind;
 pub const Edge = t.Edge;

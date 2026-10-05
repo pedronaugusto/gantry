@@ -1,7 +1,7 @@
 //! Public rule data and checking over an owned graph.
 const engine = @import("rules/check.zig");
 const std = @import("std");
-const Graph = @import("Graph.zig").Graph;
+const Graph = @import("graph.zig").Graph;
 pub const Layer = engine.Layer;
 pub const OrderedLayers = engine.OrderedLayers;
 pub const EdgeRule = engine.EdgeRule;

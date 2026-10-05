@@ -8,42 +8,42 @@
   },
   {
     "rule": "Z023",
-    "path": "src/Graph_test.zig",
+    "path": "src/graph_test.zig",
     "source": "fn read(text: []const u8, _: []const u8, _: std.mem.Allocator) !?[]const u8 {",
     "detail": "'Allocator' parameter should come before 'other'",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z011",
-    "path": "src/Analysis/analyze.zig",
+    "path": "src/analysis/analyze.zig",
     "source": "while (std.mem.indexOfScalarPos(u8, path, at, '/')) |slash| : (at = slash + 1) {",
     "detail": "'indexOfScalarPos' is deprecated: Deprecated in favor of `findScalarPos`.",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Analysis/analyze.zig",
+    "path": "src/analysis/analyze.zig",
     "source": "pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*@import(\"state.zig\") {",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Analysis/analyze.zig",
+    "path": "src/analysis/analyze.zig",
     "source": "const self = try @import(\"state.zig\").init(gpa);",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z009",
-    "path": "src/Analysis/state.zig",
+    "path": "src/analysis/state.zig",
     "source": "//! Construction storage for the public analysis owner.",
     "detail": "file 'state.zig' has top-level fields and should be PascalCase",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z030",
-    "path": "src/Analysis/state.zig",
+    "path": "src/analysis/state.zig",
     "source": "pub fn deinit(self: *State) void {",
     "detail": "deinit should set self.* = undefined",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
@@ -127,105 +127,105 @@
   },
   {
     "rule": "Z009",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "//! A graph owns every path and slice it exposes until deinit.",
     "detail": "file 'storage.zig' has top-level fields and should be PascalCase",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z030",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "pub fn deinit(g: *Graph) void {",
     "detail": "deinit should set g.* = undefined",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z021",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "const Graph = @This();",
     "detail": "@This() alias 'Graph' should match filename 'storage' or be 'Self'",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "scanned_tokens: []const @import(\"../rules/check.zig\").TokenRule = &.{},",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "go_files: []const @import(\"../lang/go/build.zig\").File = &.{},",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: ?*@import(\"../scan/diagnostic.zig\").Progress) !*Graph {",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "const path = try @import(\"../path.zig\").normalize(a, raw);",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "pub fn scannedFor(g: *const Graph, rule: @import(\"../rules/check.zig\").TokenRule) bool {",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "const from = try @import(\"../path.zig\").normalize(a, edge.from);",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "const to = try @import(\"../path.zig\").normalize(a, edge.to);",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "for (g.paths, paths) |path, *dest| dest.* = @import(\"../path.zig\").directory(path, depth);",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "for (g.edges, edges) |edge, *dest| dest.* = .{ .from = @import(\"../path.zig\").directory(edge.from, depth), .to = @import(\"../path.zig\").directory(edge.to, depth), .kind = edge.kind, .count = edge.count };",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph/storage.zig",
+    "path": "src/graph/storage.zig",
     "source": "for (g.edges, edges) |edge, *dest| dest.* = .{ .from = @import(\"../path.zig\").directory(edge.from, depth), .to = @import(\"../path.zig\").directory(edge.to, depth), .kind = edge.kind, .count = edge.count };",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z009",
-    "path": "src/Imports/state.zig",
+    "path": "src/imports/state.zig",
     "source": "//! One owner for lexical references and the constructs recovery could not read.",
     "detail": "file 'state.zig' has top-level fields and should be PascalCase",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z030",
-    "path": "src/Imports/state.zig",
+    "path": "src/imports/state.zig",
     "source": "pub fn deinit(state: *State) void {",
     "detail": "deinit should set state.* = undefined",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
@@ -667,14 +667,14 @@
   {
     "rule": "Z028",
     "path": "src/scan.zig",
-    "source": "pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options) !@import(\"Graph.zig\").Graph {",
+    "source": "pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options) !@import(\"graph.zig\").Graph {",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
     "path": "src/scan.zig",
-    "source": "pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, diagnostic: ?*diagnostics.ScanDiagnostic) !@import(\"Graph.zig\").Graph {",
+    "source": "pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, diagnostic: ?*diagnostics.ScanDiagnostic) !@import(\"graph.zig\").Graph {",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
@@ -772,42 +772,42 @@
   {
     "rule": "Z028",
     "path": "src/scan.zig",
-    "source": "return @import(\"Graph/storage.zig\").owner(@import(\"Graph.zig\").Graph, g);",
+    "source": "return @import(\"graph/storage.zig\").owner(@import(\"graph.zig\").Graph, g);",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
     "path": "src/scan.zig",
-    "source": "return @import(\"Graph/storage.zig\").owner(@import(\"Graph.zig\").Graph, g);",
+    "source": "return @import(\"graph/storage.zig\").owner(@import(\"graph.zig\").Graph, g);",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Analysis.zig",
-    "source": "const walk = @import(\"Analysis/reach.zig\");",
+    "path": "src/analysis.zig",
+    "source": "const walk = @import(\"analysis/reach.zig\");",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Analysis.zig",
-    "source": "const graph = try @import(\"Graph/storage.zig\").fromEdges(gpa, paths, edges);",
+    "path": "src/analysis.zig",
+    "source": "const graph = try @import(\"graph/storage.zig\").fromEdges(gpa, paths, edges);",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Analysis.zig",
-    "source": "return @enumFromInt(@intFromPtr(try @import(\"Analysis/analyze.zig\").analyze(graph, gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.",
+    "path": "src/analysis.zig",
+    "source": "return @enumFromInt(@intFromPtr(try @import(\"analysis/analyze.zig\").analyze(graph, gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Analysis.zig",
-    "source": "try @import(\"Analysis/reach.zig\").closure(gpa, adjacency, positions.items, marks);",
+    "path": "src/analysis.zig",
+    "source": "try @import(\"analysis/reach.zig\").closure(gpa, adjacency, positions.items, marks);",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
@@ -933,7 +933,7 @@
   {
     "rule": "Z028",
     "path": "src/rules/check.zig",
-    "source": "const walk = @import(\"../Analysis/reach.zig\");",
+    "source": "const walk = @import(\"../analysis/reach.zig\");",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
@@ -1044,49 +1044,49 @@
   },
   {
     "rule": "Z028",
-    "path": "src/Graph.zig",
+    "path": "src/graph.zig",
     "source": "pub fn goFiles(g: *const Graph) []const @import(\"lang/go/build.zig\").File {",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph.zig",
-    "source": "pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import(\"Analysis.zig\").Analysis {",
+    "path": "src/graph.zig",
+    "source": "pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import(\"analysis.zig\").Analysis {",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph.zig",
-    "source": "return @enumFromInt(@intFromPtr(try @import(\"Analysis/analyze.zig\").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.",
+    "path": "src/graph.zig",
+    "source": "return @enumFromInt(@intFromPtr(try @import(\"analysis/analyze.zig\").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph.zig",
+    "path": "src/graph.zig",
     "source": "pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import(\"rules/check.zig\").Rules) ![]const @import(\"rules/check.zig\").Violation {",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph.zig",
+    "path": "src/graph.zig",
     "source": "pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: @import(\"rules/check.zig\").Rules) ![]const @import(\"rules/check.zig\").Violation {",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph.zig",
+    "path": "src/graph.zig",
     "source": "return @import(\"rules/check.zig\").check(g, gpa, rules, @import(\"rules/dependency_check.zig\"));",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."
   },
   {
     "rule": "Z028",
-    "path": "src/Graph.zig",
+    "path": "src/graph.zig",
     "source": "return @import(\"rules/check.zig\").check(g, gpa, rules, @import(\"rules/dependency_check.zig\"));",
     "detail": "inline @import; assign to a top-level const",
     "reason": "Existing declaration on main, moved or retargeted by its layout; this exact finding is retained while landing preflight."

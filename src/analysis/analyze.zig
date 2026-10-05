@@ -1,7 +1,7 @@
 //! Iterative SCC discovery, condensation depths and real cycle witnesses.
 const std = @import("std");
 const t = @import("../types.zig");
-const Graph = @import("../Graph/storage.zig");
+const Graph = @import("../graph/storage.zig");
 const Adjacency = @import("reach.zig").Adjacency;
 const Frame = struct { node: usize, next: usize };
 /// The graph supplies unique sorted paths and validated, coalesced edges.

@@ -1,7 +1,7 @@
 //! An owned graph. Results are read only and live until deinit.
 const std = @import("std");
 const t = @import("types.zig");
-const store = @import("Graph/storage.zig");
+const store = @import("graph/storage.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
 pub const Graph = enum(usize) {
@@ -60,8 +60,8 @@ pub const Graph = enum(usize) {
         return store.owner(Graph, try store.get(g.*).aggregate(gpa, depth));
     }
     /// Analysis owns its results independently of the graph.
-    pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import("Analysis.zig").Analysis {
-        return @enumFromInt(@intFromPtr(try @import("Analysis/analyze.zig").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
+    pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !@import("analysis.zig").Analysis {
+        return @enumFromInt(@intFromPtr(try @import("analysis/analyze.zig").analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
     /// Findings borrow graph storage, rule names and required-path strings.
     /// Keep the graph and those caller strings alive until findings are freed
