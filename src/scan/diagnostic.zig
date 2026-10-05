@@ -83,6 +83,7 @@ pub const Progress = struct {
     }
     pub fn fail(progress: *const Progress, cause: anyerror) void {
         const d = progress.diagnostic orelse return;
+        std.debug.assert(d.failure == null);
         // Reporting must preserve the original cause even if its allocator fails.
         const owned = if (progress.path) |path| d.gpa.dupe(u8, path) catch null else null;
         d.failure = .{ .path = owned, .phase = progress.phase, .cause = cause, .offset = progress.offset };

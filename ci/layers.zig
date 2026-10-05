@@ -45,7 +45,7 @@ pub const layers: []const gantry.rules.Layer = &.{
     } },
     .{ .name = "analysis and language dispatch", .patterns = &.{
         "src/analysis/analyze.zig",
-        "src/languages.zig",
+        "src/lang.zig",
     } },
     .{ .name = "resolution", .patterns = &.{
         "src/analysis.zig",
@@ -148,7 +148,7 @@ pub const required = [_][]const u8{
     "src/lang/javascript.zig",
     "src/lang/python/exports.zig",
     "src/analysis/analyze.zig",
-    "src/languages.zig",
+    "src/lang.zig",
     "src/analysis.zig",
     "src/resolve.zig",
     "src/graph.zig",

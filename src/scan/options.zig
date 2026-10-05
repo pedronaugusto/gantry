@@ -10,7 +10,7 @@ const NamedModule = resolver.NamedModule;
 const GoTarget = build_module.Target;
 pub const GoFile = build_module.File;
 const PythonInitializers = resolver.PythonInitializers;
-const languages = @import("../languages.zig");
+const languages = @import("../lang.zig");
 
 pub const Options = struct {
     /// The edge kinds to record. References are recorded whatever their kind.

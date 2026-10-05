@@ -45,63 +45,9 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
     self.backward = rev;
     self.coupling = try fileCoupling(a, owned, from.items, to.items);
     self.directory_coupling = try directoryCoupling(a, s, owned, from.items, to.items);
-    const seen = try s.alloc(bool, n);
-    @memset(seen, false);
-    var frames: std.ArrayList(Frame) = .empty;
-    var finish: std.ArrayList(usize) = .empty;
-    for (0..n) |start| {
-        if (seen[start]) continue;
-        seen[start] = true;
-        try frames.append(s, .{ .node = start, .next = 0 });
-        while (frames.items.len > 0) {
-            const f = &frames.items[frames.items.len - 1];
-            const children = adj.children(f.node);
-            if (f.next < children.len) {
-                const child = children[f.next];
-                f.next += 1;
-                if (!seen[child]) {
-                    seen[child] = true;
-                    try frames.append(s, .{ .node = child, .next = 0 });
-                }
-            } else {
-                try finish.append(s, f.node);
-                _ = frames.pop();
-            }
-        }
-    }
-    @memset(seen, false);
-    var groups: std.ArrayList([]usize) = .empty;
-    var stack: std.ArrayList(usize) = .empty;
-    var f = finish.items.len;
-    while (f > 0) {
-        f -= 1;
-        const start = finish.items[f];
-        if (seen[start]) continue;
-        var members: std.ArrayList(usize) = .empty;
-        seen[start] = true;
-        try stack.append(s, start);
-        while (stack.pop()) |v| {
-            try members.append(s, v);
-            for (rev.children(v)) |w| if (!seen[w]) {
-                seen[w] = true;
-                try stack.append(s, w);
-            };
-        }
-        std.mem.sort(usize, members.items, {}, std.sort.asc(usize));
-        try groups.append(s, try members.toOwnedSlice(s));
-    }
-    std.mem.sort([]usize, groups.items, {}, struct {
-        fn less(_: void, x: []usize, y: []usize) bool {
-            return x[0] < y[0];
-        }
-    }.less);
+    const groups = try stronglyConnected(s, adj, rev);
     const component = try s.alloc(usize, n);
     const components = try a.alloc([]const []const u8, groups.items.len);
-    var cycles: std.ArrayList(t.Cycle) = .empty;
-    // One reusable BFS workspace for every witness; no O(V * SCCs) clearing.
-    const parent = try s.alloc(usize, n);
-    const visited = try s.alloc(usize, n);
-    @memset(visited, 0);
     for (groups.items, components, 0..) |members, *dest, id| {
         const names = try a.alloc([]const u8, members.len);
         for (members, names) |v, *name| {
@@ -110,47 +56,7 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
         }
         dest.* = names;
     }
-    for (groups.items, components, 0..) |members, names, id| {
-        const start = members[0];
-        var first: ?usize = null;
-        for (adj.children(start)) |w| if (component[w] == id) {
-            first = w;
-            break;
-        };
-        if (members.len == 1 and (first == null or first.? != start)) continue;
-        const next = first.?;
-        var witness: std.ArrayList([]const u8) = .empty;
-        try witness.append(a, owned[start]);
-        if (next != start) {
-            var queue: std.ArrayList(usize) = .empty;
-            const stamp = id + 1;
-            visited[next] = stamp;
-            parent[next] = next;
-            try queue.append(s, next);
-            var head: usize = 0;
-            while (head < queue.items.len and visited[start] != stamp) : (head += 1) {
-                const v = queue.items[head];
-                for (adj.children(v)) |w| if (component[w] == id and visited[w] != stamp) {
-                    visited[w] = stamp;
-                    parent[w] = v;
-                    try queue.append(s, w);
-                };
-            }
-            var route: std.ArrayList(usize) = .empty;
-            var v = start;
-            while (v != next) {
-                v = parent[v];
-                try route.append(s, v);
-            }
-            var k = route.items.len;
-            while (k > 0) {
-                k -= 1;
-                try witness.append(a, owned[route.items[k]]);
-            }
-        }
-        try witness.append(a, owned[start]);
-        try cycles.append(a, .{ .members = names, .path = try witness.toOwnedSlice(a) });
-    }
+    self.cycles = try cycleWitnesses(a, s, owned, adj, groups.items, components, component);
     const m = groups.items.len;
     const indegree = try s.alloc(usize, m);
     const depth = try s.alloc(usize, m);
@@ -181,7 +87,6 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
     for (owned, layers, 0..) |path, *layer, id| layer.* = .{ .path = path, .depth = depth[component[id]] };
     self.layers = layers;
     self.components = components;
-    self.cycles = try cycles.toOwnedSlice(a);
     return self;
 }
 
@@ -245,4 +150,112 @@ fn directoryCoupling(a: std.mem.Allocator, s: std.mem.Allocator, paths: []const 
         }
     }.less);
     return a.dupe(t.Coupling, counts);
+}
+
+/// Kosaraju finish order, then reverse walks, sorted by lowest node.
+fn stronglyConnected(s: std.mem.Allocator, adj: Adjacency, rev: Adjacency) !std.ArrayList([]usize) {
+    const n = adj.offsets.len - 1;
+    const seen = try s.alloc(bool, n);
+    @memset(seen, false);
+    var frames: std.ArrayList(Frame) = .empty;
+    var finish: std.ArrayList(usize) = .empty;
+    for (0..n) |start| {
+        if (seen[start]) continue;
+        seen[start] = true;
+        try frames.append(s, .{ .node = start, .next = 0 });
+        while (frames.items.len > 0) {
+            const f = &frames.items[frames.items.len - 1];
+            const children = adj.children(f.node);
+            if (f.next < children.len) {
+                const child = children[f.next];
+                f.next += 1;
+                if (!seen[child]) {
+                    seen[child] = true;
+                    try frames.append(s, .{ .node = child, .next = 0 });
+                }
+            } else {
+                try finish.append(s, f.node);
+                _ = frames.pop();
+            }
+        }
+    }
+    @memset(seen, false);
+    var groups: std.ArrayList([]usize) = .empty;
+    var stack: std.ArrayList(usize) = .empty;
+    var f = finish.items.len;
+    while (f > 0) {
+        f -= 1;
+        const start = finish.items[f];
+        if (seen[start]) continue;
+        var members: std.ArrayList(usize) = .empty;
+        seen[start] = true;
+        try stack.append(s, start);
+        while (stack.pop()) |v| {
+            try members.append(s, v);
+            for (rev.children(v)) |w| if (!seen[w]) {
+                seen[w] = true;
+                try stack.append(s, w);
+            };
+        }
+        std.mem.sort(usize, members.items, {}, std.sort.asc(usize));
+        try groups.append(s, try members.toOwnedSlice(s));
+    }
+    std.mem.sort([]usize, groups.items, {}, struct {
+        fn less(_: void, x: []usize, y: []usize) bool {
+            return x[0] < y[0];
+        }
+    }.less);
+    return groups;
+}
+
+/// Actual directed cycles, with one stamped BFS workspace shared by SCCs.
+fn cycleWitnesses(a: std.mem.Allocator, s: std.mem.Allocator, owned: []const []const u8, adj: Adjacency, groups: []const []usize, components: []const []const []const u8, component: []const usize) ![]const t.Cycle {
+    const n = owned.len;
+    var cycles: std.ArrayList(t.Cycle) = .empty;
+    // One reusable BFS workspace for every witness; no O(V * SCCs) clearing.
+    const parent = try s.alloc(usize, n);
+    const visited = try s.alloc(usize, n);
+    @memset(visited, 0);
+    for (groups, components, 0..) |members, names, id| {
+        const start = members[0];
+        var first: ?usize = null;
+        for (adj.children(start)) |w| if (component[w] == id) {
+            first = w;
+            break;
+        };
+        if (members.len == 1 and (first == null or first.? != start)) continue;
+        const next = first.?;
+        var witness: std.ArrayList([]const u8) = .empty;
+        try witness.append(a, owned[start]);
+        if (next != start) {
+            var queue: std.ArrayList(usize) = .empty;
+            const stamp = id + 1;
+            visited[next] = stamp;
+            parent[next] = next;
+            try queue.append(s, next);
+            var head: usize = 0;
+            while (head < queue.items.len and visited[start] != stamp) : (head += 1) {
+                const v = queue.items[head];
+                for (adj.children(v)) |w| if (component[w] == id and visited[w] != stamp) {
+                    visited[w] = stamp;
+                    parent[w] = v;
+                    try queue.append(s, w);
+                };
+            }
+            var route: std.ArrayList(usize) = .empty;
+            var v = start;
+            while (v != next) {
+                v = parent[v];
+                try route.append(s, v);
+            }
+            var k = route.items.len;
+            while (k > 0) {
+                k -= 1;
+                try witness.append(a, owned[route.items[k]]);
+            }
+        }
+        try witness.append(a, owned[start]);
+        try cycles.append(a, .{ .members = names, .path = try witness.toOwnedSlice(a) });
+    }
+    return cycles.toOwnedSlice(a);
 }

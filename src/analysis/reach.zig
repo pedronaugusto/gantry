@@ -15,6 +15,11 @@ pub const Adjacency = struct {
     /// A stable counting sort of `from`/`to` pairs by `from`. With
     /// `labeled`, each neighbour carries its pair's index.
     pub fn init(a: std.mem.Allocator, n: usize, from: []const u32, to: []const u32, labeled: bool) !Adjacency {
+        std.debug.assert(from.len == to.len);
+        for (from, to) |v, w| {
+            std.debug.assert(v < n);
+            std.debug.assert(w < n);
+        }
         if (n >= std.math.maxInt(u32) or from.len >= std.math.maxInt(u32)) return error.OutOfMemory;
         const offsets = try a.alloc(u32, n + 1);
         @memset(offsets, 0);
@@ -29,13 +34,21 @@ pub const Adjacency = struct {
             if (labeled) labels[cursor[v]] = @intCast(i);
             cursor[v] += 1;
         }
+        std.debug.assert(offsets[0] == 0);
+        std.debug.assert(offsets[n] == targets.len);
+        std.debug.assert(labels.len == 0 or labels.len == targets.len);
         return .{ .offsets = offsets, .targets = targets, .labels = labels };
     }
     pub fn children(self: Adjacency, v: usize) []const u32 {
+        std.debug.assert(v + 1 < self.offsets.len);
+        std.debug.assert(self.offsets[v] <= self.offsets[v + 1]);
+        std.debug.assert(self.offsets[v + 1] <= self.targets.len);
         return self.targets[self.offsets[v]..self.offsets[v + 1]];
     }
     /// The label of the neighbour at `index` in `targets`, 0 unlabelled.
     pub fn label(self: Adjacency, index: usize) u32 {
+        std.debug.assert(index < self.targets.len);
+        std.debug.assert(self.labels.len == 0 or self.labels.len == self.targets.len);
         return if (self.labels.len == 0) 0 else self.labels[index];
     }
 };
@@ -43,6 +56,8 @@ pub const Adjacency = struct {
 /// Marks every node a walk of one edge or more reaches from `starts`.
 /// `marks` holds one entry per node, all false on entry.
 pub fn closure(a: std.mem.Allocator, adjacency: Adjacency, starts: []const u32, marks: []bool) !void {
+    std.debug.assert(adjacency.offsets.len == marks.len + 1);
+    for (marks) |marked| std.debug.assert(!marked);
     var queue: std.ArrayList(u32) = .empty;
     defer queue.deinit(a);
     for (starts) |v| for (adjacency.children(v)) |w| if (!marks[w]) {
@@ -79,6 +94,9 @@ pub const Filter = struct {
 /// predecessors, labelled like `forward`) from every target at once.
 /// Only targets and passable nodes get a distance.
 pub fn distances(a: std.mem.Allocator, backward: Adjacency, targets: []const bool, filter: Filter, dist: []u32) !void {
+    std.debug.assert(backward.offsets.len == dist.len + 1);
+    std.debug.assert(targets.len == dist.len);
+    if (filter.passable) |passable| std.debug.assert(passable.len == dist.len);
     @memset(dist, unreached);
     var queue: std.ArrayList(u32) = .empty;
     defer queue.deinit(a);
@@ -103,6 +121,8 @@ pub fn distances(a: std.mem.Allocator, backward: Adjacency, targets: []const boo
 /// followed edge leads to one. Inside a chain `bound` is `dist[v]` and the
 /// step must go one nearer; from its start it is `unreached`.
 pub fn step(forward: Adjacency, dist: []const u32, filter: Filter, v: u32, bound: u32) ?struct { node: u32, label: u32 } {
+    std.debug.assert(forward.offsets.len == dist.len + 1);
+    std.debug.assert(v < dist.len);
     var best: ?struct { node: u32, label: u32, dist: u32 } = null;
     for (forward.offsets[v]..forward.offsets[v + 1]) |k| {
         const w = forward.targets[k];

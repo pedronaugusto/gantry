@@ -42,6 +42,7 @@ pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: 
     if (progress) |current| current.at(.paths, null);
     std.mem.sort([]const u8, list.items, {}, t.stringsLess);
     g.paths = try list.toOwnedSlice(a);
+    std.debug.assert(g.paths.len == g.files.count());
     return g;
 }
 pub fn scannedFor(g: *const Storage, rule: check_module.TokenRule) bool {
@@ -68,6 +69,11 @@ pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []con
         dest.* = .{ .from = from, .to = to, .kind = edge.kind, .count = edge.count };
     }
     g.edges = try coalesce(owned);
+    for (g.edges) |edge| {
+        std.debug.assert(edge.count > 0);
+        std.debug.assert(g.files.contains(edge.from));
+        std.debug.assert(g.files.contains(edge.to));
+    }
     return g;
 }
 /// Directory nodes at depth (0 is the root, 1 the first component).
@@ -132,11 +138,19 @@ pub fn positions(a: std.mem.Allocator, paths: []const []const u8) !std.StringHas
     if (paths.len > std.math.maxInt(u32)) return error.OutOfMemory;
     var result: std.StringHashMapUnmanaged(u32) = .empty;
     try result.ensureTotalCapacity(a, @intCast(paths.len));
-    for (paths, 0..) |path, i| result.putAssumeCapacity(path, @intCast(i));
+    for (paths, 0..) |path, i| {
+        if (i > 0) std.debug.assert(t.stringsLess({}, paths[i - 1], path));
+        result.putAssumeCapacity(path, @intCast(i));
+        std.debug.assert(result.get(path).? == i);
+    }
     return result;
 }
 /// `coalesce` for pending edges, into exactly the storage the result needs.
 pub fn coalescePending(a: std.mem.Allocator, paths: []const []const u8, pending: []Pending) ![]const t.Edge {
+    for (pending) |edge| {
+        std.debug.assert(edge.from < paths.len);
+        std.debug.assert(edge.to < paths.len);
+    }
     std.mem.sort(Pending, pending, {}, struct {
         fn less(_: void, x: Pending, y: Pending) bool {
             if (x.from != y.from) return x.from < y.from;
@@ -158,6 +172,8 @@ pub fn coalescePending(a: std.mem.Allocator, paths: []const []const u8, pending:
             n += 1;
         }
     }
+    std.debug.assert(n == edges.len);
+    for (edges) |edge| std.debug.assert(edge.count > 0);
     return edges;
 }
 
@@ -166,4 +182,10 @@ pub fn owner(comptime Owner: type, state: *Storage) Owner {
 }
 pub fn get(g: anytype) *Storage {
     return @ptrFromInt(@intFromEnum(g));
+}
+
+comptime {
+    std.debug.assert(@sizeOf(Pending) == 12);
+    std.debug.assert(@bitSizeOf(@FieldType(Pending, "from")) == 32);
+    std.debug.assert(@bitSizeOf(@FieldType(Pending, "to")) == 32);
 }

@@ -13,6 +13,7 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
 
         pub fn deinit(self: *Self) void {
             self.unread.deinit(self.allocator);
+            self.* = undefined;
         }
         pub fn readFile(scratch: std.mem.Allocator, self: *Self, path: []const u8) !?[]const u8 {
             self.progress.at(.read, path);
@@ -26,6 +27,7 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
             var keys = self.unread.keyIterator();
             var i: usize = 0;
             while (keys.next()) |key| : (i += 1) paths[i] = files.getKey(key.*).?;
+            std.debug.assert(i == paths.len);
             std.mem.sort([]const u8, paths, {}, types_module.stringsLess);
             return paths;
         }

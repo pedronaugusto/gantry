@@ -82,86 +82,9 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             }
             continue;
         }
-        if (c == '\n') {
-            i += 1;
-            if (newlines) try out.push(a, .{ .kind = .newline, .text = text[start..i], .offset = start, .end = i });
+        if (try skipTrivia(lang, newlines, a, text, start, &out)) |end| {
+            i = end;
             continue;
-        }
-        if (space[c]) {
-            i += 1;
-            while (i < text.len and space[text[i]]) : (i += 1) {}
-            continue;
-        }
-        if (lang == .nim and c == '#' and (std.mem.startsWith(u8, text[i..], "#[") or std.mem.startsWith(u8, text[i..], "##["))) {
-            i = nimComment(text, i);
-            continue;
-        }
-        if ((lang == .python or lang == .nim) and c == '#') {
-            i = lineEnd(text, i);
-            continue;
-        }
-        const slashes = lang != .python and lang != .nim;
-        if (slashes and i + 1 < text.len and c == '/' and text[i + 1] == '/') {
-            i = lineEnd(text, i);
-            continue;
-        }
-        if (slashes and lang != .zig and i + 1 < text.len and c == '/' and text[i + 1] == '*') {
-            i += 2;
-            var depth: usize = 1;
-            while (i < text.len and depth > 0) {
-                if (i + 1 < text.len and text[i] == '*' and text[i + 1] == '/') {
-                    depth -= 1;
-                    i += 2;
-                } else if ((lang == .rust or lang == .kotlin) and i + 1 < text.len and text[i] == '/' and text[i + 1] == '*') {
-                    depth += 1;
-                    i += 2;
-                } else {
-                    if (newlines and lang == .c and text[i] == '\n') try out.push(a, .{ .kind = .newline, .text = text[i .. i + 1], .offset = i, .end = i + 1 });
-                    i += 1;
-                }
-            }
-            continue;
-        }
-        if (lang == .zig and c == '\\' and i + 1 < text.len and text[i + 1] == '\\') {
-            i = lineEnd(text, i);
-            continue;
-        }
-        // Rust raw strings and C++ raw string literals.
-        if (lang == .rust and (c == 'r' or (c == 'b' and i + 1 < text.len and text[i + 1] == 'r'))) {
-            const prefix: usize = if (c == 'b') 2 else 1;
-            var q = i + prefix;
-            while (q < text.len and text[q] == '#') : (q += 1) {}
-            if (q < text.len and text[q] == '"') {
-                const hashes = q - i - prefix;
-                i = q + 1;
-                while (i < text.len) : (i += 1) {
-                    if (text[i] != '"' or i + 1 + hashes > text.len) continue;
-                    var h: usize = 0;
-                    while (h < hashes and text[i + 1 + h] == '#') : (h += 1) {}
-                    if (h == hashes) {
-                        i += 1 + hashes;
-                        break;
-                    }
-                }
-                continue;
-            }
-        }
-        if (lang == .c) {
-            const prefix: ?usize = if (std.mem.startsWith(u8, text[i..], "R\"")) 2 else if (std.mem.startsWith(u8, text[i..], "u8R\"")) 4 else if (std.mem.startsWith(u8, text[i..], "uR\"") or std.mem.startsWith(u8, text[i..], "UR\"") or std.mem.startsWith(u8, text[i..], "LR\"")) 3 else null;
-            if (prefix) |width| {
-                const open = std.mem.findScalarPos(u8, text, i + width, '(') orelse text.len;
-                if (open -| (i + width) <= 16 and open < text.len) {
-                    const delimiter = text[i + width .. open];
-                    i = open + 1;
-                    while (i < text.len) : (i += 1) {
-                        if (text[i] == ')' and std.mem.startsWith(u8, text[i + 1 ..], delimiter) and i + 1 + delimiter.len < text.len and text[i + 1 + delimiter.len] == '"') {
-                            i += delimiter.len + 2;
-                            break;
-                        }
-                    }
-                    continue;
-                }
-            }
         }
         if (lang == .javascript and c == '/' and regex_allowed) {
             i += 1;
@@ -183,75 +106,8 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             regex_allowed = false;
             continue;
         }
-        if (lang == .nim and c == '"' and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (i > 0 and ident(text[i - 1])))) {
-            // Triple-quoted and prefixed strings are raw: `\` is a byte and a
-            // prefixed one doubles its quote. A prefix like `fmt` makes a call.
-            const triple = std.mem.startsWith(u8, text[i..], "\"\"\"");
-            i = if (triple) tripleEnd(text, i + 3, "\"\"\"") else nimRawEnd(text, i + 1);
-            if (!triple) try out.push(a, .{ .kind = .template, .text = text[start..i], .offset = start, .end = i });
-            regex_allowed = false;
-            continue;
-        }
-        if ((lang == .java or lang == .groovy or lang == .kotlin) and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (lang == .groovy and std.mem.startsWith(u8, text[i..], "'''")))) {
-            // Text blocks and triple-quoted strings are never plain operands.
-            i = blockEnd(text, i + 3, text[i .. i + 3], lang != .kotlin);
-            regex_allowed = false;
-            continue;
-        }
-        if ((lang == .groovy or lang == .kotlin) and c == '"') {
-            const scanned = try interpolation(a, text, i + 1);
-            i = scanned.end;
-            if (scanned.closed) try out.push(a, .{ .kind = if (scanned.code) .template else .string, .text = text[start + 1 .. i - 1], .offset = start, .end = i });
-            regex_allowed = false;
-            continue;
-        }
-        if (lang == .kotlin and c == '`') {
-            // A backquoted Kotlin name is a word.
-            const close = std.mem.indexOfAnyPos(u8, text, i + 1, "`\n") orelse text.len;
-            if (close < text.len and text[close] == '`') {
-                try out.push(a, .{ .kind = .word, .text = text[i + 1 .. close], .offset = start, .end = close + 1 });
-                i = close + 1;
-                regex_allowed = false;
-                continue;
-            }
-        }
-        if (lang == .nim and c == '\'') {
-            // A quote after a number starts a type suffix (`1'i8`), not a character.
-            if (nimCharEnd(text, i)) |end| {
-                i = end;
-                continue;
-            }
-        }
-        if (c == '"' or (c == '\'' and lang != .nim) or ((lang == .go or lang == .javascript) and c == '`')) {
-            // A Rust lifetime is an identifier, not a character literal.
-            if (lang == .rust and c == '\'' and i + 1 < text.len and ident(text[i + 1])) {
-                var end = i + 2;
-                while (end < text.len and ident(text[end])) : (end += 1) {}
-                if (end == text.len or text[end] != '\'') {
-                    i += 1;
-                    continue;
-                }
-            }
-            const triple = lang == .python and i + 2 < text.len and text[i + 1] == c and text[i + 2] == c;
-            const width: usize = if (triple) 3 else 1;
-            i += width;
-            const content = i;
-            while (i < text.len) {
-                if (!(lang == .go and c == '`') and text[i] == '\\') {
-                    i = @min(i + 2, text.len);
-                    continue;
-                }
-                if (text[i] == c and (!triple or (i + 2 < text.len and text[i + 1] == c and text[i + 2] == c))) break;
-                i += 1;
-            }
-            const end = i;
-            const closed = i < text.len;
-            i = @min(i + width, text.len);
-            const character = c == '\'' and (lang == .zig or lang == .c or lang == .rust or lang == .java or lang == .kotlin);
-            if (closed and !triple and !character and !(lang == .javascript and c == '`')) {
-                try out.push(a, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
-                if (seen) |observer| try observer.token(observer.context, out.list.items);
-            }
+        if (try literal(lang, a, text, start, &out, seen)) |end| {
+            i = end;
             regex_allowed = false;
             continue;
         }
@@ -293,6 +149,9 @@ const Stream = struct {
     /// The length of the text.
     total: usize,
     fn push(s: *Stream, a: std.mem.Allocator, token: Token) !void {
+        std.debug.assert(token.offset < token.end);
+        std.debug.assert(token.end <= s.total);
+        if (s.list.items.len > 0) std.debug.assert(s.list.items[s.list.items.len - 1].end <= token.offset);
         if (s.list.items.len == s.list.capacity) try s.grow(a, token.end);
         s.list.appendAssumeCapacity(token);
     }
@@ -515,4 +374,171 @@ fn decodeImpl(a: std.mem.Allocator, text: []const u8, javascript: bool) ![]const
         }
     }
     return out.toOwnedSlice(a);
+}
+
+/// Whitespace, comments, and opaque raw literals never produce operands.
+fn skipTrivia(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator, text: []const u8, start: usize, out: *Stream) !?usize {
+    std.debug.assert(start < text.len);
+    var i = start;
+    const c = text[i];
+    if (c == '\n') {
+        i += 1;
+        if (newlines) try out.push(a, .{ .kind = .newline, .text = text[start..i], .offset = start, .end = i });
+        return i;
+    }
+    if (space[c]) {
+        i += 1;
+        while (i < text.len and space[text[i]]) : (i += 1) {}
+        return i;
+    }
+    if (lang == .nim and c == '#' and (std.mem.startsWith(u8, text[i..], "#[") or std.mem.startsWith(u8, text[i..], "##["))) {
+        i = nimComment(text, i);
+        return i;
+    }
+    if ((lang == .python or lang == .nim) and c == '#') {
+        i = lineEnd(text, i);
+        return i;
+    }
+    const slashes = lang != .python and lang != .nim;
+    if (slashes and i + 1 < text.len and c == '/' and text[i + 1] == '/') {
+        i = lineEnd(text, i);
+        return i;
+    }
+    if (slashes and lang != .zig and i + 1 < text.len and c == '/' and text[i + 1] == '*') {
+        i += 2;
+        var depth: usize = 1;
+        while (i < text.len and depth > 0) {
+            if (i + 1 < text.len and text[i] == '*' and text[i + 1] == '/') {
+                depth -= 1;
+                i += 2;
+            } else if ((lang == .rust or lang == .kotlin) and i + 1 < text.len and text[i] == '/' and text[i + 1] == '*') {
+                depth += 1;
+                i += 2;
+            } else {
+                if (newlines and lang == .c and text[i] == '\n') try out.push(a, .{ .kind = .newline, .text = text[i .. i + 1], .offset = i, .end = i + 1 });
+                i += 1;
+            }
+        }
+        return i;
+    }
+    if (lang == .zig and c == '\\' and i + 1 < text.len and text[i + 1] == '\\') {
+        i = lineEnd(text, i);
+        return i;
+    }
+    // Rust raw strings and C++ raw string literals.
+    if (lang == .rust and (c == 'r' or (c == 'b' and i + 1 < text.len and text[i + 1] == 'r'))) {
+        const prefix: usize = if (c == 'b') 2 else 1;
+        var q = i + prefix;
+        while (q < text.len and text[q] == '#') : (q += 1) {}
+        if (q < text.len and text[q] == '"') {
+            const hashes = q - i - prefix;
+            i = q + 1;
+            while (i < text.len) : (i += 1) {
+                if (text[i] != '"' or i + 1 + hashes > text.len) continue;
+                var h: usize = 0;
+                while (h < hashes and text[i + 1 + h] == '#') : (h += 1) {}
+                if (h == hashes) {
+                    i += 1 + hashes;
+                    break;
+                }
+            }
+            return i;
+        }
+    }
+    if (lang == .c) {
+        const prefix: ?usize = if (std.mem.startsWith(u8, text[i..], "R\"")) 2 else if (std.mem.startsWith(u8, text[i..], "u8R\"")) 4 else if (std.mem.startsWith(u8, text[i..], "uR\"") or std.mem.startsWith(u8, text[i..], "UR\"") or std.mem.startsWith(u8, text[i..], "LR\"")) 3 else null;
+        if (prefix) |width| {
+            const open = std.mem.findScalarPos(u8, text, i + width, '(') orelse text.len;
+            if (open -| (i + width) <= 16 and open < text.len) {
+                const delimiter = text[i + width .. open];
+                i = open + 1;
+                while (i < text.len) : (i += 1) {
+                    if (text[i] == ')' and std.mem.startsWith(u8, text[i + 1 ..], delimiter) and i + 1 + delimiter.len < text.len and text[i + 1 + delimiter.len] == '"') {
+                        i += delimiter.len + 2;
+                        break;
+                    }
+                }
+                return i;
+            }
+        }
+    }
+    return null;
+}
+
+/// Quoted operands and interpolation boundaries, with source offsets intact.
+fn literal(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, start: usize, out: *Stream, seen: ?Observer) !?usize {
+    var i = start;
+    const c = text[i];
+    if (lang == .nim and c == '"' and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (i > 0 and ident(text[i - 1])))) {
+        // Triple-quoted and prefixed strings are raw: `\` is a byte and a
+        // prefixed one doubles its quote. A prefix like `fmt` makes a call.
+        const triple = std.mem.startsWith(u8, text[i..], "\"\"\"");
+        i = if (triple) tripleEnd(text, i + 3, "\"\"\"") else nimRawEnd(text, i + 1);
+        if (!triple) try out.push(a, .{ .kind = .template, .text = text[start..i], .offset = start, .end = i });
+        return i;
+    }
+    if ((lang == .java or lang == .groovy or lang == .kotlin) and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (lang == .groovy and std.mem.startsWith(u8, text[i..], "'''")))) {
+        // Text blocks and triple-quoted strings are never plain operands.
+        i = blockEnd(text, i + 3, text[i .. i + 3], lang != .kotlin);
+        return i;
+    }
+    if ((lang == .groovy or lang == .kotlin) and c == '"') {
+        const scanned = try interpolation(a, text, i + 1);
+        i = scanned.end;
+        if (scanned.closed) try out.push(a, .{ .kind = if (scanned.code) .template else .string, .text = text[start + 1 .. i - 1], .offset = start, .end = i });
+        return i;
+    }
+    if (lang == .kotlin and c == '`') {
+        // A backquoted Kotlin name is a word.
+        const close = std.mem.indexOfAnyPos(u8, text, i + 1, "`\n") orelse text.len;
+        if (close < text.len and text[close] == '`') {
+            try out.push(a, .{ .kind = .word, .text = text[i + 1 .. close], .offset = start, .end = close + 1 });
+            i = close + 1;
+            return i;
+        }
+    }
+    if (lang == .nim and c == '\'') {
+        // A quote after a number starts a type suffix (`1'i8`), not a character.
+        if (nimCharEnd(text, i)) |end| {
+            i = end;
+            return i;
+        }
+    }
+    if (c == '"' or (c == '\'' and lang != .nim) or ((lang == .go or lang == .javascript) and c == '`')) {
+        // A Rust lifetime is an identifier, not a character literal.
+        if (lang == .rust and c == '\'' and i + 1 < text.len and ident(text[i + 1])) {
+            var end = i + 2;
+            while (end < text.len and ident(text[end])) : (end += 1) {}
+            if (end == text.len or text[end] != '\'') {
+                i += 1;
+                return i;
+            }
+        }
+        const triple = lang == .python and i + 2 < text.len and text[i + 1] == c and text[i + 2] == c;
+        const width: usize = if (triple) 3 else 1;
+        i += width;
+        const content = i;
+        while (i < text.len) {
+            if (!(lang == .go and c == '`') and text[i] == '\\') {
+                i = @min(i + 2, text.len);
+                continue;
+            }
+            if (text[i] == c and (!triple or (i + 2 < text.len and text[i + 1] == c and text[i + 2] == c))) break;
+            i += 1;
+        }
+        const end = i;
+        const closed = i < text.len;
+        i = @min(i + width, text.len);
+        const character = c == '\'' and (lang == .zig or lang == .c or lang == .rust or lang == .java or lang == .kotlin);
+        if (closed and !triple and !character and !(lang == .javascript and c == '`')) {
+            try out.push(a, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
+            if (seen) |observer| try observer.token(observer.context, out.list.items);
+        }
+        return i;
+    }
+    return null;
+}
+
+comptime {
+    std.debug.assert(space.len == 1 << @bitSizeOf(u8));
 }

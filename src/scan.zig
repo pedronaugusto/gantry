@@ -21,7 +21,7 @@ const Graph = @import("graph/Storage.zig");
 const diagnostics = @import("scan/diagnostic.zig");
 const manifests = @import("manifests.zig");
 const path = @import("path.zig");
-const languages = @import("languages.zig");
+const languages = @import("lang.zig");
 const api = @import("scan/options.zig");
 const languageOf = api.languageOf;
 const Options = api.Options;
@@ -204,31 +204,64 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     var edges: std.ArrayList(Graph.Pending) = .empty;
     defer edges.deinit(gpa);
     var refs: std.ArrayList(Reference) = .empty;
+    try readSources(gpa, a, g, options, &reader, &scratch, &progress, &recorder, cached, .{ .code_enabled = code_enabled, .inactive = inactive, .base_ctx = base_ctx, .test_files = test_files, .reexports = reexports, .java_packages = java_packages, .index = index, .position = position }, &edges, &refs, &unsupported);
+    return finish(a, g, options.manifests, &reader, &progress, &recorder, edges.items, &refs, &deps, &unsupported);
+}
+
+pub fn walk(gpa: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, context: anytype, comptime keep: anytype) !Paths {
+    const result = try PathStore.create(gpa);
+    errdefer result.deinit();
+    const a = result.arena.allocator();
+    var list: std.ArrayList([]const u8) = .empty;
+    var pending: std.ArrayList([]const u8) = .empty;
+    try pending.append(a, "");
+    while (pending.pop()) |prefix| {
+        var child = try dir.openDir(io, if (prefix.len == 0) "." else prefix, .{ .iterate = true });
+        defer child.close(io);
+        var iter = child.iterate();
+        while (try iter.next(io)) |entry| {
+            const full = if (prefix.len == 0) try a.dupe(u8, entry.name) else try std.fmt.allocPrint(a, "{s}/{s}", .{ prefix, entry.name });
+            if (!keep(context, full, entry.kind)) continue;
+            switch (entry.kind) {
+                .directory => try pending.append(a, full),
+                .file => try list.append(a, full),
+                else => {},
+            }
+        }
+    }
+    std.mem.sort([]const u8, list.items, {}, t.stringsLess);
+    result.items = try list.toOwnedSlice(a);
+    return PathStore.owner(result);
+}
+
+/// Recover sources after language indexes are complete; read buffers stay local.
+fn readSources(gpa: std.mem.Allocator, a: std.mem.Allocator, g: *Graph, options: Options, reader: anytype, scratch: *std.heap.ArenaAllocator, progress: *diagnostics.Progress, recorder: *Recorder, cached: []?t.Recovery, indexes: anytype, edges: *std.ArrayList(Graph.Pending), refs: *std.ArrayList(Reference), unsupported: *std.ArrayList(t.UnsupportedReference)) !void {
+    std.debug.assert(cached.len == 0 or cached.len == g.paths.len);
     for (g.paths, 0..) |p, file_index| {
-        if (inactive.contains(p)) continue;
+        if (indexes.inactive.contains(p)) continue;
         const language = languageOf(p);
         const readable = kindsOf(p);
-        const code = code_enabled and readable.contains(.import);
+        const code = indexes.code_enabled and readable.contains(.import);
         const lexed = readable.contains(.import) and recorder.wants(file_index);
         const links = enabled(options, .link) and readable.contains(.link);
         const assets = enabled(options, .asset) and readable.contains(.asset);
         if (!code and !lexed and !links and !assets) continue;
         const s = scratch.allocator();
         const prior = if (cached.len > 0) cached[file_index] else null;
-        const text = (if (prior != null) "" else try Reader.readFile(s, &reader, p)) orelse {
+        const text = (if (prior != null) "" else try @TypeOf(reader.*).readFile(s, reader, p)) orelse {
             _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
             continue;
         };
-        var ctx = base_ctx;
+        var ctx = indexes.base_ctx;
         ctx.allocator = s;
-        ctx.python_reexports = &reexports;
-        ctx.java_packages = &java_packages;
+        ctx.python_reexports = &indexes.reexports;
+        ctx.java_packages = &indexes.java_packages;
         const from: u32 = @intCast(file_index);
-        if (lexed and !code) _ = try extract(s, language.?, text, &recorder, file_index, p);
+        if (lexed and !code) _ = try extract(s, language.?, text, recorder, file_index, p);
         if (code) {
             var seen: std.AutoHashMapUnmanaged(struct { usize, u32 }, void) = .empty;
             progress.at(.imports, p);
-            const recovery = prior orelse try extract(s, language.?, text, &recorder, file_index, p);
+            const recovery = prior orelse try extract(s, language.?, text, recorder, file_index, p);
             if (options.strict_imports and recovery.unsupported.len > 0) {
                 progress.offset = recovery.unsupported[0].offset;
                 return error.UnsupportedImport;
@@ -241,7 +274,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
             const specs = recovery.specs;
             for (specs) |spec| {
                 progress.at(.resolution, p);
-                const kind: Kind = if (spec.kind == .@"test" or test_files.contains(p) or code_kind_module.file(language.?, p)) .@"test" else spec.kind;
+                const kind: Kind = if (spec.kind == .@"test" or indexes.test_files.contains(p) or code_kind_module.file(language.?, p)) .@"test" else spec.kind;
                 const targets = try ctx.targets(p, language.?, spec);
                 try refs.append(a, .{ .from = p, .name = if (prior != null) spec.name else try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| (if (prior != null) member else try a.dupe(u8, member)) else null, .resolved = targets.len > 0, .kind = kind });
                 if (spec.member != null) continue;
@@ -255,9 +288,9 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
                     if (children > 0 and !missing) continue;
                 }
                 for (targets) |target| {
-                    const edge_kind: Kind = if (kind == .@"test" or test_files.contains(target) or code_kind_module.file(language.?, target)) .@"test" else kind;
+                    const edge_kind: Kind = if (kind == .@"test" or indexes.test_files.contains(target) or code_kind_module.file(language.?, target)) .@"test" else kind;
                     if (!enabled(options, edge_kind)) continue;
-                    const to = position.get(target).?;
+                    const to = indexes.position.get(target).?;
                     const entry = try seen.getOrPut(s, .{ spec.offset, to });
                     if (!entry.found_existing) try edges.append(gpa, .{ .from = from, .to = to, .kind = edge_kind });
                 }
@@ -266,20 +299,24 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
         if (links) {
             progress.at(.links, p);
             for (try recover.links(s, text)) |spec| {
-                if (try recover.linkTarget(ctx, &index, p, spec)) |target| if (!std.mem.eql(u8, target, p)) try edges.append(gpa, .{ .from = from, .to = position.get(target).?, .kind = .link });
+                if (try recover.linkTarget(ctx, &indexes.index, p, spec)) |target| if (!std.mem.eql(u8, target, p)) try edges.append(gpa, .{ .from = from, .to = indexes.position.get(target).?, .kind = .link });
             }
         }
         if (assets) {
             progress.at(.assets, p);
             for (try recover.assets(s, text)) |spec| {
                 const target = (try ctx.candidate("", spec.name, &.{""})) orelse (try ctx.candidate(path.dir(p), spec.name, &.{""})) orelse continue;
-                if (!std.mem.eql(u8, target, p)) try edges.append(gpa, .{ .from = from, .to = position.get(target).?, .kind = .asset });
+                if (!std.mem.eql(u8, target, p)) try edges.append(gpa, .{ .from = from, .to = indexes.position.get(target).?, .kind = .asset });
             }
         }
         _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     }
+}
+
+/// Publish sorted graph records only after every read succeeds.
+fn finish(a: std.mem.Allocator, g: *Graph, manifests_enabled: bool, reader: anytype, progress: *diagnostics.Progress, recorder: *Recorder, edges: []Graph.Pending, refs: *std.ArrayList(Reference), deps: *std.ArrayList(Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) !graph_module.Graph {
     progress.at(.graph, null);
-    g.edges = try Graph.coalescePending(a, g.paths, edges.items);
+    g.edges = try Graph.coalescePending(a, g.paths, edges);
     std.mem.sort(Reference, refs.items, {}, struct {
         fn less(_: void, x: Reference, y: Reference) bool {
             const from = std.mem.order(u8, x.from, y.from);
@@ -314,32 +351,7 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     g.tokens = try recorder.finish();
     g.references = try refs.toOwnedSlice(a);
     g.dependencies = try deps.toOwnedSlice(a);
-    g.manifests = options.manifests;
+    g.manifests = manifests_enabled;
     g.unread = try reader.unreadPaths(a, &g.files);
     return Graph.owner(graph_module.Graph, g);
-}
-pub fn walk(gpa: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, context: anytype, comptime keep: anytype) !Paths {
-    const result = try PathStore.create(gpa);
-    errdefer result.deinit();
-    const a = result.arena.allocator();
-    var list: std.ArrayList([]const u8) = .empty;
-    var pending: std.ArrayList([]const u8) = .empty;
-    try pending.append(a, "");
-    while (pending.pop()) |prefix| {
-        var child = try dir.openDir(io, if (prefix.len == 0) "." else prefix, .{ .iterate = true });
-        defer child.close(io);
-        var iter = child.iterate();
-        while (try iter.next(io)) |entry| {
-            const full = if (prefix.len == 0) try a.dupe(u8, entry.name) else try std.fmt.allocPrint(a, "{s}/{s}", .{ prefix, entry.name });
-            if (!keep(context, full, entry.kind)) continue;
-            switch (entry.kind) {
-                .directory => try pending.append(a, full),
-                .file => try list.append(a, full),
-                else => {},
-            }
-        }
-    }
-    std.mem.sort([]const u8, list.items, {}, t.stringsLess);
-    result.items = try list.toOwnedSlice(a);
-    return PathStore.owner(result);
 }

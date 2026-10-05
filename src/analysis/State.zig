@@ -32,5 +32,8 @@ pub fn owner(comptime Owner: type, self: *State) Owner {
     return @enumFromInt(@intFromPtr(self)); // safe: the owning handle preserves the allocated state's address.
 }
 pub fn get(self: anytype) *State {
-    return @ptrFromInt(@intFromEnum(self));
+    const address = @intFromEnum(self);
+    std.debug.assert(address != 0);
+    std.debug.assert(address % @alignOf(State) == 0);
+    return @ptrFromInt(address);
 }

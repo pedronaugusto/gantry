@@ -1,5 +1,4 @@
-const config_module = @import("../lang/go/config.zig");
-const config = config_module;
+const config = @import("../lang/go/config.zig");
 const std = @import("std");
 const f = @import("support.zig");
 const a = std.testing.allocator;

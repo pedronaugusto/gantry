@@ -1,5 +1,4 @@
-const build_module = @import("../lang/go/build.zig");
-const build = build_module;
+const build = @import("../lang/go/build.zig");
 const std = @import("std");
 const g = @import("../gantry.zig");
 const f = @import("support.zig");
