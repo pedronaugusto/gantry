@@ -1,0 +1,23 @@
+[
+  {
+    "rule": "file-name-case",
+    "path": "src/analysis/state.zig",
+    "source": "top-level fields",
+    "detail": "struct file must use TitleCase",
+    "reason": "existing at gate adoption; burned down in the cleanup pass"
+  },
+  {
+    "rule": "file-name-case",
+    "path": "src/graph/storage.zig",
+    "source": "top-level fields",
+    "detail": "struct file must use TitleCase",
+    "reason": "existing at gate adoption; burned down in the cleanup pass"
+  },
+  {
+    "rule": "file-name-case",
+    "path": "src/imports/state.zig",
+    "source": "top-level fields",
+    "detail": "struct file must use TitleCase",
+    "reason": "existing at gate adoption; burned down in the cleanup pass"
+  }
+]

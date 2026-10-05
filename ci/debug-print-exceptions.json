@@ -1,0 +1,37 @@
+[
+  {
+    "rule": "debug-print",
+    "path": "examples/usage.zig",
+    "source": "std.debug.print(\"{s} -> {s} ({d})\\n\", .{ edge.from, edge.to, edge.count });",
+    "detail": "std.debug.print outside tests and src/testing/",
+    "reason": "existing at gate adoption; burned down in the cleanup pass"
+  },
+  {
+    "rule": "debug-print",
+    "path": "examples/usage.zig",
+    "source": "std.debug.print(\"{s}: depth {d}\\n\", .{ layer.path, layer.depth });",
+    "detail": "std.debug.print outside tests and src/testing/",
+    "reason": "existing at gate adoption; burned down in the cleanup pass"
+  },
+  {
+    "rule": "debug-print",
+    "path": "examples/usage.zig",
+    "source": "for (findings) |finding| std.debug.print(\"{s}: {s}\\n\", .{ finding.rule, @tagName(finding.reason) });",
+    "detail": "std.debug.print outside tests and src/testing/",
+    "reason": "existing at gate adoption; burned down in the cleanup pass"
+  },
+  {
+    "rule": "debug-print",
+    "path": "examples/usage.zig",
+    "source": "std.debug.print(\"{s}: {s}: {s}\\n\", .{",
+    "detail": "std.debug.print outside tests and src/testing/",
+    "reason": "existing at gate adoption; burned down in the cleanup pass"
+  },
+  {
+    "rule": "debug-print",
+    "path": "ci/reports.zig",
+    "source": "std.debug.print(\"report tool failed: {s}\\n{s}{s}\\n\", .{ argv[0], result.stdout, result.stderr });",
+    "detail": "std.debug.print outside tests and src/testing/",
+    "reason": "existing at gate adoption; burned down in the cleanup pass"
+  }
+]
