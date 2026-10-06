@@ -136,7 +136,7 @@ under `if TYPE_CHECKING:` (or `if name.TYPE_CHECKING:`), nested blocks included,
 `else` branch runs and stays `import` (Grimp drops it too).
 `importlib.import_module` and `__import__` with literal names give `dynamic` edges, a
 relative name resolving against `import_module`'s literal package; other arguments are
-unsupported. A test file's import is a `test` edge whatever its form. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and wiki links while
+unsupported. A test file's import is a `test` edge whatever its form. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and one-line wiki links while
 excluding fenced code and comments. Asset recovery matches path tokens in supported text
 files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
 `go.mod`, `pyproject.toml`, `pom.xml`, `build.gradle`, `build.gradle.kts`

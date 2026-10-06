@@ -22,6 +22,8 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
     // A crate a path names once per file and kind.
     var crates: std.StringHashMapUnmanaged(void) = .empty;
     var test_crates: std.StringHashMapUnmanaged(void) = .empty;
+    // Where the last use tree stopped reading.
+    var tree_end: usize = 0;
     var i: usize = 0;
     while (i < ts.len) : (i += 1) {
         const t = ts[i];
@@ -67,10 +69,12 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
             if (ts[i + 1].is("tests")) pending_test = true;
             if (ts[i + 2].is(";") and !pending_path) try out.append(a, .{ .name = ts[i + 1].text, .offset = t.offset, .form = .rust_mod, .kind = if (current.test_item or pending_test) .@"test" else .import, .scope = current.scope });
             if (ts[i + 2].is("{")) pending_scope = try std.mem.join(a, "/", if (current.scope.len == 0) &.{ts[i + 1].text} else &.{ current.scope, ts[i + 1].text });
-        } else if (t.is("use") and i + 1 < ts.len) {
+        } else if (t.is("use") and i + 1 < ts.len and i >= tree_end) {
             var j = i + 1;
             const start = out.items.len;
             try tree(a, ts, &j, &names, current.scope, t.offset, &out);
+            // A `use` the tree read is part of it, not a declaration of its own.
+            tree_end = j;
             for (out.items[start..]) |*spec| {
                 spec.kind = if (current.test_item or pending_test) .@"test" else .import;
                 spec.scope = current.scope;
@@ -97,28 +101,40 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
 }
 // Nested use trees are walked on an explicit stack: source nesting never
 // consumes the machine's call stack.
+/// Each brace's prefix is a length of the one path buffer, so nesting never
+/// copies the path, and a segment must follow `::`, `{` or `,`, so the path
+/// only grows by the tree's own spelling.
 fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, scope: []const u8, offset: usize, out: *std.ArrayList(Spec)) !void {
-    var prefixes: std.ArrayList([]const u8) = .empty;
+    var prefixes: std.ArrayList(usize) = .empty;
     var path: std.ArrayList(u8) = .empty;
+    var segment_allowed = true;
     while (j.* < ts.len) : (j.* += 1) {
         const t = ts[j.*];
         if (t.is(";")) break;
         if (t.is("{")) {
-            try prefixes.append(a, try a.dupe(u8, path.items));
+            if (!segment_allowed) break;
+            try prefixes.append(a, path.items.len);
             continue;
         }
         if (t.is(",") or t.is("}")) {
             try emit(a, path.items, names, scope, offset, out);
             if (t.is("}") and prefixes.items.len > 0) _ = prefixes.pop();
-            path.clearRetainingCapacity();
-            if (prefixes.getLastOrNull()) |prefix| try path.appendSlice(a, prefix);
+            path.shrinkRetainingCapacity(prefixes.getLastOrNull() orelse 0);
+            segment_allowed = true;
             continue;
         }
         if (t.is("as")) {
             j.* += 1;
+            segment_allowed = false;
             continue;
         }
-        if (t.kind == .word or t.is(":") or t.is("*")) try path.appendSlice(a, t.text) else break;
+        if (t.is(":")) {
+            try path.appendSlice(a, t.text);
+            segment_allowed = std.mem.endsWith(u8, path.items, "::");
+        } else if ((t.kind == .word or t.is("*")) and segment_allowed) {
+            try path.appendSlice(a, t.text);
+            segment_allowed = false;
+        } else break;
     }
     try emit(a, path.items, names, scope, offset, out);
 }

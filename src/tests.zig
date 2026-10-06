@@ -20,6 +20,7 @@ const java_test_module = @import("lang/java_test.zig");
 const recovery_test_module = @import("testing/recovery_test.zig");
 const properties_test_module = @import("testing/properties_test.zig");
 const memory_test_module = @import("testing/memory_test.zig");
+const hostile_test_module = @import("testing/hostile_test.zig");
 const std = @import("std");
 const g = @import("gantry.zig");
 test "empty graph owns its result" {
@@ -36,6 +37,7 @@ test "empty graph owns its result" {
 
 test {
     _ = lexers_test_module;
+    _ = hostile_test_module;
     _ = unsupported_test_module;
     _ = resolution_test_module;
     _ = configs_test_module;

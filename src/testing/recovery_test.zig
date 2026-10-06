@@ -89,3 +89,17 @@ test "recoverers are explicitly selectable and kinds retain separate counts" {
     try f.edge(&graph, "a.md", "b.md", .link, 1);
     try f.edge(&graph, "a.md", "b.md", .asset, 1);
 }
+test "Markdown percent escapes, code spans of one length and one-line wiki links" {
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "a.md", .text = "[x](my%20file.md) [y](<my file.md>) [z](100%25.md) [w](100%.md)\n`` a ` [[b]] `` [[c\n]] ``` `` [[d]] ```\n" },
+        .{ .path = "my file.md" },
+        .{ .path = "100%.md" },
+        .{ .path = "b.md" },
+        .{ .path = "c.md" },
+        .{ .path = "d.md" },
+    } }).scan(a, .{ .kinds = &.{.link} });
+    defer graph.deinit();
+    try eq(2, graph.edges().len);
+    try f.edge(&graph, "a.md", "my file.md", .link, 2);
+    try f.edge(&graph, "a.md", "100%.md", .link, 2);
+}

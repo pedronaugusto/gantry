@@ -15,7 +15,9 @@ pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
 }
 pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
-    for (ts, 0..) |t, i| {
+    var i: usize = 0;
+    while (i < ts.len) : (i += 1) {
+        const t = ts[i];
         if (!t.is("import") or i + 1 >= ts.len) continue;
         var j = i + 1;
         const block = ts[j].is("(");
@@ -27,6 +29,9 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
                 if (!block) break;
             } else if (!block and ts[j].kind != .word and !ts[j].is(".")) break;
         }
+        // Declarations do not nest: the next one starts after this one, so
+        // an unclosed block is read once rather than once per `import`.
+        i = @max(i, j -| 1);
     }
     return .{ .specs = try out.toOwnedSlice(a) };
 }

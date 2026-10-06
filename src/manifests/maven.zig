@@ -129,7 +129,8 @@ fn interpolate(a: std.mem.Allocator, properties: *const std.StringHashMapUnmanag
 fn entities(a: std.mem.Allocator, text: []const u8, out: *std.ArrayList(u8)) !void {
     var i: usize = 0;
     while (i < text.len) {
-        const end = if (text[i] == '&') std.mem.findScalarPos(u8, text, i, ';') else null;
+        // The longest reference these name is `&#x10FFFF;`.
+        const end = if (text[i] == '&') std.mem.findScalarPos(u8, text[0..@min(text.len, i + 10)], i, ';') else null;
         const name = if (end) |e| text[i + 1 .. e] else "";
         const named: ?u8 = if (std.mem.eql(u8, name, "lt")) '<' else if (std.mem.eql(u8, name, "gt")) '>' else if (std.mem.eql(u8, name, "amp")) '&' else if (std.mem.eql(u8, name, "quot")) '"' else if (std.mem.eql(u8, name, "apos")) '\'' else null;
         if (named) |c| {

@@ -448,8 +448,10 @@ fn skipTrivia(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocat
     if (lang == .c) {
         const prefix: ?usize = if (std.mem.startsWith(u8, text[i..], "R\"")) 2 else if (std.mem.startsWith(u8, text[i..], "u8R\"")) 4 else if (std.mem.startsWith(u8, text[i..], "uR\"") or std.mem.startsWith(u8, text[i..], "UR\"") or std.mem.startsWith(u8, text[i..], "LR\"")) 3 else null;
         if (prefix) |width| {
-            const open = std.mem.findScalarPos(u8, text, i + width, '(') orelse text.len;
-            if (open -| (i + width) <= 16 and open < text.len) {
+            // A delimiter is at most 16 bytes: look no further for its `(`.
+            const window = text[0..@min(text.len, i + width + 17)];
+            const open = std.mem.findScalarPos(u8, window, i + width, '(') orelse text.len;
+            if (open < text.len) {
                 const delimiter = text[i + width .. open];
                 i = open + 1;
                 while (i < text.len) : (i += 1) {
