@@ -54,3 +54,23 @@ test "Go exact replacement precedes wildcard and workspace members cannot be rep
     defer graph.deinit();
     try f.edge(&graph, "app/a.go", "shared/pkg/a.go", .import, 1);
 }
+
+test "conflicting workspace replacements leave the import unresolved and record it" {
+    const text = "package main\nimport \"example.org/dep/pkg\"\n";
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "go.work", .text = "use (\n ./app\n ./tool\n)\n" },
+        .{ .path = "app/go.mod", .text = "module example.org/app\nrequire example.org/dep v1.0.0\nreplace example.org/dep => ../one\n" },
+        .{ .path = "app/a.go", .text = text },
+        .{ .path = "tool/go.mod", .text = "module example.org/tool\nreplace example.org/dep => ../two\n" },
+        .{ .path = "one/go.mod", .text = "module example.org/dep" },
+        .{ .path = "one/pkg/a.go" },
+        .{ .path = "two/go.mod", .text = "module example.org/dep" },
+        .{ .path = "two/pkg/a.go" },
+    } }).scan(a, .{ .manifests = false });
+    defer graph.deinit();
+    try std.testing.expectEqual(0, graph.edges().len);
+    try f.invalid(&graph, "app/a.go", error.ConflictingReplacement);
+    try std.testing.expectEqual(@as(?usize, std.mem.find(u8, text, "import")), graph.invalid()[0].offset);
+    try std.testing.expectEqual(1, graph.references().len);
+    try std.testing.expect(!graph.references()[0].resolved);
+}
