@@ -41,8 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Expose `rules/dependency_check.Key`, the ecosystem/directory key accepted by manifest grouping hash and equality functions.
 
-- Run source checks and the Linux fast gate through the pinned Zig preflight, retaining all full test targets and downstream report validation.
-
 - `report.dot`, `mermaid`, `json` and `sarif`: a graph as Graphviz or Mermaid text, clustered by directory or layer, with findings in red; a graph and its findings as JSON of a documented shape; findings as SARIF 2.1.0 for GitHub code scanning, with lines read from the sources by `sarifWithSource`.
 
 - Rust `use util::X` resolves to `util.rs` when the current module declares `mod util;`, as rustc's 2018 paths do, and gives no edge beside an `extern crate util`.
@@ -114,12 +112,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reuse Rust recovery for test classification and imports, reading each source once.
 
 - Reject undeclared dependencies, duplicate layer membership and imports of source executables.
-
-- Keep owner conversions, graph analysis, rule evaluation and scan inputs below their public facades, and assemble tests above them.
-
-- Check named source layers, cycles, entry files and dependency owners during source CI.
-
-- Bound local Zig build caches before builds, retaining downloaded packages and tools.
 
 ### Breaking
 

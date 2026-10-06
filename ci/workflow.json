@@ -13,6 +13,5 @@
     "x86_64-freebsd",
     "x86_64-netbsd"
   ],
-  "compile_once": true,
-  "test_timeout": ""
+  "compile_once": true
 }
