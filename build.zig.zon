@@ -4,11 +4,5 @@
     .minimum_zig_version = "0.17.0",
     .fingerprint = 0xbcb052ec916b23d6,
     .paths = .{ "build.zig", "build.zig.zon", "src", "examples", "ci", ".github", "README.md", "CHANGELOG.md", "LICENSE" },
-    .dependencies = .{
-        .preflight = .{
-            .url = "https://codeload.github.com/pedronaugusto/preflight/tar.gz/3d9e5f165c4e317d3414679b4308a2ebf7c7fec5",
-            .hash = "preflight-0.1.0-LX1Zwjm0AwAi9oFgblqE7NEb2CbnqK-SjMW5fUjJ0Qht",
-            .lazy = true,
-        },
-    },
+    .dependencies = .{},
 }

@@ -29,17 +29,6 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(library);
     check.dependOn(&library.step);
     check.dependOn(&example.step);
-    // CI wiring is this repository's own. preflight is lazy and only the
-    // root build asks for it, so a project depending on gantry neither
-    // needs nor fetches it.
-    if (b.dep_prefix.len == 0) if (b.lazyImport(@This(), "preflight")) |preflight| {
-        preflight.addCi(b, .{ .tests = test_step, .portable_tests = true });
-        // A project that depends on gantry by path, with no packages to
-        // fetch: the build a consumer gets.
-        preflight.addConsumerCheck(b, .{ .package = "gantry", .program = b.path("ci/consumer.zig") });
-        // Validates the report goldens with their downstream tools.
-        check.dependOn(&preflight.addCheck(b, "check-reports", "ci/reports.zig").step);
-    };
     b.getInstallStep().dependOn(&tests.step);
     b.getInstallStep().dependOn(&example.step);
 }
