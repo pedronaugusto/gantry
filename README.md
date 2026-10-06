@@ -6,7 +6,7 @@ witnesses and checks against caller-defined boundaries.
 
 ## Install
 
-Requires Zig 0.16.0. Fetch with `zig fetch --save
+Requires Zig 0.17.0. Fetch with `zig fetch --save
 git+https://github.com/pedronaugusto/gantry`, then obtain the `gantry` module through
 `b.dependency` and add it to your executable's imports. Forward your target and optimize
 settings.

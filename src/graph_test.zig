@@ -50,7 +50,7 @@ fn checkedAnalysisAllocations(alloc: std.mem.Allocator) !void {
     try eq(1, analysis.layers()[2].depth);
 }
 test "checked analysis releases every failed allocation" {
-    try std.testing.checkAllAllocationFailures(a, checkedAnalysisAllocations, .{});
+    try f.checkAllAllocationFailures(checkedAnalysisAllocations, .{});
 }
 
 test "longest path depths include shortcuts disconnected nodes and collapsed SCCs" {
@@ -198,7 +198,7 @@ fn allocationScenario(alloc: std.mem.Allocator) !void {
     try expect(findings.len > 0);
 }
 test "every allocation failure releases scan graph analysis aggregation and findings" {
-    try std.testing.checkAllAllocationFailures(a, allocationScenario, .{});
+    try f.checkAllAllocationFailures(allocationScenario, .{});
 }
 
 test "managed results expose no writable Graph storage or ownership" {
@@ -221,9 +221,9 @@ test "managed results return deeply read only slices" {
     const S = struct {
         fn readonly(comptime T: type) bool {
             return switch (@typeInfo(T)) {
-                .pointer => |p| p.is_const and readonly(p.child),
+                .pointer => |p| p.attrs.@"const" and readonly(p.child),
                 .@"struct" => |fields| blk: {
-                    inline for (fields.fields) |field| if (!readonly(field.type)) break :blk false;
+                    inline for (fields.field_types) |field| if (!readonly(field)) break :blk false;
                     break :blk true;
                 },
                 .optional => |o| readonly(o.child),

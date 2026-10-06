@@ -99,37 +99,37 @@ fn place(s: []const u8) bool {
     return std.mem.findScalar(u8, s, '/') != null or std.mem.startsWith(u8, s, "git") or std.mem.startsWith(u8, s, "file:") or std.mem.startsWith(u8, s, "github:") or std.mem.startsWith(u8, s, "workspace:");
 }
 fn zon(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
-    const source = try a.dupeZ(u8, text);
+    const source = try a.dupeSentinel(u8, text, 0);
     defer a.free(source);
-    var ast = try std.zig.Ast.parse(a, source, .zon);
+    var ast = try std.zig.Ast.parse(a, source, .{ .mode = .zon });
     defer ast.deinit(a);
     var zoir = try std.zig.ZonGen.generate(a, ast, .{});
     defer zoir.deinit(a);
     if (zoir.hasCompileErrors()) return error.InvalidManifest;
 
-    const root = std.zig.Zoir.Node.Index.root.get(zoir);
-    const deps = (try zonField(zoir, root, "dependencies")) orelse return;
+    const root = std.zig.Zoir.Node.Index.root.get(&zoir);
+    const deps = (try zonField(&zoir, root, "dependencies")) orelse return;
     if (deps == .empty_literal) return;
     if (deps != .struct_literal) return error.InvalidManifest;
     for (deps.struct_literal.names, 0..) |name, i| {
-        const value = deps.struct_literal.vals.at(@intCast(i)).get(zoir);
-        const url = try zonString(zoir, value, "url");
-        const local = try zonString(zoir, value, "path");
-        const hash = try zonString(zoir, value, "hash");
+        const value = deps.struct_literal.vals.at(@intCast(i)).get(&zoir);
+        const url = try zonString(&zoir, value, "url");
+        const local = try zonString(&zoir, value, "path");
+        const hash = try zonString(&zoir, value, "hash");
         if (url != null and local != null) return error.InvalidManifest;
-        if (try zonField(zoir, value, "lazy")) |lazy| {
+        if (try zonField(&zoir, value, "lazy")) |lazy| {
             if (lazy != .true and lazy != .false) return error.InvalidManifest;
         }
         try out.append(a, .{
             .manifest = path,
-            .name = try a.dupe(u8, name.get(zoir)),
+            .name = try a.dupe(u8, name.get(&zoir)),
             .source = try a.dupe(u8, url orelse local orelse ""),
             .requirement = try a.dupe(u8, hash orelse ""),
             .origin = if (url != null) .remote else if (local != null) .local else .registry,
         });
     }
 }
-fn zonField(zoir: std.zig.Zoir, node: std.zig.Zoir.Node, name: []const u8) error{InvalidManifest}!?std.zig.Zoir.Node {
+fn zonField(zoir: *const std.zig.Zoir, node: std.zig.Zoir.Node, name: []const u8) error{InvalidManifest}!?std.zig.Zoir.Node {
     if (node == .empty_literal) return null;
     if (node != .struct_literal) return error.InvalidManifest;
     for (node.struct_literal.names, 0..) |field, i| {
@@ -137,7 +137,7 @@ fn zonField(zoir: std.zig.Zoir, node: std.zig.Zoir.Node, name: []const u8) error
     }
     return null;
 }
-fn zonString(zoir: std.zig.Zoir, node: std.zig.Zoir.Node, name: []const u8) error{InvalidManifest}!?[]const u8 {
+fn zonString(zoir: *const std.zig.Zoir, node: std.zig.Zoir.Node, name: []const u8) error{InvalidManifest}!?[]const u8 {
     const value = (try zonField(zoir, node, name)) orelse return null;
     if (value != .string_literal) return error.InvalidManifest;
     return value.string_literal;

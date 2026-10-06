@@ -192,7 +192,7 @@ fn unreadAllocations(alloc: std.mem.Allocator) !void {
     try eq(5, graph.unread().len);
 }
 test "unread paths release every failed allocation" {
-    try std.testing.checkAllAllocationFailures(a, unreadAllocations, .{});
+    try f.checkAllAllocationFailures(unreadAllocations, .{});
 }
 
 const ScratchReader = struct {

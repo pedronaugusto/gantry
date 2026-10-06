@@ -244,11 +244,12 @@ fn allocations(alloc: std.mem.Allocator, expected: ?*const g.Graph) !g.Graph {
 }
 
 test "scan diagnostics release every allocation failure without exposing a partial graph" {
-    var count = std.testing.FailingAllocator.init(a, .{});
+    // Refusing in-place resizes, as `f.steady` does, so every run allocates alike.
+    var count = std.testing.FailingAllocator.init(a, .{ .resize_fail_index = 0 });
     var full = try allocations(count.allocator(), null);
     defer full.deinit();
     for (0..count.alloc_index) |n| {
-        var failing = std.testing.FailingAllocator.init(a, .{ .fail_index = n });
+        var failing = std.testing.FailingAllocator.init(a, .{ .fail_index = n, .resize_fail_index = 0 });
         if (allocations(failing.allocator(), &full)) |value| {
             // Arena.reset may fail its optional preallocation and still leave
             // a fully working arena. That success must return the whole graph.

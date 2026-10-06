@@ -66,3 +66,16 @@ pub const Peak = struct {
         self.grow(memory.len, 0);
     }
 };
+/// A backing whose allocations happen the same way on every run: it
+/// refuses to resize in place. `std.testing.allocator` grows an
+/// allocation in place or not by where earlier runs left its buckets,
+/// so under it two runs of one scenario can count different allocations.
+pub fn steady() std.testing.FailingAllocator {
+    return .init(std.testing.allocator, .{ .resize_fail_index = 0 });
+}
+/// `std.testing.checkAllAllocationFailures` over `steady`, whose count of
+/// allocations from the first run every failing run then repeats.
+pub fn checkAllAllocationFailures(comptime test_fn: anytype, extra_args: anytype) !void {
+    var backing = steady();
+    return std.testing.checkAllAllocationFailures(backing.allocator(), test_fn, extra_args);
+}

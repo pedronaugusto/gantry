@@ -115,8 +115,8 @@ pub const InvalidFile = struct {
 
 /// The `FileError` an error is, or null for any other error.
 fn fileError(comptime err: anyerror) ?FileError {
-    inline for (@typeInfo(FileError).error_set.?) |e| {
-        if (std.mem.eql(u8, @errorName(err), e.name)) return @field(FileError, e.name);
+    inline for (@typeInfo(FileError).error_set.error_names.?) |name| {
+        if (std.mem.eql(u8, @errorName(err), name)) return @field(FileError, name);
     }
     return null;
 }

@@ -49,8 +49,8 @@ const One = struct {
 /// Errors a single-file reader returns for bytes it cannot read: a
 /// `FileError`, which a scan records instead.
 fn documented(err: anyerror) bool {
-    inline for (@typeInfo(g.FileError).error_set.?) |e| {
-        if (err == @field(anyerror, e.name)) return true;
+    inline for (@typeInfo(g.FileError).error_set.error_names.?) |name| {
+        if (err == @field(anyerror, name)) return true;
     }
     return false;
 }

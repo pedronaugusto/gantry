@@ -1,6 +1,7 @@
 const lexer_module = @import("../lexer.zig");
 const std = @import("std");
 const g = @import("../gantry.zig");
+const f = @import("support.zig");
 const expect = std.testing.expect;
 const eq = std.testing.expectEqualStrings;
 fn check(language: g.Language, source: []const u8, want: []const []const u8) !void {
@@ -270,7 +271,7 @@ test "owned raw imports outlive the source and clean up on allocation failure" {
             defer result.deinit();
         }
     };
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, S.run, .{});
+    try f.checkAllAllocationFailures(S.run, .{});
 }
 
 test "JS escapes retain Unicode characters and identity escapes in specifiers" {

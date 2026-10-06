@@ -273,7 +273,7 @@ fn zonAllocations(alloc: std.mem.Allocator) !void {
     return error.TestExpectedError;
 }
 test "ZON declarations outlive source and parser storage and release every failed allocation" {
-    try std.testing.checkAllAllocationFailures(a, zonAllocations, .{});
+    try f.checkAllAllocationFailures(zonAllocations, .{});
 }
 fn find(deps: []const g.Dependency, name: []const u8) !g.Dependency {
     for (deps) |d| if (std.mem.eql(u8, d.name, name)) return d;

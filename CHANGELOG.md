@@ -115,6 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- Requires Zig 0.17.0.
+
 - Zig imports a test build alone sees are `test` edges: inside a `test` declaration, in the taken branch of `if (builtin.is_test)`, and in a container-level declaration only tests reach. They were `import` edges, so layer and cycle rules over `import` edges no longer see them. An import nothing reaches stays `import`.
 
 - An edge's kind follows its importer. A production file importing a test file gives an `import` edge in Zig, Python, JavaScript/TypeScript, Nim, C and through a Rust `use`; it was a `test` edge, which hid exactly what a rule against production code reaching tests has to catch. The target still makes the edge `test` where an import names more than the file: a Go or Java package import and a Rust `mod` of a `cfg(test)` file.

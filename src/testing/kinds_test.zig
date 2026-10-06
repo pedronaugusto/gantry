@@ -133,7 +133,7 @@ test "TypeScript type-only imports and dynamic imports are edges of their own ki
     for ([_][]const u8{ "lazy.ts", "later.ts" }) |to| try f.edge(&graph, "app.ts", to, .dynamic, 1);
     for ([_][]const u8{ "mixed.ts", "named.ts", "named2.ts", "side.ts" }) |to| try f.edge(&graph, "app.ts", to, .import, 1);
     try std.testing.expectEqual(13, graph.edges().len);
-    var kinds: std.EnumSet(g.Kind) = .initEmpty();
+    var kinds: std.EnumSet(g.Kind) = .empty;
     for (graph.references()) |ref| kinds.insert(ref.kind);
     try std.testing.expect(kinds.contains(.type_only) and kinds.contains(.dynamic) and kinds.contains(.import));
 

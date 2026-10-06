@@ -280,7 +280,7 @@ test "reports release everything when an allocation fails" {
     var findings_owned = try graph.check(a, rules);
     defer findings_owned.deinit();
     const findings = findings_owned.items();
-    try std.testing.checkAllAllocationFailures(a, struct {
+    try f.checkAllAllocationFailures(struct {
         fn run(gpa: std.mem.Allocator, graph_: *const g.Graph, findings_: []const g.rules.Violation) !void {
             var buffer: [16 * 1024]u8 = undefined;
             var w: std.Io.Writer = .fixed(&buffer);

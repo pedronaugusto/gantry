@@ -170,7 +170,7 @@ fn tokenAllocations(allocator: std.mem.Allocator) !void {
     defer findings_owned.deinit();
 }
 test "token rule scans and checks release everything when allocation fails" {
-    try std.testing.checkAllAllocationFailures(a, tokenAllocations, .{});
+    try f.checkAllAllocationFailures(tokenAllocations, .{});
 }
 
 test "a token rule names several tokens under one name" {

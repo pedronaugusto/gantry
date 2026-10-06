@@ -359,8 +359,8 @@ fn graphAllocations(alloc: std.mem.Allocator) !void {
 }
 
 test "unsupported recovery releases every lexical and graph allocation failure" {
-    try std.testing.checkAllAllocationFailures(a, lexicalAllocations, .{});
-    try std.testing.checkAllAllocationFailures(a, graphAllocations, .{});
+    try f.checkAllAllocationFailures(lexicalAllocations, .{});
+    try f.checkAllAllocationFailures(graphAllocations, .{});
 }
 
 test "unsupported directory graphs retain independent source evidence" {
@@ -411,5 +411,5 @@ fn strictAllocations(alloc: std.mem.Allocator) !void {
 }
 
 test "unsupported strict failures release every scan allocation" {
-    try std.testing.checkAllAllocationFailures(a, strictAllocations, .{});
+    try f.checkAllAllocationFailures(strictAllocations, .{});
 }

@@ -11,10 +11,6 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/tests.zig"),
             .target = target,
             .optimize = optimize,
-            // Off so that `zig build test --fuzz` compiles: Zig 0.16.0's fuzz
-            // runner hands `@errorReturnTrace()` to a function taking the other
-            // `StackTrace` type. The failing input is the report there.
-            .error_tracing = false,
         }),
     });
     const test_step = b.step("test", "Run the tests and example");
