@@ -243,17 +243,16 @@ test "ZON decodes multiline declaration strings and ignores nested metadata" {
     try eq(0, empty.len);
 }
 
-test "ZON scan propagates a malformed tail instead of returning a partial graph" {
-    const result = (f.Fixture{ .items = &.{
+test "ZON scan records a malformed tail instead of reporting part of the manifest" {
+    var graph = try (f.Fixture{ .items = &.{
         .{ .path = "build.zig.zon", .text = ".{ .dependencies = .{ .x = .{ .path = \"x\" } }, .tail = }" },
         .{ .path = "a.zig", .text = "const b = @import(\"b.zig\");" },
         .{ .path = "b.zig" },
     } }).scan(a, .{});
-    if (result) |value| {
-        var graph = value;
-        defer graph.deinit();
-        return error.TestExpectedError;
-    } else |err| try eq(error.InvalidManifest, err);
+    defer graph.deinit();
+    try f.invalid(&graph, "build.zig.zon", error.InvalidManifest);
+    try eq(0, graph.dependencies().len);
+    try f.edge(&graph, "a.zig", "b.zig", .import, 1);
 }
 
 fn zonAllocations(alloc: std.mem.Allocator) !void {

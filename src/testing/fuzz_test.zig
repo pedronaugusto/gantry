@@ -46,14 +46,13 @@ const One = struct {
     }
 };
 
-/// Errors a scan reports for bytes a reader cannot read. The switch is
-/// exhaustive, so a new error in the scan's set fails to compile here
-/// until it is named.
+/// Errors a single-file reader returns for bytes it cannot read: a
+/// `FileError`, which a scan records instead.
 fn documented(err: anyerror) bool {
-    return switch (err) {
-        error.InvalidManifest, error.UnsupportedManifest, error.InvalidConfig, error.ConfigCycle, error.InvalidBuildConstraint, error.ConflictingReplacement, error.InvalidEscape, error.InvalidLiteral, error.SyntaxError => true,
-        else => false,
-    };
+    inline for (@typeInfo(g.FileError).error_set.?) |e| {
+        if (err == @field(anyerror, e.name)) return true;
+    }
+    return false;
 }
 
 const everything: []const g.rules.TokenRule = &.{
@@ -61,27 +60,29 @@ const everything: []const g.rules.TokenRule = &.{
     .{ .name = "values", .kind = .string, .token = "*" },
 };
 
-fn scanOnce(paths: []const []const u8, one: One, options: g.Options) !?g.Graph {
+/// A scan fails only for its reader; bytes it cannot read are records.
+fn scanOnce(paths: []const []const u8, one: One, options: g.Options) !g.Graph {
     return g.scan(testing.allocator, paths, one, One.read, options) catch |err| {
-        if (err == error.OutOfMemory or !documented(err)) {
-            std.debug.print("scan of {s} failed: {s}\n", .{ one.path, @errorName(err) });
-            return err;
-        }
-        return null;
+        std.debug.print("scan of {s} failed: {s}\n", .{ one.path, @errorName(err) });
+        return err;
     };
 }
 
 /// Scan `paths`, the first holding `text`, twice, and compare what came out.
 fn scanTwice(paths: []const []const u8, text: []const u8, options: g.Options) !void {
     const one: One = .{ .path = paths[0], .text = text };
-    var first = (try scanOnce(paths, one, options)) orelse {
-        // The same bytes fail the same way.
-        try testing.expect(try scanOnce(paths, one, options) == null);
-        return;
-    };
+    var first = try scanOnce(paths, one, options);
     defer first.deinit();
-    var second = (try scanOnce(paths, one, options)).?;
+    var second = try scanOnce(paths, one, options);
     defer second.deinit();
+    // Only the file holding the bytes can be invalid, the same way twice.
+    try testing.expectEqual(first.invalid().len, second.invalid().len);
+    for (first.invalid(), second.invalid()) |x, y| {
+        try testing.expectEqualStrings(paths[0], x.path);
+        try testing.expectEqualStrings(x.path, y.path);
+        try testing.expectEqual(x.cause, y.cause);
+        try testing.expectEqual(x.offset, y.offset);
+    }
     try sameGraph(&first, &second);
     try testing.expect(first.references().len <= text.len);
     try testing.expect(first.dependencies().len <= text.len);
@@ -93,8 +94,9 @@ fn scanTwice(paths: []const []const u8, text: []const u8, options: g.Options) !v
 /// A dependency rule over any graph reports at most once per reference and
 /// declaration, each finding with its evidence.
 fn checkDependencies(graph: *const g.Graph) !void {
-    const findings = try graph.check(testing.allocator, .{ .dependencies = &.{.{ .name = "deps", .unused = &.{ .runtime, .development, .optional, .build } }} });
-    defer g.rules.free(testing.allocator, findings);
+    var findings_owned = try graph.check(testing.allocator, .{ .dependencies = &.{.{ .name = "deps", .unused = &.{ .runtime, .development, .optional, .build } }} });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try testing.expect(findings.len <= graph.references().len + graph.dependencies().len);
     for (findings) |finding| switch (finding.reason) {
         .undeclared => try testing.expect(finding.reference != null and finding.package != null and finding.path != null),
@@ -207,7 +209,7 @@ fn source(comptime language: g.Language, comptime path: []const u8, comptime cor
                 defer imports.deinit();
                 try testing.expect(imports.items().len <= text.len);
                 try testing.expect(imports.unsupported().len <= text.len);
-            } else |err| if (err == error.OutOfMemory or !documented(err)) return err;
+            } else |err| if (!documented(err)) return err;
             try scanTwice(&.{path}, text, .{ .manifests = false, .tokens = everything });
         }
     };
@@ -227,7 +229,7 @@ fn manifest(comptime paths: []const []const u8, comptime syntax: ?lexer.Syntax, 
                 if (manifests.read(arena.allocator(), paths[0], text)) |declared| {
                     try testing.expect(declared.dependencies.len <= text.len);
                     try testing.expect(declared.unsupported.len <= text.len);
-                } else |err| if (err == error.OutOfMemory or !documented(err)) return err;
+                } else |err| if (err != error.UnsupportedManifest and !documented(err)) return err;
             }
             try scanTwice(paths, text, .{});
         }

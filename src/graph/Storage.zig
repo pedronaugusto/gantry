@@ -20,6 +20,8 @@ scanned_tokens: []const check_module.TokenRule = &.{},
 manifests: bool = false,
 /// Selected files for which the caller returned null; never silently omitted.
 unread: []const []const u8 = &.{},
+/// Selected files read but not usable as their format.
+invalid: []const diagnostic_module.InvalidFile = &.{},
 go_files: []const build_module.File = &.{},
 files: std.StringHashMapUnmanaged(void) = .empty,
 

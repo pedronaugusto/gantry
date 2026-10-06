@@ -6,8 +6,9 @@ const eq = std.testing.expectEqual;
 
 /// Undeclared packages, then unused declarations, as `want` spells them.
 fn expectFindings(graph: *const g.Graph, rule: g.rules.DependencyRule, undeclared: []const []const u8, unused: []const []const u8) !void {
-    const findings = try graph.check(a, .{ .dependencies = &.{rule} });
-    defer g.rules.free(a, findings);
+    var findings_owned = try graph.check(a, .{ .dependencies = &.{rule} });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     var got_undeclared: std.ArrayList([]const u8) = .empty;
     defer got_undeclared.deinit(a);
     var got_unused: std.ArrayList([]const u8) = .empty;

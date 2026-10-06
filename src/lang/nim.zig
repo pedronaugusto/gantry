@@ -114,7 +114,7 @@ fn path(a: std.mem.Allocator, ts: []const l.Token, j: *usize) !?[]const u8 {
             last = .word;
             try name.appendSlice(a, l.decode(a, t.text) catch |err| switch (err) {
                 error.InvalidEscape => return null,
-                else => return err,
+                else => |e| return e,
             });
             continue;
         } else if (t.kind == .word and (last == .none or last == .slash) and !t.is("as") and !t.is("except") and !t.is("import")) {

@@ -16,6 +16,12 @@ pub const Fixture = struct {
         return g.scan(a, paths, self, read, options);
     }
 };
+/// `graph` has one invalid file, `path`, for `cause`.
+pub fn invalid(graph: *const g.Graph, path: []const u8, cause: g.FileError) !void {
+    try std.testing.expectEqual(1, graph.invalid().len);
+    try std.testing.expectEqualStrings(path, graph.invalid()[0].path);
+    try std.testing.expectEqual(cause, graph.invalid()[0].cause);
+}
 pub fn edge(graph: *const g.Graph, from: []const u8, to: []const u8, kind: g.Kind, count: usize) !void {
     for (graph.edges()) |e| if (std.mem.eql(u8, e.from, from) and std.mem.eql(u8, e.to, to) and e.kind == kind) {
         try std.testing.expectEqual(count, e.count);

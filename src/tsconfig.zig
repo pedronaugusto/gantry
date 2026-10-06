@@ -12,7 +12,9 @@ pub const Config = struct {
     mappings: ?[]const Mapping = null,
     paths_root: []const u8 = "",
 };
-const Entry = struct { config: Config, value: Value = .null, parents: []const []const u8 = &.{}, done: bool = false };
+/// An invalid config is done at once and gives nothing: no config of its
+/// own, nothing to the configs that extend it.
+const Entry = struct { config: Config, value: Value = .null, parents: []const []const u8 = &.{}, done: bool = false, invalid: bool = false };
 fn field(v: Value, key: []const u8) Value {
     return if (v == .object) v.object.get(key) orelse .null else .null;
 }
@@ -38,7 +40,7 @@ fn validate(value: Value) error{InvalidConfig}!void {
 fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
     return path_module.join(a, root, name, "") catch |err| switch (err) {
         error.InvalidPath => null,
-        else => return err,
+        else => |e| return e,
     };
 }
 fn configName(name: []const u8) bool {
@@ -62,8 +64,14 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         defer _ = scratch.reset(.retain_capacity);
         const text = (try read(s, context, file)) orelse continue;
         progress.at(.configs, file);
-        const value = try jsonc_module.parse(a, s, text);
-        try validate(value);
+        const value = jsonc_module.parse(a, s, text) catch |err| {
+            try invalidate(&entries.items[i], progress, err);
+            continue;
+        };
+        validate(value) catch |err| {
+            try invalidate(&entries.items[i], progress, err);
+            continue;
+        };
         entries.items[i].value = value;
         const ext = field(value, "extends");
         var parents: std.ArrayList([]const u8) = .empty;
@@ -84,6 +92,9 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         entries.items[i].parents = try parents.toOwnedSlice(a);
     }
     var remaining = entries.items.len;
+    for (entries.items) |entry| if (entry.done) {
+        remaining -= 1;
+    };
     while (remaining > 0) {
         var made_progress = false;
         for (entries.items) |*entry| {
@@ -96,7 +107,9 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
             if (!ready) continue;
             var cfg: Config = .{ .path = entry.config.path };
             for (entry.parents) |parent| {
-                const inherited = entries.items[index.get(parent).?].config;
+                const from = entries.items[index.get(parent).?];
+                if (from.invalid) continue;
+                const inherited = from.config;
                 if (inherited.base_url) |base| cfg.base_url = base;
                 if (inherited.mappings) |m| {
                     cfg.mappings = m;
@@ -106,28 +119,18 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
             const opts = field(entry.value, "compilerOptions");
             const base = field(opts, "baseUrl");
             if (base == .string) cfg.base_url = try join(a, p.dir(cfg.path), base.string);
+            remaining -= 1;
+            made_progress = true;
             const paths_value = field(opts, "paths");
             if (paths_value == .object) {
-                var mappings: std.ArrayList(Mapping) = .empty;
-                var it = paths_value.object.iterator();
-                while (it.next()) |pair| {
-                    if (pair.value_ptr.* != .array) return error.InvalidConfig;
-                    const pattern = pair.key_ptr.*;
-                    if (std.mem.count(u8, pattern, "*") > 1) return error.InvalidConfig;
-                    var targets: std.ArrayList([]const u8) = .empty;
-                    for (pair.value_ptr.array.items) |target| {
-                        if (target != .string or std.mem.count(u8, target.string, "*") > 1) return error.InvalidConfig;
-                        try targets.append(a, target.string);
-                    }
-                    try mappings.append(a, .{ .pattern = pattern, .targets = try targets.toOwnedSlice(a) });
-                }
-                cfg.mappings = try mappings.toOwnedSlice(a);
+                cfg.mappings = mappings(a, paths_value) catch |err| {
+                    try invalidate(entry, progress, err);
+                    continue;
+                };
                 cfg.paths_root = p.dir(cfg.path);
             }
             entry.config = cfg;
             entry.done = true;
-            remaining -= 1;
-            made_progress = true;
         }
         if (!made_progress) {
             // Following unfinished parents for at least the entry count lands
@@ -141,18 +144,42 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
                     if (!entries.items[n].done) break n;
                 } else unreachable;
             }
+            // The config the walk landed on gives nothing, which lets the
+            // rest of its cycle resolve without it.
             progress.at(.configs, entries.items[cyclic].config.path);
-            return error.ConfigCycle;
+            try invalidate(&entries.items[cyclic], progress, error.ConfigCycle);
+            remaining -= 1;
         }
     }
     progress.at(.configs, null);
     var out: std.ArrayList(Config) = .empty;
-    for (entries.items) |entry| if (configName(p.base(entry.config.path))) {
+    for (entries.items) |entry| if (!entry.invalid and configName(p.base(entry.config.path))) {
         try out.append(a, entry.config);
     };
     return out.toOwnedSlice(a);
 }
 
+fn invalidate(entry: *Entry, progress: *diagnostic_module.Progress, err: anytype) !void {
+    try progress.tolerate(err);
+    entry.invalid = true;
+    entry.done = true;
+}
+fn mappings(a: std.mem.Allocator, paths: Value) ![]const Mapping {
+    var out: std.ArrayList(Mapping) = .empty;
+    var it = paths.object.iterator();
+    while (it.next()) |pair| {
+        if (pair.value_ptr.* != .array) return error.InvalidConfig;
+        const pattern = pair.key_ptr.*;
+        if (std.mem.count(u8, pattern, "*") > 1) return error.InvalidConfig;
+        var targets: std.ArrayList([]const u8) = .empty;
+        for (pair.value_ptr.array.items) |target| {
+            if (target != .string or std.mem.count(u8, target.string, "*") > 1) return error.InvalidConfig;
+            try targets.append(a, target.string);
+        }
+        try out.append(a, .{ .pattern = pattern, .targets = try targets.toOwnedSlice(a) });
+    }
+    return out.toOwnedSlice(a);
+}
 pub fn nearest(configs: []const Config, from: []const u8) ?Config {
     var best: ?Config = null;
     for (configs) |cfg| {

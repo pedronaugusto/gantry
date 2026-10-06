@@ -3,6 +3,7 @@ const build_module = @import("lang/go/build.zig");
 const analysis_module = @import("analysis.zig");
 const analyze_module = @import("analysis/analyze.zig");
 const check_module = @import("rules/check.zig");
+const diagnostic_module = @import("scan/diagnostic.zig");
 const dependency_check_module = @import("rules/dependency_check.zig");
 const std = @import("std");
 const t = @import("types.zig");
@@ -50,6 +51,15 @@ pub const Graph = enum(usize) {
     pub fn unread(g: *const Graph) []const []const u8 {
         return store.get(g.*).unread;
     }
+    /// Selected files read but not usable as their format, ordered by path
+    /// and offset: each gave the scan nothing from the phase that found it
+    /// (a Go file with a bad constraint is in no package, a broken config
+    /// is as if absent). A caller that wants such a scan to fail checks
+    /// this is empty.
+    pub fn invalid(g: *const Graph) []const diagnostic_module.InvalidFile {
+        return store.get(g.*).invalid;
+    }
+    /// Go files with their package, constraint and whether `Options.go_target` selects them.
     pub fn goFiles(g: *const Graph) []const build_module.File {
         return store.get(g.*).go_files;
     }
@@ -69,13 +79,12 @@ pub const Graph = enum(usize) {
         return @enumFromInt(@intFromPtr(try analyze_module.analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
     /// Findings borrow graph storage, rule names and required-path strings.
-    /// Keep the graph and those caller strings alive until findings are freed
-    /// with `rules.free`, which also frees transitive findings' chains;
-    /// gpa.free alone frees them when no rule is transitive. A token rule the graph
-    /// was not scanned for is `error.UnscannedToken`, never a silent pass,
-    /// and a dependency rule on a graph scanned without manifests is
-    /// `error.UnscannedManifests`.
-    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: check_module.Rules) ![]const check_module.Violation {
+    /// Keep the graph and those caller strings alive until `Findings.deinit`,
+    /// which releases the findings and every transitive finding's chain. A
+    /// token rule the graph was not scanned for is `error.UnscannedToken`,
+    /// never a silent pass, and a dependency rule on a graph scanned without
+    /// manifests is `error.UnscannedManifests`.
+    pub fn check(g: *const Graph, gpa: std.mem.Allocator, rules: check_module.Rules) check_module.CheckError!check_module.Findings {
         for (rules.tokens) |rule| if (!store.get(g.*).scannedFor(rule)) return error.UnscannedToken;
         if (rules.dependencies.len > 0 and !store.get(g.*).manifests) return error.UnscannedManifests;
         return check_module.check(dependency_check_module, gpa, g, rules);

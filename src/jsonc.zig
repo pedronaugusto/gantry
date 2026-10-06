@@ -1,8 +1,9 @@
 //! JSON with comments and trailing commas; source-language syntax stays invalid.
 const std = @import("std");
 
+/// A leading byte order mark is skipped, as `tsc` and npm skip it.
 pub fn parse(a: std.mem.Allocator, scratch: std.mem.Allocator, text: []const u8) !std.json.Value {
-    const clean = try scratch.dupe(u8, text);
+    const clean = try scratch.dupe(u8, if (std.mem.startsWith(u8, text, bom)) text[bom.len..] else text);
     defer scratch.free(clean);
     var i: usize = 0;
     while (i < clean.len) {
@@ -42,6 +43,7 @@ pub fn parse(a: std.mem.Allocator, scratch: std.mem.Allocator, text: []const u8)
     };
 }
 
+const bom = "\xEF\xBB\xBF";
 fn stringEnd(text: []const u8, start: usize) usize {
     var i = start + 1;
     while (i < text.len) {

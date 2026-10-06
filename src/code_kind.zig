@@ -46,7 +46,11 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.
         progress.at(.rust_tests, from);
         const tokens = try recorder.lex(rust, s, index, from, .rust, text);
         if (rust.testFileTokens(tokens)) try marked.put(a, from, {});
-        const recovery = try rust.recoverTokens(s, text, tokens);
+        const recovery = rust.recoverTokens(s, text, tokens) catch |err| {
+            try progress.tolerate(err);
+            if (cached.len > 0) cached[index] = .{};
+            continue;
+        };
         if (cached.len > 0) cached[index] = try recovery.clone(a, strings);
         var resolver = ctx;
         resolver.allocator = s;

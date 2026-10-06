@@ -40,7 +40,8 @@ pub const Paths = PathStore.Owner;
 /// allocator rather than staying resident for the rest of the scan.
 const scratch_kept = 1 << 20;
 
-pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) !Imports {
+/// `InvalidEscape` or `InvalidLiteral` for a string literal recovery cannot decode.
+pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) error{ InvalidEscape, InvalidLiteral, OutOfMemory }!Imports {
     const result = try ImportStore.create(gpa);
     errdefer result.deinit();
     const a = result.arena.allocator();
@@ -83,31 +84,51 @@ fn enabled(options: Options, kind: Kind) bool {
 }
 /// read(scratch_allocator, context, path) returns !?[]const u8. Bytes need
 /// only survive this call's processing, until the next read. null records an
-/// unread path; an error aborts without returning a partial graph. scratch
+/// unread path; a reader error or a `ScanError` aborts without returning a
+/// partial graph, and a file's own `FileError` is a record instead. scratch
 /// allocations are released after each file. Input paths and options are copied
 /// where needed, so nothing returned borrows them or the file bytes.
-pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options) !graph_module.Graph {
+pub fn scan(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options) (diagnostics.ScanError || diagnostics.ReadError(read))!graph_module.Graph {
     return scanWithDiagnostic(gpa, paths, context, read, options, null);
 }
 /// Clears the caller's diagnostic on entry. On failure it owns the failed
 /// path, phase, optional byte offset and original cause after scan cleanup.
 /// A null diagnostic has the same behavior as `scan`. Reporting never changes
 /// the returned error; if its path copy runs out of memory, the path is null.
-pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, diagnostic: ?*diagnostics.ScanDiagnostic) !graph_module.Graph {
+pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, diagnostic: ?*diagnostics.ScanDiagnostic) (diagnostics.ScanError || diagnostics.ReadError(read))!graph_module.Graph {
     diagnostics.reset(diagnostic);
     var progress: diagnostics.Progress = .{ .diagnostic = diagnostic };
-    const g = Graph.initTracked(gpa, paths, &progress) catch |cause| {
+    const Returned = diagnostics.ScanError || diagnostics.ReadError(read);
+    return scanGraph(gpa, paths, context, read, options, &progress) catch |err| {
+        // A file's own errors are recorded and never escape; everything
+        // else that can is in the declared set, which this checks.
+        comptime {
+            @setEvalBranchQuota(100_000);
+            const Inner = @typeInfo(@typeInfo(@TypeOf(scanGraph(gpa, paths, context, read, options, &progress))).error_union.error_set).error_set.?;
+            for (Inner) |e| if (!has(Returned, e.name) and !has(diagnostics.FileError, e.name)) @compileError("scan can return error." ++ e.name);
+        }
+        return @errorCast(err);
+    };
+}
+fn has(comptime Set: type, comptime name: []const u8) bool {
+    const names = @typeInfo(Set).error_set orelse return true;
+    for (names) |e| if (std.mem.eql(u8, e.name, name)) return true;
+    return false;
+}
+fn scanGraph(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, options: Options, progress: *diagnostics.Progress) !graph_module.Graph {
+    const g = Graph.initTracked(gpa, paths, progress) catch |cause| {
         progress.fail(cause);
         return cause;
     };
     errdefer g.deinit();
     const a = g.arena.allocator();
+    progress.records = a;
     // Resolution indexes live for this scan; only returned data lives in g.
     var workspace: std.heap.ArenaAllocator = .init(gpa);
     defer workspace.deinit();
     const w = workspace.allocator();
     const Reader = reader_module.Reader(@TypeOf(context), read);
-    var reader: Reader = .{ .context = context, .allocator = gpa, .progress = &progress };
+    var reader: Reader = .{ .context = context, .allocator = gpa, .progress = progress };
     defer reader.deinit();
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
@@ -133,21 +154,28 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     var inactive: std.StringHashMapUnmanaged(void) = .empty;
     for (g.paths, 0..) |p, file_index| if (languageOf(p) == .go) {
         const s = scratch.allocator();
-        if (try Reader.readFile(s, &reader, p)) |text| {
-            progress.at(.go_constraints, p);
-            const tokens = try recorder.lex(languages.go, s, file_index, p, .go, text);
-            var info = try build_module.parseTokens(s, p, text, options.go_target, tokens);
-            info.package = try a.dupe(u8, info.package);
-            if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
-            try go_files.append(a, info);
-            if (!info.selected) try inactive.put(w, p, {});
-            if (info.selected and code_enabled) {
-                progress.at(.imports, p);
-                const recovery = try go_module.recoverTokens(s, text, tokens);
-                cached[file_index] = try recovery.clone(w, a);
-            }
+        defer _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
+        const text = (try Reader.readFile(s, &reader, p)) orelse continue;
+        progress.at(.go_constraints, p);
+        const tokens = try recorder.lex(languages.go, s, file_index, p, .go, text);
+        var info = build_module.parseTokens(s, p, text, options.go_target, tokens) catch |err| {
+            // Go leaves a file whose constraint it cannot read out of its package.
+            try progress.tolerate(err);
+            try inactive.put(w, p, {});
+            continue;
+        };
+        info.package = try a.dupe(u8, info.package);
+        if (info.constraint) |constraint| info.constraint = try a.dupe(u8, constraint);
+        try go_files.append(a, info);
+        if (!info.selected) try inactive.put(w, p, {});
+        if (info.selected and code_enabled) {
+            progress.at(.imports, p);
+            const recovery = go_module.recoverTokens(s, text, tokens) catch |err| empty: {
+                try progress.tolerate(err);
+                break :empty t.Recovery{};
+            };
+            cached[file_index] = try recovery.clone(w, a);
         }
-        _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     };
     progress.at(.go_constraints, null);
     g.go_files = try go_files.toOwnedSlice(a);
@@ -164,48 +192,23 @@ pub fn scanWithDiagnostic(gpa: std.mem.Allocator, paths: []const []const u8, con
     var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     // Read manifests first: Go imports need the module identity even when
     // manifest dependencies have been disabled.
-    for (g.paths) |p| {
-        const is_mod = std.mem.eql(u8, path.base(p), "go.mod");
-        const is_work = std.mem.eql(u8, path.base(p), "go.work");
-        if (!is_work and !is_mod and (!manifests.supported(p) or !options.manifests)) continue;
-        const s = scratch.allocator();
-        if (try Reader.readFile(s, &reader, p)) |text| {
-            progress.at(.manifests, p);
-            if (is_mod or is_work) {
-                const parsed = try config_module.parse(w, path.dir(p), try w.dupe(u8, text));
-                if (is_mod) if (parsed.name) |name| {
-                    try modules.append(w, .{ .root = path.dir(p), .name = name, .requires = parsed.requires, .replacements = parsed.replacements });
-                };
-                if (is_work) try workspaces.append(w, .{ .root = path.dir(p), .uses = parsed.uses, .replacements = parsed.replacements });
-            }
-            if (options.manifests and manifests.supported(p)) {
-                const declared = try manifests.read(s, p, text);
-                if (options.strict_imports and declared.unsupported.len > 0) {
-                    progress.offset = declared.unsupported[0].offset;
-                    return error.UnsupportedImport;
-                }
-                for (declared.unsupported) |record| try unsupported.append(a, .{ .from = p, .offset = record.offset, .expression = record.expression });
-                for (declared.dependencies) |dep| try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group), .origin = dep.origin });
-            }
-        }
-        _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
-    }
-    const configs = try tsconfig_module.load(w, gpa, g.paths, &g.files, &reader, Reader.readFile, &progress);
-    const nim_configs = try config_module_.load(w, gpa, g.paths, &reader, Reader.readFile, &progress);
+    try readManifests(w, a, g, options, &reader, &scratch, progress, &modules, &workspaces, &deps, &unsupported);
+    const configs = try tsconfig_module.load(w, gpa, g.paths, &g.files, &reader, Reader.readFile, progress);
+    const nim_configs = try config_module_.load(w, gpa, g.paths, &reader, Reader.readFile, progress);
     progress.at(.resolution, null);
     const index = try recover.names(w, g.paths);
     const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs, .nim_configs = nim_configs };
-    const test_files = try code_kind_module.rustFiles(w, gpa, a, g.paths, base_ctx, &reader, Reader.readFile, cached, &progress, &recorder);
-    const java_packages = if (code_enabled) try packages_module.index(w, gpa, a, g.paths, &reader, Reader.readFile, cached, &progress, &recorder) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
-    const reexports = if (options.python_star_reexports) try exports_module.index(w, gpa, a, g.paths, base_ctx, &reader, Reader.readFile, cached, &progress, &recorder) else std.StringHashMapUnmanaged([]const []const u8).empty;
+    const test_files = try code_kind_module.rustFiles(w, gpa, a, g.paths, base_ctx, &reader, Reader.readFile, cached, progress, &recorder);
+    const java_packages = if (code_enabled) try packages_module.index(w, gpa, a, g.paths, &reader, Reader.readFile, cached, progress, &recorder) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
+    const reexports = if (options.python_star_reexports) try exports_module.index(w, gpa, a, g.paths, base_ctx, &reader, Reader.readFile, cached, progress, &recorder) else std.StringHashMapUnmanaged([]const []const u8).empty;
     // Edges wait as path positions outside graph storage: a quarter of an
     // `Edge`, and their outgrown buffers go back to the allocator.
     const position = try Graph.positions(w, g.paths);
     var edges: std.ArrayList(Graph.Pending) = .empty;
     defer edges.deinit(gpa);
     var refs: std.ArrayList(Reference) = .empty;
-    try readSources(gpa, a, g, options, &reader, &scratch, &progress, &recorder, cached, .{ .code_enabled = code_enabled, .inactive = inactive, .base_ctx = base_ctx, .test_files = test_files, .reexports = reexports, .java_packages = java_packages, .index = index, .position = position }, &edges, &refs, &unsupported);
-    return finish(a, g, options.manifests, &reader, &progress, &recorder, edges.items, &refs, &deps, &unsupported);
+    try readSources(gpa, a, g, options, &reader, &scratch, progress, &recorder, cached, .{ .code_enabled = code_enabled, .inactive = inactive, .base_ctx = base_ctx, .test_files = test_files, .reexports = reexports, .java_packages = java_packages, .index = index, .position = position }, &edges, &refs, &unsupported);
+    return finish(a, g, options.manifests, &reader, progress, &recorder, edges.items, &refs, &deps, &unsupported);
 }
 
 pub fn walk(gpa: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, context: anytype, comptime keep: anytype) !Paths {
@@ -235,6 +238,42 @@ pub fn walk(gpa: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, context: anytyp
     return PathStore.owner(result);
 }
 
+/// Module identities, workspaces and dependency declarations, in path order.
+fn readManifests(w: std.mem.Allocator, a: std.mem.Allocator, g: *Graph, options: Options, reader: anytype, scratch: *std.heap.ArenaAllocator, progress: *diagnostics.Progress, modules: *std.ArrayList(resolver.GoModule), workspaces: *std.ArrayList(config_module.Workspace), deps: *std.ArrayList(Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) !void {
+    for (g.paths) |p| {
+        const is_mod = std.mem.eql(u8, path.base(p), "go.mod");
+        const is_work = std.mem.eql(u8, path.base(p), "go.work");
+        if (!is_work and !is_mod and (!manifests.supported(p) or !options.manifests)) continue;
+        const s = scratch.allocator();
+        defer _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
+        const text = (try @TypeOf(reader.*).readFile(s, reader, p)) orelse continue;
+        progress.at(.manifests, p);
+        if (is_mod or is_work) {
+            // A module file that does not parse gives neither routing nor declarations.
+            const parsed = config_module.parse(w, path.dir(p), try w.dupe(u8, text)) catch |err| {
+                try progress.tolerate(err);
+                continue;
+            };
+            if (is_mod) if (parsed.name) |name| {
+                try modules.append(w, .{ .root = path.dir(p), .name = name, .requires = parsed.requires, .replacements = parsed.replacements });
+            };
+            if (is_work) try workspaces.append(w, .{ .root = path.dir(p), .uses = parsed.uses, .replacements = parsed.replacements });
+        }
+        if (options.manifests and manifests.supported(p)) {
+            const declared = manifests.readSupported(s, p, text) catch |err| {
+                try progress.tolerate(err);
+                continue;
+            };
+            if (options.strict_imports and declared.unsupported.len > 0) {
+                progress.offset = declared.unsupported[0].offset;
+                return error.UnsupportedImport;
+            }
+            for (declared.unsupported) |record| try unsupported.append(a, .{ .from = p, .offset = record.offset, .expression = record.expression });
+            for (declared.dependencies) |dep| try deps.append(a, .{ .manifest = p, .name = try a.dupe(u8, dep.name), .source = try a.dupe(u8, dep.source), .requirement = try a.dupe(u8, dep.requirement), .group = try a.dupe(u8, dep.group), .origin = dep.origin });
+        }
+    }
+}
+
 /// Recover sources after language indexes are complete; read buffers stay local.
 fn readSources(gpa: std.mem.Allocator, a: std.mem.Allocator, g: *Graph, options: Options, reader: anytype, scratch: *std.heap.ArenaAllocator, progress: *diagnostics.Progress, recorder: *Recorder, cached: []?t.Recovery, indexes: anytype, edges: *std.ArrayList(Graph.Pending), refs: *std.ArrayList(Reference), unsupported: *std.ArrayList(t.UnsupportedReference)) !void {
     std.debug.assert(cached.len == 0 or cached.len == g.paths.len);
@@ -258,11 +297,17 @@ fn readSources(gpa: std.mem.Allocator, a: std.mem.Allocator, g: *Graph, options:
         ctx.python_reexports = &indexes.reexports;
         ctx.java_packages = &indexes.java_packages;
         const from: u32 = @intCast(file_index);
-        if (lexed and !code) _ = try extract(s, language.?, text, recorder, file_index, p);
+        if (lexed and !code) {
+            progress.at(.imports, p);
+            _ = extract(s, language.?, text, recorder, file_index, p) catch |err| try progress.tolerate(err);
+        }
         if (code) {
             var seen: std.AutoHashMapUnmanaged(struct { usize, u32 }, void) = .empty;
             progress.at(.imports, p);
-            const recovery = prior orelse try extract(s, language.?, text, recorder, file_index, p);
+            const recovery = prior orelse extract(s, language.?, text, recorder, file_index, p) catch |err| empty: {
+                try progress.tolerate(err);
+                break :empty t.Recovery{};
+            };
             if (options.strict_imports and recovery.unsupported.len > 0) {
                 progress.offset = recovery.unsupported[0].offset;
                 return error.UnsupportedImport;
@@ -276,7 +321,11 @@ fn readSources(gpa: std.mem.Allocator, a: std.mem.Allocator, g: *Graph, options:
             for (specs) |spec| {
                 progress.at(.resolution, p);
                 const kind: Kind = if (spec.kind == .@"test" or indexes.test_files.contains(p) or code_kind_module.file(language.?, p)) .@"test" else spec.kind;
-                const targets = try ctx.targets(p, language.?, spec);
+                const targets = ctx.targets(p, language.?, spec) catch |err| unresolved: {
+                    progress.offset = spec.offset;
+                    try progress.tolerate(err);
+                    break :unresolved &.{};
+                };
                 try refs.append(a, .{ .from = p, .name = if (prior != null) spec.name else try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| (if (prior != null) member else try a.dupe(u8, member)) else null, .resolved = targets.len > 0, .kind = kind });
                 if (spec.member != null) continue;
                 if (language == .python and options.python_initializers == .explicit and spec.python_base and !spec.star) {
@@ -354,5 +403,12 @@ fn finish(a: std.mem.Allocator, g: *Graph, manifests_enabled: bool, reader: anyt
     g.dependencies = try deps.toOwnedSlice(a);
     g.manifests = manifests_enabled;
     g.unread = try reader.unreadPaths(a, &g.files);
+    std.mem.sort(diagnostics.InvalidFile, progress.invalid.items, {}, struct {
+        fn less(_: void, x: diagnostics.InvalidFile, y: diagnostics.InvalidFile) bool {
+            const order = std.mem.order(u8, x.path, y.path);
+            return order == .lt or (order == .eq and (x.offset orelse 0) < (y.offset orelse 0));
+        }
+    }.less);
+    g.invalid = progress.invalid.items;
     return Graph.owner(graph_module.Graph, g);
 }

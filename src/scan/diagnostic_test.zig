@@ -40,31 +40,63 @@ test "scan diagnostics retain reader causes through every read pass" {
     }
 }
 
-test "scan diagnostics identify invalid paths manifests and Go constraints" {
+/// The scan succeeds, `path` is its one invalid file, for `cause` in `phase`.
+fn invalid(graph: *const g.Graph, path: []const u8, phase: g.ScanDiagnostic.Phase, cause: g.FileError) !void {
+    try std.testing.expectEqual(1, graph.invalid().len);
+    const record = graph.invalid()[0];
+    try std.testing.expectEqualStrings(path, record.path);
+    try std.testing.expectEqual(phase, record.phase);
+    try std.testing.expectEqual(cause, record.cause);
+}
+
+test "scan diagnostics identify invalid paths; invalid manifests and Go constraints are records" {
     var diagnostic = g.ScanDiagnostic.init(a);
     defer diagnostic.deinit();
     const empty: f.Fixture = .{ .items = &.{} };
     try std.testing.expectError(error.InvalidPath, g.scanWithDiagnostic(a, &.{ "ok.zig", "../outside.zig" }, empty, f.Fixture.read, .{}, &diagnostic));
     try failed(&diagnostic, "../outside.zig", .paths, error.InvalidPath);
-    const manifest: f.Fixture = .{ .items = &.{.{ .path = "sub/build.zig.zon", .text = ".{ .dependencies = .{ .x = .{ .path = \"x\" } }, .tail = }" }} };
-    try std.testing.expectError(error.InvalidManifest, g.scanWithDiagnostic(a, &.{ "sub/build.zig.zon", "a.zig", "b.zig" }, manifest, f.Fixture.read, .{}, &diagnostic));
-    try failed(&diagnostic, "sub/build.zig.zon", .manifests, error.InvalidManifest);
-    const go: f.Fixture = .{ .items = &.{.{ .path = "src/a.go", .text = "//go:build linux &&\n\npackage a" }} };
-    try std.testing.expectError(error.InvalidBuildConstraint, g.scanWithDiagnostic(a, &.{"src/a.go"}, go, f.Fixture.read, .{ .go_target = .{ .os = "linux", .arch = "amd64" } }, &diagnostic));
-    try failed(&diagnostic, "src/a.go", .go_constraints, error.InvalidBuildConstraint);
+    const manifest: f.Fixture = .{ .items = &.{
+        .{ .path = "sub/build.zig.zon", .text = ".{ .dependencies = .{ .x = .{ .path = \"x\" } }, .tail = }" },
+        .{ .path = "a.zig", .text = "const b = @import(\"b.zig\");" },
+        .{ .path = "b.zig" },
+        .{ .path = "package.json", .text = "{\"dependencies\":{\"kept\":\"1\"}}" },
+    } };
+    var declared = try g.scanWithDiagnostic(a, &.{ "sub/build.zig.zon", "a.zig", "b.zig", "package.json" }, manifest, f.Fixture.read, .{}, &diagnostic);
+    defer declared.deinit();
+    try std.testing.expectEqual(null, diagnostic.failure);
+    try invalid(&declared, "sub/build.zig.zon", .manifests, error.InvalidManifest);
+    try f.edge(&declared, "a.zig", "b.zig", .import, 1);
+    try std.testing.expectEqual(1, declared.dependencies().len);
+    // Go leaves a file whose constraint it cannot read out of its package.
+    const go: f.Fixture = .{ .items = &.{
+        .{ .path = "src/a.go", .text = "//go:build linux &&\n\npackage a\nimport \"example.com/m/b\"\n" },
+        .{ .path = "src/c.go", .text = "package a\nimport \"example.com/m/b\"\n" },
+        .{ .path = "go.mod", .text = "module example.com/m\n" },
+        .{ .path = "b/b.go", .text = "package b\n" },
+    } };
+    var constrained = try g.scanWithDiagnostic(a, &.{ "src/a.go", "src/c.go", "go.mod", "b/b.go" }, go, f.Fixture.read, .{ .go_target = .{ .os = "linux", .arch = "amd64" } }, &diagnostic);
+    defer constrained.deinit();
+    try invalid(&constrained, "src/a.go", .go_constraints, error.InvalidBuildConstraint);
+    try std.testing.expectEqual(2, constrained.goFiles().len);
+    try std.testing.expectEqual(1, constrained.edges().len);
+    try f.edge(&constrained, "src/c.go", "b/b.go", .import, 1);
 }
 
-test "scan diagnostics identify extended config parsing and inheritance failures" {
+test "scan diagnostics record extended config parsing and inheritance failures" {
     var diagnostic = g.ScanDiagnostic.init(a);
     defer diagnostic.deinit();
     for ([_][]const u8{ "[]", "{\"compilerOptions\":{\"paths\":{\"x\":\"bad\"}}}" }) |text| {
+        // The broken base gives nothing; the config extending it keeps its own options.
         const fixture: f.Fixture = .{ .items = &.{
-            .{ .path = "pkg/tsconfig.json", .text = "{\"extends\":\"./base.json\"}" },
+            .{ .path = "pkg/tsconfig.json", .text = "{\"extends\":\"./base.json\",\"compilerOptions\":{\"paths\":{\"@/*\":[\"src/*\"]}}}" },
             .{ .path = "pkg/base.json", .text = text },
-            .{ .path = "other/tsconfig.json", .text = "{}" },
+            .{ .path = "pkg/a.ts", .text = "import '@/b';" },
+            .{ .path = "pkg/src/b.ts" },
         } };
-        try std.testing.expectError(error.InvalidConfig, g.scanWithDiagnostic(a, &.{ "pkg/tsconfig.json", "pkg/base.json", "other/tsconfig.json" }, fixture, f.Fixture.read, .{}, &diagnostic));
-        try failed(&diagnostic, "pkg/base.json", .configs, error.InvalidConfig);
+        var graph = try g.scanWithDiagnostic(a, &.{ "pkg/tsconfig.json", "pkg/base.json", "pkg/a.ts", "pkg/src/b.ts" }, fixture, f.Fixture.read, .{}, &diagnostic);
+        defer graph.deinit();
+        try invalid(&graph, "pkg/base.json", .configs, error.InvalidConfig);
+        try f.edge(&graph, "pkg/a.ts", "pkg/src/b.ts", .import, 1);
     }
     const unread: f.Fixture = .{ .items = &.{.{ .path = "tsconfig.json", .text = "{\"extends\":\"./base.json\"}" }} };
     try std.testing.expectError(error.MissingFixture, g.scanWithDiagnostic(a, &.{ "tsconfig.json", "base.json" }, unread, f.Fixture.read, .{}, &diagnostic));
@@ -74,26 +106,56 @@ test "scan diagnostics identify extended config parsing and inheritance failures
         .{ .path = "cycle/one.json", .text = "{\"extends\":\"./two.json\"}" },
         .{ .path = "cycle/two.json", .text = "{\"extends\":\"./one.json\"}" },
     } };
-    try std.testing.expectError(error.ConfigCycle, g.scanWithDiagnostic(a, &.{ "a/tsconfig.json", "cycle/one.json", "cycle/two.json" }, cycle, f.Fixture.read, .{}, &diagnostic));
-    try std.testing.expectEqual(g.ScanDiagnostic.Phase.configs, diagnostic.failure.?.phase);
-    try std.testing.expectEqual(error.ConfigCycle, diagnostic.failure.?.cause);
-    const p = diagnostic.failure.?.path.?;
-    try std.testing.expect(std.mem.eql(u8, p, "cycle/one.json") or std.mem.eql(u8, p, "cycle/two.json"));
+    var cyclic = try g.scanWithDiagnostic(a, &.{ "a/tsconfig.json", "cycle/one.json", "cycle/two.json" }, cycle, f.Fixture.read, .{}, &diagnostic);
+    defer cyclic.deinit();
+    try std.testing.expectEqual(1, cyclic.invalid().len);
+    const record = cyclic.invalid()[0];
+    try std.testing.expectEqual(g.ScanDiagnostic.Phase.configs, record.phase);
+    try std.testing.expectEqual(error.ConfigCycle, record.cause);
+    try std.testing.expect(std.mem.eql(u8, record.path, "cycle/one.json") or std.mem.eql(u8, record.path, "cycle/two.json"));
 }
 
-test "scan diagnostics distinguish import and preprocessing errors from reads" {
+test "scan diagnostics record import and preprocessing errors and keep reading other files" {
     var diagnostic = g.ScanDiagnostic.init(a);
     defer diagnostic.deinit();
-    for ([_]struct { path: []const u8, text: []const u8, phase: g.ScanDiagnostic.Phase, cause: anyerror }{
+    for ([_]struct { path: []const u8, text: []const u8, phase: g.ScanDiagnostic.Phase, cause: g.FileError }{
         .{ .path = "src/a.zig", .text = "const b = @import(\"\\q\");", .phase = .imports, .cause = error.InvalidLiteral },
         .{ .path = "src/a.js", .text = "import '\\x';", .phase = .imports, .cause = error.InvalidEscape },
+        .{ .path = "testdata/bad.go", .text = "package bad\nimport \"\\q\"\n", .phase = .imports, .cause = error.InvalidEscape },
         .{ .path = "pkg/api.py", .text = "__all__ = ['\\q']", .phase = .python_exports, .cause = error.InvalidEscape },
         .{ .path = "pkg/tsconfig.json", .text = "{} /* unfinished", .phase = .configs, .cause = error.SyntaxError },
+        .{ .path = "vendor/x/tsconfig.json", .text = "not json", .phase = .configs, .cause = error.SyntaxError },
+        .{ .path = "x.nimble", .text = "requires \"\"", .phase = .manifests, .cause = error.InvalidManifest },
+        .{ .path = "go.mod", .text = "module m\nrequire (\nx v1\n", .phase = .manifests, .cause = error.InvalidManifest },
     }) |case| {
-        const fixture: f.Fixture = .{ .items = &.{.{ .path = case.path, .text = case.text }} };
-        try std.testing.expectError(case.cause, g.scanWithDiagnostic(a, &.{case.path}, fixture, f.Fixture.read, .{}, &diagnostic));
-        try failed(&diagnostic, case.path, case.phase, case.cause);
+        const fixture: f.Fixture = .{ .items = &.{
+            .{ .path = case.path, .text = case.text },
+            .{ .path = "z/a.zig", .text = "const b = @import(\"b.zig\");" },
+            .{ .path = "z/b.zig" },
+        } };
+        var graph = try g.scanWithDiagnostic(a, &.{ case.path, "z/a.zig", "z/b.zig" }, fixture, f.Fixture.read, .{ .python_star_reexports = true }, &diagnostic);
+        defer graph.deinit();
+        try std.testing.expectEqual(null, diagnostic.failure);
+        try invalid(&graph, case.path, case.phase, case.cause);
+        try f.edge(&graph, "z/a.zig", "z/b.zig", .import, 1);
     }
+}
+
+test "a leading byte order mark is no part of a file" {
+    const bom = "\xEF\xBB\xBF";
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "tsconfig.json", .text = bom ++ "{\"compilerOptions\":{\"paths\":{\"@/*\":[\"src/*\"]}}}" },
+        .{ .path = "package.json", .text = bom ++ "{\"dependencies\":{\"left-pad\":\"1\"}}" },
+        .{ .path = "Cargo.toml", .text = bom ++ "[dependencies]\nserde = \"1\"\n" },
+        .{ .path = "a.ts", .text = bom ++ "import '@/b';" },
+        .{ .path = "src/b.ts" },
+        .{ .path = "a.go", .text = bom ++ "//go:build windows\n\npackage a\n" },
+    } }).scan(a, .{ .go_target = .{ .os = "linux", .arch = "amd64" } });
+    defer graph.deinit();
+    try std.testing.expectEqual(0, graph.invalid().len);
+    try f.edge(&graph, "a.ts", "src/b.ts", .import, 1);
+    try std.testing.expectEqual(2, graph.dependencies().len);
+    try std.testing.expectEqual(false, graph.goFiles()[0].selected);
 }
 
 test "scan diagnostics own paths after cleanup and reset on every call" {
@@ -156,6 +218,8 @@ fn allocations(alloc: std.mem.Allocator, expected: ?*const g.Graph) !g.Graph {
         .{ .path = "other.md" },
         .{ .path = "index.html", .text = "<img src=\"pic.svg\">" },
         .{ .path = "pic.svg" },
+        .{ .path = "bad/tsconfig.json", .text = "not json" },
+        .{ .path = "bad/a.zig", .text = "const b = @import(\"\\q\");" },
     } };
     var paths: [fixture.items.len][]const u8 = undefined;
     for (fixture.items, &paths) |item, *p| p.* = item.path;
@@ -174,7 +238,8 @@ fn allocations(alloc: std.mem.Allocator, expected: ?*const g.Graph) !g.Graph {
         try std.testing.expectEqualDeep(full.dependencies(), graph.dependencies());
         try std.testing.expectEqualDeep(full.goFiles(), graph.goFiles());
         try std.testing.expectEqualDeep(full.unread(), graph.unread());
-    }
+        try std.testing.expectEqualDeep(full.invalid(), graph.invalid());
+    } else try std.testing.expectEqual(2, graph.invalid().len);
     return graph;
 }
 

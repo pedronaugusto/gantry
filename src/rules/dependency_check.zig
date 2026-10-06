@@ -196,7 +196,7 @@ const Manifests = struct { first: usize, end: usize };
 
 /// Undeclared imports in reference order, then unused declarations in
 /// declaration order. Findings borrow the graph and the rule.
-pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out: *engine.Findings) !void {
+pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out: *engine.Collector) !void {
     const paths = g.paths();
     const deps = g.dependencies();
     var unread: std.StringHashMapUnmanaged(void) = .empty;

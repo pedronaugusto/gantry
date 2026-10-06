@@ -101,12 +101,20 @@ pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.Allo
         const source = (try read(s, context, file)) orelse continue;
         progress.at(.python_exports, file);
         const tokens = try recorder.lex(python, s, file_index, file, .python, source);
-        const recovery = try python.recoverTokens(s, source, tokens);
+        const recovery = python.recoverTokens(s, source, tokens) catch |err| {
+            try progress.tolerate(err);
+            if (cached.len > 0) cached[file_index] = .{};
+            continue;
+        };
         if (cached.len > 0) cached[file_index] = try recovery.clone(a, strings);
         var resolver = ctx;
         resolver.allocator = s;
         resolver.python_initializers = .explicit;
-        const found = try targets(s, source, file, resolver, tokens, recovery.specs);
+        // An export list that does not decode exports nothing.
+        const found = targets(s, source, file, resolver, tokens, recovery.specs) catch |err| empty: {
+            try progress.tolerate(err);
+            break :empty &.{};
+        };
         if (found.len > 0) {
             const owned = try a.alloc([]const u8, found.len);
             for (found, owned) |target, *dest| dest.* = try a.dupe(u8, target);

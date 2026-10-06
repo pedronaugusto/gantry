@@ -27,13 +27,16 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         progress.at(.configs, file);
         const text = (try read(s, context, file)) orelse continue;
         progress.at(.configs, file);
-        const values = if (std.mem.endsWith(u8, file, ".nims")) try script(s, text) else try cfg(s, text);
+        const values = (if (std.mem.endsWith(u8, file, ".nims")) script(s, text) else cfg(s, text)) catch |err| {
+            try progress.tolerate(err);
+            continue;
+        };
         var joined: std.ArrayList([]const u8) = .empty;
         for (values) |value| {
             if (value.len == 0 or std.mem.findScalar(u8, value, '$') != null) continue;
             const full = path_module.join(a, p.dir(file), value, "") catch |err| switch (err) {
                 error.InvalidPath => continue,
-                else => return err,
+                else => |e| return e,
             };
             try joined.append(a, full);
         }

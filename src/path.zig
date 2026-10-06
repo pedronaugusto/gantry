@@ -1,8 +1,10 @@
 const std = @import("std");
+/// `InvalidPath` for a path `normalize` refuses.
+pub const Error = error{ InvalidPath, OutOfMemory };
 /// Always returns an owned slash-separated relative path. Refuses traversal
 /// above the root, absolute paths, a drive (`C:` starting the path), a
 /// backslash and NUL. A colon anywhere else is an ordinary byte.
-pub fn normalize(a: std.mem.Allocator, raw: []const u8) ![]const u8 {
+pub fn normalize(a: std.mem.Allocator, raw: []const u8) Error![]const u8 {
     if (!valid(raw)) return error.InvalidPath;
     var parts: std.ArrayList([]const u8) = .empty;
     defer parts.deinit(a);

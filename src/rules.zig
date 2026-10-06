@@ -14,11 +14,11 @@ pub const DependencyRule = engine.DependencyRule;
 pub const TokenRule = engine.TokenRule;
 pub const Rules = engine.Rules;
 pub const Violation = engine.Violation;
+pub const Findings = engine.Findings;
+pub const CheckError = engine.CheckError;
 pub const matches = engine.matches;
 pub const matchesToken = engine.matchesToken;
-/// Frees `check`'s findings with the chains of transitive ones.
-pub const free = engine.free;
 
-pub fn check(a: std.mem.Allocator, g: *const Graph, rules: Rules) ![]const Violation {
+pub fn check(a: std.mem.Allocator, g: *const Graph, rules: Rules) CheckError!Findings {
     return g.check(a, rules);
 }

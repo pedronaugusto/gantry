@@ -31,7 +31,7 @@ test "fixture: layers entry exceptions required modules and no cycles are data" 
         .{ .from = "daemon/b.zig", .to = "daemon/a.zig" },
     });
     defer graph.deinit();
-    const findings = try graph.check(a, .{
+    var findings_owned = try graph.check(a, .{
         .ordered = &.{.{ .name = "layers", .layers = &.{
             .{ .name = "leaves", .patterns = &.{} }, .{ .name = "station", .patterns = &.{"daemon/station.zig"} }, .{ .name = "entry", .patterns = &.{"daemon/main.zig"} }, .{ .name = "tests", .patterns = &.{"daemon/tests.zig"} },
         } }},
@@ -40,7 +40,8 @@ test "fixture: layers entry exceptions required modules and no cycles are data" 
         .required = &.{.{ .name = "named modules", .paths = &.{ "daemon/station.zig", "daemon/missing.zig" } }},
         .no_cycles = "acyclic",
     });
-    defer a.free(findings);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(5, findings.len);
     try eq(.upward, findings[0].reason);
     try eq(.upward, findings[1].reason);
@@ -52,11 +53,12 @@ test "fixture: layers entry exceptions required modules and no cycles are data" 
 test "every matching edge restriction reports and allowances waive only their named rule" {
     var graph = try g.Graph.fromEdges(a, &.{ "a", "b" }, &.{ .{ .from = "a", .to = "b" }, .{ .from = "a", .to = "b", .kind = .asset } });
     defer graph.deinit();
-    const findings = try graph.check(a, .{
+    var findings_owned = try graph.check(a, .{
         .forbidden = &.{ .{ .name = "first" }, .{ .name = "second", .kind = .import } },
         .allowed = &.{.{ .rule = "first", .from = "a", .to = "b" }},
     });
-    defer a.free(findings);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(1, findings.len);
     try std.testing.expectEqualStrings("second", findings[0].rule);
     try eq(g.Kind.import, findings[0].edge.?.kind);
@@ -68,7 +70,7 @@ test "fixture: proto packages confined packages and forbidden member access" {
         .{ .path = "daemon/filewatch.zig", .text = "const l = @import(\"lookout\");" },
     } }).scan(a, .{ .named_modules = &.{.{ .name = "proto", .path = "proto/root.zig" }} });
     defer graph.deinit();
-    const findings = try graph.check(a, .{
+    var findings_owned = try graph.check(a, .{
         .forbidden = &.{.{ .name = "proto siblings", .from = "proto/**", .to = "**" }},
         .allowed = &.{.{ .rule = "proto siblings", .from = "proto/**", .to = "proto/*" }},
         .references = &.{
@@ -77,7 +79,8 @@ test "fixture: proto packages confined packages and forbidden member access" {
             .{ .name = "client mirror", .from = "daemon/**", .target = "proto", .member = "mirror" },
         },
     });
-    defer a.free(findings);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(6, findings.len);
     var members: usize = 0;
     for (findings) |v| if (std.mem.eql(u8, v.rule, "client mirror")) {
@@ -89,8 +92,9 @@ test "fixture: proto packages confined packages and forbidden member access" {
 test "first matching layer wins and unspecified paths default to zero" {
     var graph = try g.Graph.fromEdges(a, &.{ "leaf", "high" }, &.{ .{ .from = "leaf", .to = "high" }, .{ .from = "high", .to = "leaf" } });
     defer graph.deinit();
-    const findings = try graph.check(a, .{ .ordered = &.{.{ .name = "layers", .layers = &.{ .{ .name = "empty", .patterns = &.{} }, .{ .name = "high", .patterns = &.{"high"} }, .{ .name = "fallback", .patterns = &.{"**"} } } }} });
-    defer a.free(findings);
+    var findings_owned = try graph.check(a, .{ .ordered = &.{.{ .name = "layers", .layers = &.{ .{ .name = "empty", .patterns = &.{} }, .{ .name = "high", .patterns = &.{"high"} }, .{ .name = "fallback", .patterns = &.{"**"} } } }} });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(1, findings.len);
     try std.testing.expectEqualStrings("high", findings[0].edge.?.from);
 }
@@ -98,16 +102,18 @@ test "first matching layer wins and unspecified paths default to zero" {
 test "raw import name rules are exact across package paths" {
     var graph = try (f.Fixture{ .items = &.{.{ .path = "a.ts", .text = "import 'lookout'; import 'vendor/lookout';" }} }).scan(a, .{});
     defer graph.deinit();
-    const findings = try graph.check(a, .{ .references = &.{.{ .name = "owner", .target = "lookout" }} });
-    defer a.free(findings);
+    var findings_owned = try graph.check(a, .{ .references = &.{.{ .name = "owner", .target = "lookout" }} });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(1, findings.len);
     try std.testing.expectEqualStrings("lookout", findings[0].reference.?.name);
 }
 test "fixture: proto sibling boundary covers unresolved and normalized literal paths" {
     var graph = try (f.Fixture{ .items = &.{.{ .path = "proto/root.zig", .text = "const a = @import(\"./ok.zig\"); const b = @import(\"x/../ok.zig\"); const c = @import(\"../daemon/missing.zig\"); const d = @import(\"nested/missing.zig\"); const s = @import(\"std\");" }} }).scan(a, .{});
     defer graph.deinit();
-    const findings = try graph.check(a, .{ .references = &.{.{ .name = "siblings", .from = "proto/*", .suffix = ".zig", .relative = true, .except_targets = &.{"proto/*.zig"} }} });
-    defer a.free(findings);
+    var findings_owned = try graph.check(a, .{ .references = &.{.{ .name = "siblings", .from = "proto/*", .suffix = ".zig", .relative = true, .except_targets = &.{"proto/*.zig"} }} });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(2, findings.len);
     try std.testing.expectEqualStrings("../daemon/missing.zig", findings[0].reference.?.name);
     try std.testing.expectEqualStrings("nested/missing.zig", findings[1].reference.?.name);
@@ -129,14 +135,16 @@ test "a transitive rule catches the chain one intermediate file hides from a dir
     });
     defer graph.deinit();
     // The direct rule sees only ui/panel's edge.
-    const direct = try graph.check(a, .{ .forbidden = &.{.{ .name = "ui to db", .from = "ui/**", .to = "db/**" }} });
-    defer g.rules.free(a, direct);
+    var direct_owned = try graph.check(a, .{ .forbidden = &.{.{ .name = "ui to db", .from = "ui/**", .to = "db/**" }} });
+    defer direct_owned.deinit();
+    const direct = direct_owned.items();
     try eq(1, direct.len);
     try std.testing.expectEqualStrings("ui/panel.zig", direct[0].edge.?.from);
     try eq(0, direct[0].chain.len);
 
-    const findings = try graph.check(a, .{ .forbidden = &.{.{ .name = "ui to db", .from = "ui/**", .to = "db/**", .transitive = true }} });
-    defer g.rules.free(a, findings);
+    var findings_owned = try graph.check(a, .{ .forbidden = &.{.{ .name = "ui to db", .from = "ui/**", .to = "db/**", .transitive = true }} });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(2, findings.len);
     // Two chains of two edges: the first path at each position wins.
     try expectChain(&.{ "ui/panel.zig", "db/index.zig" }, findings[0].chain);
@@ -146,11 +154,12 @@ test "a transitive rule catches the chain one intermediate file hides from a dir
     try std.testing.expectEqualStrings("db/index.zig", findings[1].path.?);
 
     // An allowance takes its edges out of the chains; a kind narrows them.
-    const allowed = try graph.check(a, .{
+    var allowed_owned = try graph.check(a, .{
         .forbidden = &.{ .{ .name = "ui to db", .from = "ui/**", .to = "db/**", .transitive = true }, .{ .name = "values", .from = "ui/**", .to = "db/**", .kind = .type_only, .transitive = true } },
         .allowed = &.{ .{ .rule = "ui to db", .from = "core/cache.zig" }, .{ .rule = "ui to db", .kind = .type_only } },
     });
-    defer g.rules.free(a, allowed);
+    defer allowed_owned.deinit();
+    const allowed = allowed_owned.items();
     try eq(2, allowed.len);
     try expectChain(&.{ "ui/view.zig", "core/model.zig", "db/store.zig" }, allowed[0].chain);
     try std.testing.expectEqualStrings("values", allowed[1].rule);
@@ -163,8 +172,9 @@ test "a transitive chain stops at its first target and a file in both sets needs
         .{ .from = "x/b", .to = "x/c" },
     });
     defer graph.deinit();
-    const findings = try graph.check(a, .{ .forbidden = &.{.{ .name = "inside", .from = "x/*", .to = "x/*", .transitive = true }} });
-    defer g.rules.free(a, findings);
+    var findings_owned = try graph.check(a, .{ .forbidden = &.{.{ .name = "inside", .from = "x/*", .to = "x/*", .transitive = true }} });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(2, findings.len);
     try expectChain(&.{ "x/a", "x/b" }, findings[0].chain);
     try expectChain(&.{ "x/b", "x/c" }, findings[1].chain);
@@ -188,11 +198,13 @@ test "transitive layers report chains through unlayered files, once per file and
     };
     // Directly, util is the default (lowest) layer: its edges up are found,
     // but not that low/a reaches high through it.
-    const direct = try graph.check(a, .{ .ordered = &.{.{ .name = "layers", .layers = &layers }} });
-    defer g.rules.free(a, direct);
+    var direct_owned = try graph.check(a, .{ .ordered = &.{.{ .name = "layers", .layers = &layers }} });
+    defer direct_owned.deinit();
+    const direct = direct_owned.items();
     try eq(4, direct.len);
-    const findings = try graph.check(a, .{ .ordered = &.{.{ .name = "layers", .layers = &layers, .transitive = true }} });
-    defer g.rules.free(a, findings);
+    var findings_owned = try graph.check(a, .{ .ordered = &.{.{ .name = "layers", .layers = &layers, .transitive = true }} });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(4, findings.len);
     try expectChain(&.{ "low/a", "util/u", "mid/m" }, findings[0].chain);
     try expectChain(&.{ "low/a", "util/u", "util/v", "high/h" }, findings[1].chain);
@@ -211,11 +223,12 @@ test "files no chain from an entry reaches are unreached, orphans included" {
         .{ .from = "src/main.zig", .to = "src/main_test.zig", .kind = .@"test" },
     });
     defer graph.deinit();
-    const findings = try graph.check(a, .{ .reachable = &.{
+    var findings_owned = try graph.check(a, .{ .reachable = &.{
         .{ .name = "reached", .entries = &.{"src/main.zig"}, .files = "src/**" },
         .{ .name = "shipped", .entries = &.{"**/main.zig"}, .files = "src/**", .kind = .import },
     } });
-    defer g.rules.free(a, findings);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(4, findings.len);
     try std.testing.expectEqualStrings("src/orphan.zig", findings[0].path.?);
     try eq(.unreached, findings[0].reason);
@@ -246,8 +259,9 @@ test "transitive findings agree with an independent nearest-target search" {
         };
         var graph = try g.Graph.fromEdges(a, paths, list.items);
         defer graph.deinit();
-        const findings = try graph.check(a, .{ .forbidden = &.{.{ .name = "a to b", .from = "a*", .to = "b*", .transitive = true }} });
-        defer g.rules.free(a, findings);
+        var findings_owned = try graph.check(a, .{ .forbidden = &.{.{ .name = "a to b", .from = "a*", .to = "b*", .transitive = true }} });
+        defer findings_owned.deinit();
+        const findings = findings_owned.items();
         var k: usize = 0;
         for (0..5) |v| {
             var best: usize = far;

@@ -33,12 +33,17 @@ for (analysis.layers()) |layer| {
     std.log.info("{s}: depth {d}", .{ layer.path, layer.depth });
 }
 
-const findings = try graph.check(gpa, .{
+// A file the scan could not read as its format is a record, not an error.
+for (graph.invalid()) |file| {
+    std.log.info("{s}: {s}", .{ file.path, @errorName(file.cause) });
+}
+
+var findings = try graph.check(gpa, .{
     .nothing_imports = &.{.{ .name = "entry files", .to = "**/main.zig" }},
     .no_cycles = "no cycles",
 });
-defer gpa.free(findings);
-for (findings) |finding| std.log.info("{s}: {s}", .{ finding.rule, @tagName(finding.reason) });
+defer findings.deinit();
+for (findings.items()) |finding| std.log.info("{s}: {s}", .{ finding.rule, @tagName(finding.reason) });
 ```
 <!-- END GENERATED -->
 
@@ -48,10 +53,10 @@ The library uses only `std`. Scan scratch storage is released between files; rea
 bytes need to survive processing until the next read. Graph, analysis, import and path
 results retain their allocator and own their storage. Move these handles and call
 `deinit` once; their slices last until release. Analysis and aggregation results are
-independent of the original graph. Rule findings point into the graph's edges, references,
-tokens and declarations and borrow rule names and required-path strings; keep those alive and free the findings with `rules.free`, which
-also frees the chains of transitive findings (`gpa.free` alone suffices when no rule is
-transitive).
+independent of the original graph. `check` returns an owned `Findings` whose `items()`
+point into the graph's edges, references, tokens and declarations and borrow rule names
+and required-path strings; keep those alive until `deinit`, which also frees the chains
+of transitive findings.
 
 Preprocessing copies names directly into returned references; recovery records stay in the scan workspace, and file scratch is released after each file.
 
@@ -62,11 +67,18 @@ a colon elsewhere is an ordinary byte. `walk` skips a name normalization refuses
 exact. The reader receives normalized paths; it should return stable contents throughout
 a scan because resolution can read a file more than once.
 
-A null reader result records the path in `graph.unread()`. Reader, manifest and
-configuration errors abort without a partial graph. `scanWithDiagnostic` additionally
+A null reader result records the path in `graph.unread()`. A selected file whose bytes
+are not valid for the format it is read as (a manifest or config that does not parse, a
+literal with an undefined escape, a Go `//go:build` line that is not a constraint) is a
+record in `graph.invalid()`, with its path, phase and `FileError` cause, and gives the
+scan nothing from that phase: a Go file with a bad constraint is in no package, a broken
+config is as if absent, and the scan goes on. A caller that wants such a scan to fail
+checks that list. A scan fails, with no partial graph, only with a `ScanError` (a selected
+path normalization refuses, `strict_imports` and an unsupported construct, a count
+overflow, memory) or one of the reader's own errors. `scanWithDiagnostic` additionally
 retains the failed path, phase, optional byte offset and original cause in a
 caller-owned `ScanDiagnostic`. Reporting preserves the cause even if copying the path
-fails.
+fails. A leading UTF-8 byte order mark is no part of a file.
 
 <!-- BEGIN GENERATED zig build docs -- diagnostic -->
 ```zig

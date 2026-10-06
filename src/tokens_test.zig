@@ -41,8 +41,9 @@ test "token rules match names and string values in every language, never comment
         try eqs("owned value", value.text);
         try eqs("Owned", source.text.?[name.offset..][0..5]);
     }
-    const findings = try graph.check(a, .{ .tokens = rules });
-    defer a.free(findings);
+    var findings_owned = try graph.check(a, .{ .tokens = rules });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(2 * sources.len, findings.len);
     // Rule order, then path and offset.
     for (findings[0..sources.len]) |finding| try eqs("owned name", finding.rule);
@@ -64,8 +65,9 @@ test "a token rule reports path line and column outside its owners" {
     var graph = try fixture.scan(a, .{ .tokens = owned });
     defer graph.deinit();
     try eq(5, graph.tokens().len);
-    const findings = try graph.check(a, .{ .tokens = owned });
-    defer a.free(findings);
+    var findings_owned = try graph.check(a, .{ .tokens = owned });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(2, findings.len);
     try eqs("console", findings[0].rule);
     const name = findings[0].token.?;
@@ -164,8 +166,8 @@ test "token patterns: star spans any bytes and question mark one" {
 fn tokenAllocations(allocator: std.mem.Allocator) !void {
     var graph = try (f.Fixture{ .items = &sources }).scan(allocator, .{ .tokens = rules });
     defer graph.deinit();
-    const findings = try graph.check(allocator, .{ .tokens = rules });
-    defer allocator.free(findings);
+    var findings_owned = try graph.check(allocator, .{ .tokens = rules });
+    defer findings_owned.deinit();
 }
 test "token rule scans and checks release everything when allocation fails" {
     try std.testing.checkAllAllocationFailures(a, tokenAllocations, .{});

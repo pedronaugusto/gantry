@@ -13,7 +13,7 @@ const Declared = struct { offset: usize, fields: std.EnumArray(Field, []const u8
 /// project and parent coordinates, as Maven interpolates them; a dependency
 /// that names anything else is unsupported and declares nothing. Managed
 /// versions, profiles and plugin dependencies are not declarations here.
-pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) !void {
+pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) error{ InvalidManifest, InvalidEscape, OutOfMemory }!void {
     var stack: std.ArrayList([]const u8) = .empty;
     var content: std.ArrayList(u8) = .empty;
     var properties: std.StringHashMapUnmanaged([]const u8) = .empty;

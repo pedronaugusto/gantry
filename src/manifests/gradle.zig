@@ -13,7 +13,7 @@ const Token = l.Token;
 /// Anything computed (a variable, an interpolated string, a version catalog
 /// `libs.x`, `kotlin("x")`, `files(…)`, control flow) is unsupported and
 /// declares nothing. `constraints { }` holds no declarations.
-pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) !void {
+pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) error{ InvalidManifest, InvalidEscape, OutOfMemory }!void {
     const ts = if (std.mem.endsWith(u8, path, ".kts")) try l.lex(.kotlin, a, text) else try l.lex(.groovy, a, text);
     var blocks: std.ArrayList(bool) = .empty;
     var i: usize = 0;
@@ -39,7 +39,7 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
         var reader: Reader = .{ .a = a, .path = path, .ts = ts, .i = i, .out = out };
         const literal = reader.statement() catch |err| switch (err) {
             error.Computed => false,
-            else => return err,
+            else => |e| return e,
         };
         if (!literal) {
             out.shrinkRetainingCapacity(before);

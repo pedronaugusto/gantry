@@ -47,8 +47,9 @@ fn golden(comptime name: []const u8, actual: []const u8) !void {
 test "dot and mermaid draw nodes, kinds, clusters and findings as their goldens" {
     var graph = try g.Graph.fromEdges(a, paths, edges);
     defer graph.deinit();
-    const findings = try graph.check(a, rules);
-    defer g.rules.free(a, findings);
+    var findings_owned = try graph.check(a, rules);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     const cases = .{
         .{ "graph", report.Options{ .findings = findings } },
         .{ "directories", report.Options{ .cluster = .directory, .findings = findings } },
@@ -67,8 +68,9 @@ test "dot and mermaid draw nodes, kinds, clusters and findings as their goldens"
 test "json and sarif write the graph and findings as their goldens" {
     var graph = try g.Graph.fromEdges(a, paths, edges);
     defer graph.deinit();
-    const findings = try graph.check(a, rules);
-    defer g.rules.free(a, findings);
+    var findings_owned = try graph.check(a, rules);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     var out: std.Io.Writer.Allocating = .init(a);
     defer out.deinit();
     try report.json(&out.writer, &graph, findings);
@@ -86,11 +88,12 @@ test "sarif with source places reference and token findings at a line and code p
     } };
     var graph = try fixture.scan(a, .{ .tokens = &.{token} });
     defer graph.deinit();
-    const findings = try graph.check(a, .{
+    var findings_owned = try graph.check(a, .{
         .references = &.{.{ .name = "watcher owner", .target = "lookout" }},
         .tokens = &.{token},
     });
-    defer a.free(findings);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(2, findings.len);
     var out: std.Io.Writer.Allocating = .init(a);
     defer out.deinit();
@@ -144,8 +147,9 @@ fn hostileGraph() !g.Graph {
 test "hostile paths and rule names are escaped in every report as their goldens" {
     var graph = try hostileGraph();
     defer graph.deinit();
-    const findings = try graph.check(a, hostile_rules);
-    defer a.free(findings);
+    var findings_owned = try graph.check(a, hostile_rules);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try eq(2, findings.len);
     const d = try drawn(report.dot, &graph, .{ .cluster = .directory, .findings = findings });
     defer a.free(d);
@@ -273,8 +277,9 @@ test "empty graph and no findings give well-formed reports" {
 test "reports release everything when an allocation fails" {
     var graph = try g.Graph.fromEdges(a, paths, edges);
     defer graph.deinit();
-    const findings = try graph.check(a, rules);
-    defer g.rules.free(a, findings);
+    var findings_owned = try graph.check(a, rules);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try std.testing.checkAllAllocationFailures(a, struct {
         fn run(gpa: std.mem.Allocator, graph_: *const g.Graph, findings_: []const g.rules.Violation) !void {
             var buffer: [16 * 1024]u8 = undefined;

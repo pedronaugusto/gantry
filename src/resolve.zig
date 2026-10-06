@@ -27,7 +27,7 @@ pub const Context = struct {
         for (suffixes) |suffix| {
             const norm = path_module.join(c.allocator, root, name, suffix) catch |err| switch (err) {
                 error.InvalidPath => continue,
-                else => return err,
+                else => |e| return e,
             };
             if (c.files.contains(norm)) return norm;
         }

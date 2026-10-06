@@ -45,11 +45,14 @@ test "JS config paths without baseUrl and child replacement stay scoped" {
     try std.testing.expectEqual(2, graph.edges().len);
 }
 
-test "TS config cycles fail and unselected extends never call the reader" {
-    try std.testing.expectError(error.ConfigCycle, (f.Fixture{ .items = &.{
+test "TS config cycles are invalid and unselected extends never call the reader" {
+    var cycle = try (f.Fixture{ .items = &.{
         .{ .path = "tsconfig.json", .text = "{\"extends\": \"./base.json\"}" },
         .{ .path = "base.json", .text = "{\"extends\": \"./tsconfig.json\"}" },
-    } }).scan(a, .{}));
+    } }).scan(a, .{});
+    defer cycle.deinit();
+    try std.testing.expectEqual(1, cycle.invalid().len);
+    try std.testing.expectEqual(error.ConfigCycle, cycle.invalid()[0].cause);
     var graph = try (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = "{\"extends\": \"../outside\"}" }} }).scan(a, .{});
     defer graph.deinit();
 }
@@ -75,12 +78,9 @@ test "JSONC config parsing rejects source syntax and unterminated comments" {
         "{} /ignored_regex/",
         "{\"compilerOptions\": {\"baseUrl\": \".\"}} /* unterminated",
     }) |text| {
-        const result = (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = text }} }).scan(a, .{ .manifests = false });
-        if (result) |value| {
-            var graph = value;
-            defer graph.deinit();
-            return error.TestExpectedError;
-        } else |err| try std.testing.expectEqual(error.SyntaxError, err);
+        var graph = try (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = text }} }).scan(a, .{ .manifests = false });
+        defer graph.deinit();
+        try f.invalid(&graph, "tsconfig.json", error.SyntaxError);
     }
 }
 
@@ -118,7 +118,7 @@ test "absolute config paths never become relative to the config directory" {
     }
 }
 
-test "invalid config shapes abort rather than silently disabling resolution options" {
+test "invalid config shapes are recorded rather than silently disabling resolution options" {
     for ([_][]const u8{
         "[]",
         "null",
@@ -129,12 +129,9 @@ test "invalid config shapes abort rather than silently disabling resolution opti
         "{\"compilerOptions\": {\"paths\": []}}",
         "{\"compilerOptions\": {\"paths\": {\"alias\": [42]}}}",
     }) |text| {
-        const result = (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = text }} }).scan(a, .{ .manifests = false });
-        if (result) |value| {
-            var graph = value;
-            defer graph.deinit();
-            return error.TestExpectedError;
-        } else |err| try std.testing.expectEqual(error.InvalidConfig, err);
+        var graph = try (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = text }} }).scan(a, .{ .manifests = false });
+        defer graph.deinit();
+        try f.invalid(&graph, "tsconfig.json", error.InvalidConfig);
     }
 }
 
@@ -161,11 +158,8 @@ test "an empty or truncated config is a syntax error like any other" {
     // Found by the config fuzz property: the JSON reader's own errors
     // escaped the scan for input that ends early.
     for ([_][]const u8{ "", "{\"compilerOptions\": ", "{\"a\": \"x", "[" }) |text| {
-        const result = (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = text }} }).scan(a, .{ .manifests = false });
-        if (result) |value| {
-            var graph = value;
-            defer graph.deinit();
-            return error.TestExpectedError;
-        } else |err| try std.testing.expectEqual(error.SyntaxError, err);
+        var graph = try (f.Fixture{ .items = &.{.{ .path = "tsconfig.json", .text = text }} }).scan(a, .{ .manifests = false });
+        defer graph.deinit();
+        try f.invalid(&graph, "tsconfig.json", error.SyntaxError);
     }
 }

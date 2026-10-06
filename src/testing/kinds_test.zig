@@ -23,11 +23,12 @@ test "test imports remain edges with kind and rules can exempt them" {
     try f.edge(&graph, "tests/test_app.py", "util.py", .@"test", 1);
     try f.edge(&graph, "app.spec.ts", "util.ts", .@"test", 1);
     try f.edge(&graph, "testimony.ts", "util.ts", .import, 1);
-    const findings = try graph.check(a, .{
+    var findings_owned = try graph.check(a, .{
         .forbidden = &.{.{ .name = "imports" }},
         .allowed = &.{.{ .rule = "imports", .kind = .@"test" }},
     });
-    defer a.free(findings);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try std.testing.expectEqual(2, findings.len);
     var production = try fixture.scan(a, .{ .kinds = &.{.import} });
     defer production.deinit();
@@ -141,11 +142,12 @@ test "TypeScript type-only imports and dynamic imports are edges of their own ki
     try std.testing.expectEqual(graph.references().len, static.references().len);
 
     // The usual exception to a layer rule: type-only edges.
-    const findings = try graph.check(a, .{
+    var findings_owned = try graph.check(a, .{
         .forbidden = &.{.{ .name = "values only", .to = "types*.ts" }},
         .allowed = &.{.{ .rule = "values only", .kind = .type_only }},
     });
-    defer a.free(findings);
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try std.testing.expectEqual(0, findings.len);
     try std.testing.expect(g.kindsOf("app.ts").contains(.dynamic));
     try std.testing.expect(!g.kindsOf("main.zig").contains(.type_only));

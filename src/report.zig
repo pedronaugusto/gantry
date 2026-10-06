@@ -9,6 +9,9 @@ const engine = @import("rules/check.zig");
 const text = @import("report/json.zig");
 const Writer = std.Io.Writer;
 
+/// What writing a report fails with: the writer's error, or memory;
+/// `sarifWithSource` adds its reader's errors.
+pub const Error = text.Error;
 pub const json = text.json;
 pub const sarif = text.sarif;
 pub const sarifWithSource = text.sarifWithSource;
@@ -41,7 +44,7 @@ pub const Options = struct {
 /// solid, `type_only` dashed, `dynamic` dotted, `test` solid with a hollow
 /// head, `link` dashed with an open head, `asset` dotted with a hollow dot.
 /// For a graph of directories, pass `graph.aggregate(depth)`.
-pub fn dot(gpa: std.mem.Allocator, w: *Writer, graph: *const Graph, options: Options) !void {
+pub fn dot(gpa: std.mem.Allocator, w: *Writer, graph: *const Graph, options: Options) Error!void {
     try draw(.dot, gpa, w, graph, options);
 }
 
@@ -51,7 +54,7 @@ pub fn dot(gpa: std.mem.Allocator, w: *Writer, graph: *const Graph, options: Opt
 /// kinds `dot` draws broken. Findings use a `finding` class and
 /// `linkStyle`. Mermaid refuses more than 500 edges by default
 /// (`maxEdges`); a large graph wants `dot`, or an aggregate.
-pub fn mermaid(gpa: std.mem.Allocator, w: *Writer, graph: *const Graph, options: Options) !void {
+pub fn mermaid(gpa: std.mem.Allocator, w: *Writer, graph: *const Graph, options: Options) Error!void {
     try draw(.mermaid, gpa, w, graph, options);
 }
 

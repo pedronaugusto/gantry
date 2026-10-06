@@ -49,7 +49,10 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
     defer controls.deinit(a);
     var templates: std.ArrayList(usize) = .empty;
     defer templates.deinit(a);
-    if ((lang == .groovy or lang == .kotlin) and std.mem.startsWith(u8, text, "#!")) i = lineEnd(text, 0);
+    // A leading byte order mark is no part of the text; skipping it keeps
+    // every offset a byte offset of the file.
+    if (std.mem.startsWith(u8, text, bom)) i = bom.len;
+    if ((lang == .groovy or lang == .kotlin) and std.mem.startsWith(u8, text[i..], "#!")) i = lineEnd(text, i);
     while (i < text.len) {
         const start = i;
         const c = text[i];
@@ -167,6 +170,8 @@ const Stream = struct {
         try s.list.ensureTotalCapacityPrecise(a, @intCast(@min(@max(projected, least), most)));
     }
 };
+/// The UTF-8 byte order mark, which editors on Windows put first.
+pub const bom = "\xEF\xBB\xBF";
 fn ident(c: u8) bool {
     return words[c];
 }

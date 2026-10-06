@@ -42,20 +42,30 @@ pub const Imports = scan_module.Imports;
 pub const imports = scan_module.imports;
 /// read(scratch_allocator, context, path) returns !?[]const u8. Bytes need
 /// only survive processing until the next read. Null records an unread path;
-/// an error aborts without a partial graph. Scratch is released per file.
+/// a reader error aborts without a partial graph, as a `ScanError` does. A
+/// file whose bytes are not valid for its format is a record in
+/// `Graph.invalid`, not an error. Scratch is released per file.
 /// The returned graph borrows neither input paths and options nor file bytes.
 pub const scan = scan_module.scan;
 /// The same atomic scan, with a caller-owned file, phase, optional byte offset
 /// and cause on failure.
 pub const scanWithDiagnostic = scan_module.scanWithDiagnostic;
 pub const ScanDiagnostic = diagnostic_module.ScanDiagnostic;
+/// What `scan` fails with besides the reader's errors.
+pub const ScanError = diagnostic_module.ScanError;
+/// The errors a reader function returns; `scan` returns these and `ScanError`.
+pub const ReadError = diagnostic_module.ReadError;
+/// A selected file the scan read but could not use, in `Graph.invalid`.
+pub const InvalidFile = diagnostic_module.InvalidFile;
+/// Why a file is invalid: a scan records it, a single-file reader returns it.
+pub const FileError = diagnostic_module.FileError;
 /// Reader over an already-open directory; directory ownership stays with caller.
 /// The byte limit is caller policy. A missing selected file is an I/O error.
 pub const DirReader = struct {
     io: std.Io,
     dir: std.Io.Dir,
     limit: std.Io.Limit = .unlimited,
-    pub fn read(a: std.mem.Allocator, self: DirReader, p: []const u8) !?[]const u8 {
+    pub fn read(a: std.mem.Allocator, self: DirReader, p: []const u8) std.Io.Dir.ReadFileAllocError!?[]const u8 {
         const value = try self.dir.readFileAlloc(self.io, p, a, self.limit);
         return value;
     }

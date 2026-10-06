@@ -17,12 +17,17 @@ pub fn main() !void {
         std.log.info("{s}: depth {d}", .{ layer.path, layer.depth });
     }
 
-    const findings = try graph.check(gpa, .{
+    // A file the scan could not read as its format is a record, not an error.
+    for (graph.invalid()) |file| {
+        std.log.info("{s}: {s}", .{ file.path, @errorName(file.cause) });
+    }
+
+    var findings = try graph.check(gpa, .{
         .nothing_imports = &.{.{ .name = "entry files", .to = "**/main.zig" }},
         .no_cycles = "no cycles",
     });
-    defer gpa.free(findings);
-    for (findings) |finding| std.log.info("{s}: {s}", .{ finding.rule, @tagName(finding.reason) });
+    defer findings.deinit();
+    for (findings.items()) |finding| std.log.info("{s}: {s}", .{ finding.rule, @tagName(finding.reason) });
     // --- README:usage ---
     var diagnosed = try scanDiagnosed(gpa, paths);
     defer diagnosed.deinit();

@@ -1,19 +1,26 @@
-//! Local module routing, independent of dependency declaration extraction.
+//! The one reader of `go.mod` and `go.work`: local module routing, and the
+//! requirements `manifests` declares.
 const path_module = @import("../../resolve/path.zig");
 const std = @import("std");
 const l = @import("../../lexer.zig");
-pub const Requirement = struct { name: []const u8, version: []const u8 };
+/// `indirect` marks a module only other modules import: a `// indirect`
+/// comment, the word alone or before a `;`, as Go reads it.
+pub const Requirement = struct { name: []const u8, version: []const u8, indirect: bool = false };
 pub const Replacement = struct { name: []const u8, version: []const u8, root: ?[]const u8 };
 pub const Module = struct { root: []const u8, name: []const u8, requires: []const Requirement = &.{}, replacements: []const Replacement = &.{} };
 pub const Workspace = struct { root: []const u8, uses: []const []const u8, replacements: []const Replacement };
 pub const Parsed = struct { name: ?[]const u8, requires: []const Requirement, replacements: []const Replacement, uses: []const []const u8 };
-fn words(a: std.mem.Allocator, line: []const u8) ![]const []const u8 {
+/// A line's words, and the text of a `//` comment after them.
+const Line = struct { words: []const []const u8, comment: []const u8 };
+fn words(a: std.mem.Allocator, line: []const u8) !Line {
     const ts = try l.lex(.go, a, line);
     var out: std.ArrayList([]const u8) = .empty;
     var start: ?usize = null;
     var end: usize = 0;
+    var last: usize = 0;
     for (ts) |t| {
         if (t.kind == .newline) continue;
+        last = t.end;
         if (t.kind == .string) {
             if (start) |s| {
                 try out.append(a, line[s..end]);
@@ -30,13 +37,15 @@ fn words(a: std.mem.Allocator, line: []const u8) ![]const []const u8 {
         }
     }
     if (start) |s| try out.append(a, line[s..end]);
-    return out.toOwnedSlice(a);
+    const rest = std.mem.trim(u8, line[last..], " \t\r");
+    const comment = if (std.mem.startsWith(u8, rest, "//")) std.mem.trim(u8, rest[2..], " \t\r") else "";
+    return .{ .words = try out.toOwnedSlice(a), .comment = comment };
 }
 fn local(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
     if (!std.mem.eql(u8, name, ".") and !std.mem.eql(u8, name, "..") and !std.mem.startsWith(u8, name, "./") and !std.mem.startsWith(u8, name, "../")) return null;
     return path_module.join(a, root, name, "") catch |err| switch (err) {
         error.InvalidPath => null,
-        else => return err,
+        else => |e| return e,
     };
 }
 pub fn parse(a: std.mem.Allocator, root: []const u8, text: []const u8) !Parsed {
@@ -46,8 +55,9 @@ pub fn parse(a: std.mem.Allocator, root: []const u8, text: []const u8) !Parsed {
     var uses: std.ArrayList([]const u8) = .empty;
     var lines = std.mem.splitScalar(u8, text, '\n');
     var block: []const u8 = "";
-    while (lines.next()) |line| {
-        var ws = try words(a, line);
+    while (lines.next()) |text_line| {
+        const line = try words(a, text_line);
+        var ws = line.words;
         if (ws.len == 0) continue;
         if (std.mem.eql(u8, ws[0], ")")) {
             block = "";
@@ -67,7 +77,11 @@ pub fn parse(a: std.mem.Allocator, root: []const u8, text: []const u8) !Parsed {
         if (std.mem.eql(u8, directive, "use")) if (try local(a, root, ws[0])) |dir| {
             try uses.append(a, dir);
         };
-        if (std.mem.eql(u8, directive, "require") and ws.len >= 2) try requires.append(a, .{ .name = ws[0], .version = ws[1] });
+        if (std.mem.eql(u8, directive, "require")) {
+            if (ws.len < 2) return error.InvalidManifest;
+            const indirect = std.mem.eql(u8, line.comment, "indirect") or std.mem.startsWith(u8, line.comment, "indirect;");
+            try requires.append(a, .{ .name = ws[0], .version = ws[1], .indirect = indirect });
+        }
         if (std.mem.eql(u8, directive, "replace")) {
             var arrow: usize = 0;
             while (arrow < ws.len and !std.mem.eql(u8, ws[arrow], "=>")) : (arrow += 1) {}
@@ -75,6 +89,7 @@ pub fn parse(a: std.mem.Allocator, root: []const u8, text: []const u8) !Parsed {
             try replacements.append(a, .{ .name = ws[0], .version = if (arrow == 2) ws[1] else "", .root = try local(a, root, ws[arrow + 1]) });
         }
     }
+    if (block.len > 0) return error.InvalidManifest;
     return .{ .name = name, .requires = try requires.toOwnedSlice(a), .replacements = try replacements.toOwnedSlice(a), .uses = try uses.toOwnedSlice(a) };
 }
 pub fn used(work: Workspace, root: []const u8) bool {

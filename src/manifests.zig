@@ -1,5 +1,6 @@
 //! Dependency declarations, not lockfiles or package-manager evaluation.
 const gradle_module = @import("manifests/gradle.zig");
+const go_config = @import("lang/go/config.zig");
 const maven_module = @import("manifests/maven.zig");
 const nimble_module = @import("manifests/nimble.zig");
 const std = @import("std");
@@ -23,24 +24,52 @@ pub const Declarations = struct {
     dependencies: []const t.Dependency,
     unsupported: []const t.UnsupportedReference,
 };
+/// What reading a supported manifest fails with: `InvalidManifest` and
+/// `InvalidEscape` are its bytes.
+pub const ReadError = error{ InvalidManifest, InvalidEscape, OutOfMemory };
+/// `ReadError`, or `UnsupportedManifest` for a path `supported` refuses.
+pub const Error = error{ InvalidManifest, InvalidEscape, UnsupportedManifest, OutOfMemory };
 /// a must be an arena: parser workspaces and strings share its lifetime.
 /// Returned declarations borrow text or that arena; parse does not own either.
 /// ZON validates the whole document and reads only the root struct dependencies.
 /// Invalid ZON or dependency shapes return InvalidManifest, with no partial result.
-pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8) ![]const t.Dependency {
+pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8) Error![]const t.Dependency {
     return (try read(a, path, text)).dependencies;
 }
 /// `parse`, keeping the declarations it cannot read (records without a path).
-pub fn read(a: std.mem.Allocator, path: []const u8, text: []const u8) !Declarations {
+pub fn read(a: std.mem.Allocator, path: []const u8, text: []const u8) Error!Declarations {
+    if (!supported(path)) return error.UnsupportedManifest;
+    return readSupported(a, path, text);
+}
+/// `read` for a path `supported` takes.
+pub fn readSupported(a: std.mem.Allocator, path: []const u8, text: []const u8) ReadError!Declarations {
+    std.debug.assert(supported(path));
     var out: std.ArrayList(t.Dependency) = .empty;
     var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     const name = p.base(path);
-    if (std.mem.eql(u8, name, "package.json")) try json(a, path, text, &out) else if (std.mem.eql(u8, name, "build.zig.zon")) try zon(a, path, text, &out) else if (std.mem.eql(u8, name, "go.mod")) try goMod(a, path, text, &out) else if (std.mem.eql(u8, name, "Cargo.toml") or std.mem.eql(u8, name, "pyproject.toml")) try toml(a, path, text, &out) else if (supported(path) and std.mem.endsWith(u8, name, ".nimble")) try nimble_module.parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, "pom.xml")) try maven_module.parse(a, path, text, &out, &unsupported) else if (std.mem.eql(u8, name, "build.gradle") or std.mem.eql(u8, name, "build.gradle.kts")) try gradle_module.parse(a, path, text, &out, &unsupported) else return error.UnsupportedManifest;
+    if (std.mem.eql(u8, name, "package.json")) {
+        try json(a, path, text, &out);
+    } else if (std.mem.eql(u8, name, "build.zig.zon")) {
+        try zon(a, path, text, &out);
+    } else if (std.mem.eql(u8, name, "go.mod")) {
+        try goMod(a, path, text, &out);
+    } else if (std.mem.eql(u8, name, "Cargo.toml") or std.mem.eql(u8, name, "pyproject.toml")) {
+        try toml(a, path, text, &out);
+    } else if (std.mem.endsWith(u8, name, ".nimble")) {
+        try nimble_module.parse(a, path, text, &out, &unsupported);
+    } else if (std.mem.eql(u8, name, "pom.xml")) {
+        try maven_module.parse(a, path, text, &out, &unsupported);
+    } else {
+        std.debug.assert(std.mem.eql(u8, name, "build.gradle") or std.mem.eql(u8, name, "build.gradle.kts"));
+        try gradle_module.parse(a, path, text, &out, &unsupported);
+    }
     return .{ .dependencies = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
-fn json(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) !void {
-    const value = std.json.parseFromSliceLeaky(std.json.Value, a, text, .{}) catch |err| switch (err) {
-        error.OutOfMemory => return err,
+fn json(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+    // npm skips a leading byte order mark.
+    const body = if (std.mem.startsWith(u8, text, l.bom)) text[l.bom.len..] else text;
+    const value = std.json.parseFromSliceLeaky(std.json.Value, a, body, .{}) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
         else => return error.InvalidManifest,
     };
     if (value != .object) return error.InvalidManifest;
@@ -69,7 +98,7 @@ fn npmOrigin(s: []const u8) t.Dependency.Origin {
 fn place(s: []const u8) bool {
     return std.mem.findScalar(u8, s, '/') != null or std.mem.startsWith(u8, s, "git") or std.mem.startsWith(u8, s, "file:") or std.mem.startsWith(u8, s, "github:") or std.mem.startsWith(u8, s, "workspace:");
 }
-fn zon(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) !void {
+fn zon(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
     const source = try a.dupeZ(u8, text);
     defer a.free(source);
     var ast = try std.zig.Ast.parse(a, source, .zon);
@@ -113,48 +142,11 @@ fn zonString(zoir: std.zig.Zoir, node: std.zig.Zoir.Node, name: []const u8) erro
     if (value != .string_literal) return error.InvalidManifest;
     return value.string_literal;
 }
-pub fn modulePath(text: []const u8) ?[]const u8 {
-    var lines = std.mem.splitScalar(u8, text, '\n');
-    while (lines.next()) |line| {
-        var words = std.mem.tokenizeAny(u8, line, " \t\r");
-        const first = words.next() orelse continue;
-        if (!std.mem.eql(u8, first, "module")) continue;
-        const name = words.next() orelse return null;
-        return std.mem.trim(u8, name, "\"`");
-    }
-    return null;
+fn goMod(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+    const parsed = try go_config.parse(a, p.dir(path), text);
+    for (parsed.requires) |req| try out.append(a, .{ .manifest = path, .name = req.name, .source = req.name, .requirement = req.version, .group = if (req.indirect) "indirect" else "require", .origin = .remote });
 }
-fn goMod(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) !void {
-    var lines = std.mem.splitScalar(u8, text, '\n');
-    var block = false;
-    while (lines.next()) |line| {
-        const comment_at = std.mem.find(u8, line, "//");
-        const clean = line[0 .. comment_at orelse line.len];
-        var words = std.mem.tokenizeAny(u8, clean, " \t\r");
-        var name = words.next() orelse continue;
-        if (std.mem.eql(u8, name, "require")) {
-            name = words.next() orelse return error.InvalidManifest;
-            if (std.mem.eql(u8, name, "(")) {
-                block = true;
-                continue;
-            }
-        } else if (!block) continue;
-        if (std.mem.eql(u8, name, ")")) {
-            block = false;
-            continue;
-        }
-        const version = words.next() orelse return error.InvalidManifest;
-        // `// indirect` marks a module only other modules import, as Go
-        // reads the comment: the word alone or before a `;`.
-        const indirect = if (comment_at) |at| blk: {
-            const comment = std.mem.trim(u8, line[at + 2 ..], " \t\r");
-            break :blk std.mem.eql(u8, comment, "indirect") or std.mem.startsWith(u8, comment, "indirect;");
-        } else false;
-        try out.append(a, .{ .manifest = path, .name = std.mem.trim(u8, name, "\"`"), .source = std.mem.trim(u8, name, "\"`"), .requirement = version, .group = if (indirect) "indirect" else "require", .origin = .remote });
-    }
-    if (block) return error.InvalidManifest;
-}
-fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) !void {
+fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
     const ts = try l.lex(.python, a, text);
     const cargo = std.mem.eql(u8, p.base(path), "Cargo.toml");
     var group: []const u8 = "";
@@ -231,7 +223,7 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
 }
 /// One key under a Cargo dependency table; `tail` is `group` from its
 /// `dependencies` part on.
-fn cargoValue(a: std.mem.Allocator, path: []const u8, text: []const u8, group: []const u8, tail: []const u8, key: []const u8, key_tokens: []const l.Token, value: []const l.Token, out: *std.ArrayList(t.Dependency)) !void {
+fn cargoValue(a: std.mem.Allocator, path: []const u8, text: []const u8, group: []const u8, tail: []const u8, key: []const u8, key_tokens: []const l.Token, value: []const l.Token, out: *std.ArrayList(t.Dependency)) ReadError!void {
     // `[dependencies.name]` names the dependency in its header and
     // `name.field = value` under `[dependencies]` in the key.
     var dep_name: ?[]const u8 = if (std.mem.findScalar(u8, tail, '.')) |dot| tail[dot + 1 ..] else null;
@@ -282,7 +274,7 @@ fn cargoValue(a: std.mem.Allocator, path: []const u8, text: []const u8, group: [
     }
 }
 /// A dotted key's first part and the rest, or null for a key without a dot.
-fn dottedKey(a: std.mem.Allocator, text: []const u8, key: []const l.Token) !?struct { name: []const u8, field: []const u8 } {
+fn dottedKey(a: std.mem.Allocator, text: []const u8, key: []const l.Token) ReadError!?struct { name: []const u8, field: []const u8 } {
     for (key, 0..) |token, d| {
         if (!token.is(".")) continue;
         if (d == 0 or d + 1 == key.len) return error.InvalidManifest;
@@ -300,7 +292,7 @@ fn dependencyTable(group: []const u8) ?usize {
     }
     return null;
 }
-fn pythonDep(a: std.mem.Allocator, path: []const u8, group: []const u8, requirement: []const u8, out: *std.ArrayList(t.Dependency)) !void {
+fn pythonDep(a: std.mem.Allocator, path: []const u8, group: []const u8, requirement: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
     const raw = std.mem.trim(u8, requirement, " \t");
     const end = std.mem.indexOfAny(u8, raw, "<>=!~[; @(") orelse raw.len;
     if (end == 0) return error.InvalidManifest;
@@ -310,6 +302,6 @@ fn pythonDep(a: std.mem.Allocator, path: []const u8, group: []const u8, requirem
     try out.append(a, .{ .manifest = path, .name = raw[0..end], .requirement = raw, .source = source, .group = group, .origin = origin });
 }
 
-fn string(a: std.mem.Allocator, text: []const u8, token: l.Token) ![]const u8 {
+fn string(a: std.mem.Allocator, text: []const u8, token: l.Token) ReadError![]const u8 {
     return if (text[token.offset] == '\'') token.text else try l.decode(a, token.text);
 }

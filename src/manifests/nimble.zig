@@ -8,7 +8,7 @@ const t = @import("../types.zig");
 /// string literal. `when` conditions are not evaluated, so every branch
 /// counts. A statement with any other argument is unsupported and declares
 /// nothing. The `nim` requirement names the compiler and is not a package.
-pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) !void {
+pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) error{ InvalidManifest, InvalidEscape, OutOfMemory }!void {
     const ts = try l.lex(.nim, a, text);
     const Feature = struct { column: usize, name: []const u8 };
     var features: std.ArrayList(Feature) = .empty;
@@ -47,7 +47,7 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
             if (ts[j].kind != .string) break false;
             const value = l.decode(a, ts[j].text) catch |err| switch (err) {
                 error.InvalidEscape => break false,
-                else => return err,
+                else => |e| return e,
             };
             try requirement(a, path, group, value, out);
             j += 1;

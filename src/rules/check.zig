@@ -116,7 +116,7 @@ pub const Rules = struct {
 /// same through the pointers.
 pub const Violation = struct {
     rule: []const u8,
-    reason: enum { upward, forbidden, entry, reference, missing, cycle, token, unreached, undeclared, unused },
+    reason: Reason,
     /// The edge a direct rule restricts, or a chain's first edge.
     edge: ?*const t.Edge = null,
     /// A restricted reference, or an undeclared import.
@@ -131,21 +131,53 @@ pub const Violation = struct {
     /// The package an undeclared import names, as a slice of its spelling.
     package: ?[]const u8 = null,
     /// A transitive rule's witness, its first file to its last; empty for
-    /// every other finding. `free` releases it with the findings.
+    /// every other finding. It lives as long as its `Findings`.
     chain: []const []const u8 = &.{},
-};
-/// Frees findings and the chains of transitive ones, which `check`
-/// allocates as one block in finding order.
-pub fn free(a: std.mem.Allocator, findings: []const Violation) void {
-    var first: ?[*]const []const u8 = null;
-    var total: usize = 0;
-    for (findings) |finding| if (finding.chain.len > 0) {
-        if (first == null) first = finding.chain.ptr;
-        total += finding.chain.len;
+
+    pub const Reason = enum {
+        /// An edge or chain from a layer to a higher one.
+        upward,
+        /// An edge or chain a forbidden rule names.
+        forbidden,
+        /// An edge into a file `nothing_imports` names.
+        entry,
+        /// A reference a reference rule restricts.
+        reference,
+        /// A required path the graph lacks.
+        missing,
+        /// An edge on a cycle.
+        cycle,
+        /// A token outside its owners' files.
+        token,
+        /// A file no chain from an entry reaches.
+        unreached,
+        /// An import of a package its manifests do not declare.
+        undeclared,
+        /// A declaration no import uses.
+        unused,
     };
-    if (first) |block| a.free(block[0..total]);
-    a.free(findings);
-}
+};
+/// A check's findings and the chains of its transitive ones, owned until
+/// `deinit`. Move this owner; do not copy it and deinitialize it twice.
+pub const Findings = struct {
+    gpa: std.mem.Allocator,
+    list: []const Violation,
+    /// Every chain, one block in finding order.
+    chains: []const []const u8,
+
+    /// In rule order, each rule's in graph order.
+    pub fn items(f: *const Findings) []const Violation {
+        return f.list;
+    }
+    pub fn deinit(f: *Findings) void {
+        f.gpa.free(f.chains);
+        f.gpa.free(f.list);
+        f.* = undefined;
+    }
+};
+/// What `check` fails with: a token rule the graph was not scanned for, a
+/// dependency rule on a graph scanned without manifests, or memory.
+pub const CheckError = error{ UnscannedToken, UnscannedManifests, OutOfMemory };
 fn allowed(rules: Rules, name: []const u8, e: t.Edge) bool {
     for (rules.allowed) |r| if (std.mem.eql(u8, r.rule, name) and matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind)) return true;
     return false;
@@ -158,11 +190,10 @@ fn named(r: OrderedLayers, path: []const u8) ?usize {
     return null;
 }
 /// Findings borrow graph storage, rule names and required-path strings.
-/// Keep the graph and those caller strings alive until findings are freed
-/// with `free`; a.free alone frees them when no rule is transitive.
+/// Keep the graph and those caller strings alive until findings are released.
 /// `dependencies` joins imports to manifests: `check(g, a, rule, out)`.
-pub fn check(comptime dependencies: type, a: std.mem.Allocator, g: anytype, rules: Rules) ![]const Violation {
-    var out: Findings = .{ .a = a };
+pub fn check(comptime dependencies: type, a: std.mem.Allocator, g: anytype, rules: Rules) error{OutOfMemory}!Findings {
+    var out: Collector = .{ .a = a };
     errdefer out.deinit();
     var scratch: std.heap.ArenaAllocator = .init(a);
     defer scratch.deinit();
@@ -197,7 +228,7 @@ pub fn check(comptime dependencies: type, a: std.mem.Allocator, g: anytype, rule
             defer a.free(raw);
             normalized = path_module.normalize(a, raw) catch |err| switch (err) {
                 error.InvalidPath => null,
-                else => return err,
+                else => |e| return e,
             };
         }
         const target_name = normalized orelse ref.name;
@@ -246,28 +277,27 @@ pub fn check(comptime dependencies: type, a: std.mem.Allocator, g: anytype, rule
     return out.finish();
 }
 /// Findings, appended in place to `items`, and their chains gathered
-/// into one block for `free`.
-pub const Findings = struct {
+/// into one block that `Findings` owns.
+pub const Collector = struct {
     a: std.mem.Allocator,
     items: std.ArrayList(Violation) = .empty,
     chains: std.ArrayList([]const u8) = .empty,
     /// Where each chain lies in `chains`, by finding.
     spans: std.ArrayList(struct { finding: usize, start: usize, len: usize }) = .empty,
-    fn appendChain(f: *Findings, v: Violation, paths: []const []const u8, nodes: []const u32) !void {
+    fn appendChain(f: *Collector, v: Violation, paths: []const []const u8, nodes: []const u32) !void {
         try f.spans.append(f.a, .{ .finding = f.items.items.len, .start = f.chains.items.len, .len = nodes.len });
         for (nodes) |node| try f.chains.append(f.a, paths[node]);
         try f.items.append(f.a, v);
     }
-    fn finish(f: *Findings) ![]const Violation {
-        if (f.spans.items.len == 0) return f.items.toOwnedSlice(f.a);
+    fn finish(f: *Collector) error{OutOfMemory}!Findings {
         const block = try f.chains.toOwnedSlice(f.a);
         errdefer f.a.free(block);
         const items = try f.items.toOwnedSlice(f.a);
         for (f.spans.items) |span| items[span.finding].chain = block[span.start..][0..span.len];
         f.spans.deinit(f.a);
-        return items;
+        return .{ .gpa = f.a, .list = items, .chains = block };
     }
-    fn deinit(f: *Findings) void {
+    fn deinit(f: *Collector) void {
         f.items.deinit(f.a);
         f.chains.deinit(f.a);
         f.spans.deinit(f.a);
@@ -301,7 +331,7 @@ const Walks = struct {
         for (edges, result) |e, *dest| dest.* = (kind == null or kind.? == e.kind) and !allowed(rules, name, e);
         return result;
     }
-    fn forbidden(w: Walks, out: *Findings, edges: []const t.Edge, rules: Rules, r: EdgeRule) !void {
+    fn forbidden(w: Walks, out: *Collector, edges: []const t.Edge, rules: Rules, r: EdgeRule) !void {
         const filter: walk.Filter = .{ .follow = try w.follow(edges, rules, r.name, r.kind) };
         const targets = try w.a.alloc(bool, w.paths.len);
         for (w.paths, targets) |path, *dest| dest.* = matches(r.to, path);
@@ -314,7 +344,7 @@ const Walks = struct {
             try out.appendChain(.{ .rule = r.name, .reason = .forbidden, .edge = &edges[first], .path = w.paths[nodes.items[nodes.items.len - 1]] }, w.paths, nodes.items);
         };
     }
-    fn layers(w: Walks, out: *Findings, edges: []const t.Edge, rules: Rules, r: OrderedLayers) !void {
+    fn layers(w: Walks, out: *Collector, edges: []const t.Edge, rules: Rules, r: OrderedLayers) !void {
         const filter_edges = try w.follow(edges, rules, r.name, null);
         const place = try w.a.alloc(?usize, w.paths.len);
         const passable = try w.a.alloc(bool, w.paths.len);
@@ -338,7 +368,7 @@ const Walks = struct {
             try out.appendChain(.{ .rule = r.name, .reason = .upward, .edge = &edges[first], .path = w.paths[nodes.items[nodes.items.len - 1]] }, w.paths, nodes.items);
         };
     }
-    fn unreached(w: Walks, out: *Findings, edges: []const t.Edge, r: Reachable) !void {
+    fn unreached(w: Walks, out: *Collector, edges: []const t.Edge, r: Reachable) !void {
         const marks = try w.a.alloc(bool, w.paths.len);
         @memset(marks, false);
         var queue: std.ArrayList(u32) = .empty;

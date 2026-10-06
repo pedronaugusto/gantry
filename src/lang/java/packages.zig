@@ -27,7 +27,11 @@ pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.Allo
         const source = (try read(s, context, file)) orelse continue;
         progress.at(.java_packages, file);
         const tokens = try recorder.lex(java, s, file_index, file, .java, source);
-        const recovery = try java.recoverTokens(s, source, tokens);
+        const recovery = java.recoverTokens(s, source, tokens) catch |err| {
+            try progress.tolerate(err);
+            cached[file_index] = .{};
+            continue;
+        };
         cached[file_index] = try recovery.clone(a, strings);
         if (recovery.package.len == 0 or descriptor) continue;
         const entry = try out.getOrPut(a, cached[file_index].?.package);

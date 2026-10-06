@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A selected file whose bytes are not valid for its format no longer aborts the scan: it is a record in `Graph.invalid()` (`InvalidFile`: path, phase, offset, `FileError` cause) and gives the scan nothing from that phase. A Go file with a bad `//go:build` line is in no package, as `go/build` leaves it; a broken or cyclic JS/TS config is as if absent and its children keep their own options. `scan` fails only with `ScanError` (`InvalidPath`, `UnsupportedImport`, `CountOverflow`, `OutOfMemory`) or the reader's errors, and its return type says so.
+
+- Named error sets: `ScanError`, `FileError`, `ReadError(read)`, `manifests.Error` and `manifests.ReadError`, `rules.CheckError`, `report.Error`, `path.Error`; `DirReader.read` returns `std.Io.Dir.ReadFileAllocError`; `imports` returns `InvalidEscape`, `InvalidLiteral` or `OutOfMemory`. `manifests.readSupported` reads a path `supported` takes. `Violation.reason` is the named `Violation.Reason`.
+
+- `check` returns an owned `rules.Findings` with `items()` and `deinit()`, which frees transitive findings' chains too. `rules.free` is gone, and `gpa.free` on findings no longer compiles.
+
+- TOML array-of-tables headers (`[[bin]]`, `[[tool.mypy.overrides]]`) and dotted keys under a Cargo dependency table (`serde.features = [...]`, `local.path = "../x"`) are read instead of failing the manifest.
+
+- A dependency whose imports resolve to selected files (a Go `replace` or workspace member, a Zig path dependency under a named module) is used, not reported unused.
+
+- A single- or double-quoted literal that cannot span lines ends at its newline when unclosed, so an apostrophe in JSX text or `#if 0` prose no longer hides the imports after it.
+
+- A leading UTF-8 byte order mark is skipped by the lexers, the JSON readers and Go constraints.
+
+- Scanning stays linear in hostile input: Markdown wiki links stay on their line and code spans find their closer from an index of backtick runs; XML entity names and C++ raw-string delimiters are searched within their bounds; Go import blocks and Rust use trees are read once.
+
+- Markdown link destinations are percent-decoded (`my%20file.md`). Zig `@import("x.zon")` resolves beside the importer.
+
+- Paths refuse only a drive spelling (`C:` at the start), not every colon; `walk` skips names a scan would refuse. `path.valid` says whether `normalize` takes a path.
+
+- `go.mod` has one reader: module routing and declarations share it, a `require` without a version or an unclosed block is invalid. `manifests.modulePath` is gone.
+
 - Reader callbacks now take `read(scratch_allocator, context, path)`; `DirReader.read` follows the same order. Rename `lexer.decodeJS` to `decodeJs`. `rules.check` takes the allocator before the graph. Internal language indexes take all allocators before their data parameters; the rule engine takes its comptime dependency module first.
 
 - Expose `rules/dependency_check.Key`, the ecosystem/directory key accepted by manifest grouping hash and equality functions.

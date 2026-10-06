@@ -7,6 +7,10 @@ const t = @import("../types.zig");
 const Graph = graph_module.Graph;
 const Violation = check_module.Violation;
 const Writer = std.Io.Writer;
+const diagnostic_module = @import("../scan/diagnostic.zig");
+/// What writing a report fails with: the writer's error (`Writer.Error`),
+/// or memory.
+pub const Error = error{ WriteFailed, OutOfMemory };
 
 /// The length of the UTF-8 sequence that starts at `s[i]`, or null for a
 /// byte that starts no valid one (overlong forms and surrogates included).
@@ -152,7 +156,7 @@ pub const SarifOptions = struct {
 /// the order given. Only a token finding has a line here; `sarifWithSource`
 /// gives reference and undeclared findings theirs, and columns. Edge,
 /// path and declaration findings are about a whole file.
-pub fn sarif(gpa: std.mem.Allocator, w: *Writer, findings: []const Violation, options: SarifOptions) !void {
+pub fn sarif(gpa: std.mem.Allocator, w: *Writer, findings: []const Violation, options: SarifOptions) Error!void {
     const positions = try gpa.alloc(?Position, findings.len);
     defer gpa.free(positions);
     for (findings, positions) |f, *p| p.* = if (f.token) |k| .{ .line = k.line } else null;
@@ -164,7 +168,7 @@ pub fn sarif(gpa: std.mem.Allocator, w: *Writer, findings: []const Violation, op
 /// takes it, to place those findings at a line and column (in Unicode
 /// code points). A null read, or an offset past the bytes, leaves the
 /// finding where `sarif` puts it; a read error is returned.
-pub fn sarifWithSource(gpa: std.mem.Allocator, w: *Writer, findings: []const Violation, context: anytype, comptime read: anytype, options: SarifOptions) !void {
+pub fn sarifWithSource(gpa: std.mem.Allocator, w: *Writer, findings: []const Violation, context: anytype, comptime read: anytype, options: SarifOptions) (Error || diagnostic_module.ReadError(read))!void {
     const positions = try gpa.alloc(?Position, findings.len);
     defer gpa.free(positions);
     for (findings, positions) |f, *p| p.* = if (f.token) |k| .{ .line = k.line } else null;

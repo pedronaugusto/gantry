@@ -192,8 +192,9 @@ fn allocationScenario(alloc: std.mem.Allocator) !void {
     defer analysis.deinit();
     var dirs = try graph.aggregate(alloc, 1);
     defer dirs.deinit();
-    const findings = try graph.check(alloc, .{ .forbidden = &.{.{ .name = "all" }}, .references = &.{.{ .name = "relative", .relative = true, .suffix = ".zig" }}, .no_cycles = "cycles" });
-    defer alloc.free(findings);
+    var findings_owned = try graph.check(alloc, .{ .forbidden = &.{.{ .name = "all" }}, .references = &.{.{ .name = "relative", .relative = true, .suffix = ".zig" }}, .no_cycles = "cycles" });
+    defer findings_owned.deinit();
+    const findings = findings_owned.items();
     try expect(findings.len > 0);
 }
 test "every allocation failure releases scan graph analysis aggregation and findings" {

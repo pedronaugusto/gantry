@@ -103,7 +103,7 @@ pub fn parseTokens(a: std.mem.Allocator, file: []const u8, text: []const u8, tar
     };
     // Only leading line comments can be directives; text inside block comments
     // and strings must never become build constraints.
-    var lines = std.mem.splitScalar(u8, text, '\n');
+    var lines = std.mem.splitScalar(u8, if (std.mem.startsWith(u8, text, l.bom)) text[l.bom.len..] else text, '\n');
     var in_block = false;
     while (lines.next()) |raw| {
         var line = std.mem.trim(u8, raw, " \t\r");
