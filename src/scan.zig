@@ -129,7 +129,7 @@ fn scanGraph(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype
     defer reader.deinit();
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
-    return fill(gpa, g, workspace.allocator(), &reader, &scratch, options, progress) catch |cause| {
+    return fill(gpa, workspace.allocator(), g, &reader, &scratch, options, progress) catch |cause| {
         // The current path may be any of the storage above; it is
         // copied before that is released.
         progress.fail(cause);
@@ -138,7 +138,7 @@ fn scanGraph(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype
 }
 /// The scan proper, into `g`. Everything it allocates lives in `g`,
 /// in the workspace `w` or in `scratch`, all owned by `scanGraph`.
-fn fill(gpa: std.mem.Allocator, g: *Graph, w: std.mem.Allocator, reader: anytype, scratch: *std.heap.ArenaAllocator, options: Options, progress: *diagnostics.Progress) !graph_module.Graph {
+fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype, scratch: *std.heap.ArenaAllocator, options: Options, progress: *diagnostics.Progress) !graph_module.Graph {
     const Reader = @TypeOf(reader.*);
     const a = g.arena.allocator();
     const code_enabled = options.strict_imports or enabled(options, .import) or enabled(options, .type_only) or enabled(options, .dynamic) or enabled(options, .@"test");
