@@ -325,7 +325,8 @@ Reports are compared with golden files in `src/testing/golden`, which CI reads w
 [CI](.github/workflows/ci.yml) runs tests and the example in Debug and ReleaseSafe on
 `ubuntu-latest`, `macos-latest` and `windows-latest`, plus ReleaseFast on Ubuntu.
 ReleaseSmall compiles the tests, example and library without running them on Ubuntu.
-Source checks run formatting and cast checks on Ubuntu. There is no ThreadSanitizer job.
+Source checks run formatting and cast checks on Ubuntu, and `zig build check-consumer`
+builds a project that depends on gantry with nothing fetched. There is no ThreadSanitizer job.
 
 Compile-only jobs use the default `zig build` for `x86_64-linux-gnu`,
 `aarch64-linux-gnu`, `x86_64-linux-musl`, `x86_64-windows-gnu`, `x86_64-windows-msvc`,

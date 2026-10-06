@@ -38,16 +38,12 @@ pub fn build(b: *std.Build) void {
     // needs nor fetches it.
     if (b.dep_prefix.len == 0) if (b.lazyImport(@This(), "preflight")) |preflight| {
         preflight.addCi(b, .{ .tests = test_step, .portable_tests = true });
+        // A project that depends on gantry by path, with no packages to
+        // fetch: the build a consumer gets.
+        preflight.addConsumerCheck(b, .{ .package = "gantry", .program = b.path("ci/consumer.zig") });
+        // Validates the report goldens with their downstream tools.
+        check.dependOn(&preflight.addCheck(b, "check-reports", "ci/reports.zig").step);
     };
-    const report_check = b.addExecutable(.{ .name = "check-reports", .root_module = b.createModule(.{
-        .root_source_file = b.path("ci/reports.zig"),
-        .target = b.graph.host,
-        .optimize = .ReleaseSafe,
-    }) });
-    check.dependOn(&report_check.step);
-    const report_run = b.addRunArtifact(report_check);
-    report_run.setCwd(b.path("."));
-    b.step("check-reports", "Validate report goldens with their downstream tools").dependOn(&report_run.step);
     b.getInstallStep().dependOn(&tests.step);
     b.getInstallStep().dependOn(&example.step);
 }
