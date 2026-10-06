@@ -190,7 +190,7 @@ type-only chains through. Transitive ordered layers work as import-linter's laye
 contract: a file no layer names has no layer, chains pass through it, and each layered
 file reports the shortest chain through unlayered files to each higher layer it reaches.
 
-A dependency rule joins each unresolved import to the manifests that govern its file:
+A dependency rule joins each import to the manifests that govern its file:
 those of its ecosystem in the nearest directory at or above it (`package.json`,
 `pyproject.toml`, `Cargo.toml`, `go.mod`, `build.zig.zon`, a `.nimble`, `pom.xml`,
 `build.gradle`). An import names its package by the ecosystem's own rule: an npm name or
@@ -201,7 +201,9 @@ package. The language's own modules are no packages: Node builtins and `node:` n
 Python's standard library, Rust's `std`, `core`, `alloc`, `proc_macro` and `test`, Go
 paths with no dot in their first element, Zig's `std`, `builtin` and `root`, Nim's
 standard modules and `std/`, and the JDK's packages. Findings are `undeclared` imports,
-with the reference, the package and the manifest, once per file and package, and
+with the reference, the package and the manifest, once per file and package (an import
+that resolves to a selected file is never undeclared, but it does use its declaration, as a
+Go `replace` or a Zig path module does), and
 `unused` declarations of the rule's scopes (runtime by default), with the declaration,
 for manifests that govern a source file the rule covers. A Go `indirect` requirement,
 Nimble's `nim` and a Gradle or Maven workspace project are never unused. An import whose

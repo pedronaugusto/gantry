@@ -113,3 +113,36 @@ test "a dependency rule needs the manifests a scan read" {
     defer unread.deinit();
     try expectFindings(&unread, .{ .name = "deps" }, &.{}, &.{});
 }
+
+test "an import that resolves to a selected file still uses its declaration" {
+    // A Go `replace` to a local module.
+    var replaced = try (f.Fixture{ .items = &.{
+        .{ .path = "app/go.mod", .text = "module example.com/app\nrequire (\n\texample.com/lib v0.0.0\n\texample.com/gone v1.0.0\n)\nreplace example.com/lib => ../lib\n" },
+        .{ .path = "app/main.go", .text = "package main\nimport \"example.com/lib\"\n" },
+        .{ .path = "lib/go.mod", .text = "module example.com/lib\n" },
+        .{ .path = "lib/lib.go", .text = "package lib\n" },
+    } }).scan(a, .{});
+    defer replaced.deinit();
+    try f.edge(&replaced, "app/main.go", "lib/lib.go", .import, 1);
+    try expectFindings(&replaced, .{ .name = "deps" }, &.{}, &.{"example.com/gone"});
+    // A Go workspace member.
+    var workspace = try (f.Fixture{ .items = &.{
+        .{ .path = "go.work", .text = "go 1.22\nuse (\n\t./app\n\t./lib\n)\n" },
+        .{ .path = "app/go.mod", .text = "module example.com/app\nrequire example.com/lib v0.0.0\n" },
+        .{ .path = "app/main.go", .text = "package main\nimport \"example.com/lib\"\n" },
+        .{ .path = "lib/go.mod", .text = "module example.com/lib\n" },
+        .{ .path = "lib/lib.go", .text = "package lib\n" },
+    } }).scan(a, .{});
+    defer workspace.deinit();
+    try f.edge(&workspace, "app/main.go", "lib/lib.go", .import, 1);
+    try expectFindings(&workspace, .{ .name = "deps" }, &.{}, &.{});
+    // A Zig path dependency mapped through a named module.
+    var zig = try (f.Fixture{ .items = &.{
+        .{ .path = "build.zig.zon", .text = ".{ .name = .app, .dependencies = .{ .foo = .{ .path = \"deps/foo\" }, .bar = .{ .path = \"deps/bar\" } } }" },
+        .{ .path = "src/main.zig", .text = "const foo = @import(\"foo\");" },
+        .{ .path = "deps/foo/src/foo.zig", .text = "" },
+    } }).scan(a, .{ .named_modules = &.{.{ .name = "foo", .path = "deps/foo/src/foo.zig" }} });
+    defer zig.deinit();
+    try f.edge(&zig, "src/main.zig", "deps/foo/src/foo.zig", .import, 1);
+    try expectFindings(&zig, .{ .name = "deps", .from = "src/**" }, &.{}, &.{"bar"});
+}

@@ -1,6 +1,7 @@
-//! Dependency rules: unresolved imports joined to the declarations of the
-//! manifests that govern them, per ecosystem. An import names a package by
-//! its ecosystem's own spelling rule; nothing is installed or looked up.
+//! Dependency rules: imports joined to the declarations of the manifests
+//! that govern them, per ecosystem; only an unresolved import can be
+//! undeclared. An import names a package by its ecosystem's own spelling
+//! rule; nothing is installed or looked up.
 const options_module = @import("../scan/options.zig");
 const std = @import("std");
 const t = @import("../types.zig");
@@ -44,7 +45,7 @@ pub const Ecosystem = enum {
     }
 };
 
-/// The package an unresolved import names, as a slice of its spelling, or
+/// The package an import names, as a slice of its spelling, or
 /// null when it names none: a relative or absolute path, a file, a module
 /// the language's own distribution provides, or a spelling the ecosystem
 /// gives no package (a URL, a `#` subpath import, a path alias).
@@ -247,7 +248,9 @@ pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out:
         for (Lookup.find(governing, e, path) orelse continue) |manifest| try active.put(a, manifest, {});
     };
     for (g.references()) |*ref| {
-        if (ref.resolved or !engine.matches(rule.from, ref.from)) continue;
+        // A resolved import still uses its declaration: a Go `replace` or
+        // workspace member, a Zig path dependency under a named module.
+        if (!engine.matches(rule.from, ref.from)) continue;
         const e = Ecosystem.of(languageOf(ref.from) orelse continue) orelse continue;
         const package = packageOf(e, ref.name) orelse continue;
         const manifests = Lookup.find(governing, e, ref.from) orelse continue;
@@ -267,7 +270,7 @@ pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out:
             }
             if (longest) |i| used[i] = true;
         }
-        if (found or !rule.undeclared or ignored(rule, package) or (alias != null and ignored(rule, alias.?))) continue;
+        if (found or ref.resolved or !rule.undeclared or ignored(rule, package) or (alias != null and ignored(rule, alias.?))) continue;
         // Once per file and package: a `from` import spells several names.
         const key = try std.fmt.allocPrint(a, "{s}\x00{s}", .{ ref.from, package });
         if ((try reported.getOrPut(a, key)).found_existing) continue;
