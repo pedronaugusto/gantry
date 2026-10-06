@@ -141,7 +141,14 @@ test "path normalization stays inside root and input aliases coalesce" {
     const norm = try g.path.normalize(a, "src/../lib/./x.zig");
     defer a.free(norm);
     try std.testing.expectEqualStrings("lib/x.zig", norm);
-    for ([_][]const u8{ "../x", "/x", "C:/x", "a\\b", "a/../../x" }) |p| try std.testing.expectError(error.InvalidPath, g.Graph.init(a, &.{p}));
+    for ([_][]const u8{ "../x", "/x", "C:/x", "c:x", "a\\b", "a/../../x" }) |p| try std.testing.expectError(error.InvalidPath, g.Graph.init(a, &.{p}));
+    // A colon past a drive's place is a byte of the name.
+    var colons = try g.scan(a, &.{ "docs/a:b.md", "ab:c", "a.zig" }, f.Fixture{ .items = &.{
+        .{ .path = "docs/a:b.md", .text = "" },
+        .{ .path = "ab:c", .text = "" },
+        .{ .path = "a.zig", .text = "" },
+    } }, f.Fixture.read, .{});
+    colons.deinit();
     var graph = try g.Graph.init(a, &.{ "a.zig", "./a.zig", "x/../a.zig" });
     defer graph.deinit();
     try eq(1, graph.paths().len);
@@ -283,6 +290,27 @@ test "DirReader and walk use a temp directory and caller pruning" {
     defer graph.deinit();
     try eq(1, graph.edges().len);
     try std.testing.expectError(error.StreamTooLong, g.scan(a, paths.items(), g.DirReader{ .io = io, .dir = tmp.dir, .limit = .limited(4) }, g.DirReader.read, .{}));
+}
+test "walk lists a colon in a name and skips what a scan would refuse" {
+    // Windows file names hold neither byte.
+    if (std.fs.path.sep == '\\') return error.SkipZigTest;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = std.testing.io;
+    try tmp.dir.createDirPath(io, "docs");
+    try tmp.dir.writeFile(io, .{ .sub_path = "docs/a:b.md", .data = "" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "c:d.md", .data = "" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "docs/x\\y.md", .data = "" });
+    var paths = try g.walk(a, io, tmp.dir, {}, struct {
+        fn keep(_: void, _: []const u8, _: std.Io.File.Kind) bool {
+            return true;
+        }
+    }.keep);
+    defer paths.deinit();
+    try eq(1, paths.items().len);
+    try std.testing.expectEqualStrings("docs/a:b.md", paths.items()[0]);
+    var graph = try g.scan(a, paths.items(), g.DirReader{ .io = io, .dir = tmp.dir }, g.DirReader.read, .{});
+    defer graph.deinit();
 }
 
 test "language extensions are explicit and unsupported files stay unread" {

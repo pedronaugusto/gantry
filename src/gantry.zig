@@ -61,6 +61,8 @@ pub const DirReader = struct {
     }
 };
 /// Convenience listing. keep(context, slash_path, entry_kind) may prune a
-/// directory; no ignore policy is imposed. Paths own their allocator.
+/// directory; no ignore policy is imposed. A name `path.normalize` refuses
+/// (a backslash, a `C:` drive spelling at the root) is skipped, so every
+/// listed path can be scanned. Paths own their allocator.
 pub const Paths = scan_module.Paths;
 pub const walk = scan_module.walk;

@@ -56,8 +56,9 @@ transitive).
 Preprocessing copies names directly into returned references; recovery records stay in the scan workspace, and file scratch is released after each file.
 
 Paths are relative to one logical root and use `/` on every host. Normalization resolves
-`.` and `..` within that root, merges duplicate paths and refuses absolute paths,
-drives, backslashes, NUL and traversal above the root. Comparisons are byte and case
+`.` and `..` within that root, merges duplicate paths and refuses absolute paths, a
+drive (a letter and `:` starting the path), backslashes, NUL and traversal above the root;
+a colon elsewhere is an ordinary byte. `walk` skips a name normalization refuses. Comparisons are byte and case
 exact. The reader receives normalized paths; it should return stable contents throughout
 a scan because resolution can read a file more than once.
 

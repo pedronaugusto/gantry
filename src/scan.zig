@@ -221,7 +221,8 @@ pub fn walk(gpa: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, context: anytyp
         var iter = child.iterate();
         while (try iter.next(io)) |entry| {
             const full = if (prefix.len == 0) try a.dupe(u8, entry.name) else try std.fmt.allocPrint(a, "{s}/{s}", .{ prefix, entry.name });
-            if (!keep(context, full, entry.kind)) continue;
+            // A name `scan` would refuse (a backslash, or `C:` at the root) is not listed.
+            if (!path.valid(full) or !keep(context, full, entry.kind)) continue;
             switch (entry.kind) {
                 .directory => try pending.append(a, full),
                 .file => try list.append(a, full),
