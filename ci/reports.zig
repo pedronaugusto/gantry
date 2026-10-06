@@ -9,7 +9,6 @@ pub fn main(init: std.process.Init) !void {
     const cwd = std.Io.Dir.cwd();
     try cwd.createDirPath(io, ".zig-cache/reports");
     try cwd.writeFile(io, .{ .sub_path = ".zig-cache/reports/puppeteer.json", .data = "{\"args\":[\"--no-sandbox\"]}\n" });
-    try command(a, io, &.{ "curl", "-fsSL", "https://json.schemastore.org/sarif-2.1.0.json", "-o", ".zig-cache/reports/sarif-schema.json" });
     var dir = try cwd.openDir(io, "src/testing/golden", .{ .iterate = true });
     defer dir.close(io);
     var it = dir.iterate();
@@ -24,7 +23,8 @@ pub fn main(init: std.process.Init) !void {
             const data = try cwd.readFileAlloc(io, path, a, .limited(8 * 1024 * 1024));
             _ = try std.json.parseFromSlice(std.json.Value, a, data, .{});
         } else if (std.mem.endsWith(u8, path, ".sarif")) {
-            try command(a, io, &.{ "jsonschema", "--instance", path, ".zig-cache/reports/sarif-schema.json" });
+            // OASIS SARIF 2.1.0 errata01, vendored so the check reads no live URL.
+            try command(a, io, &.{ "jsonschema", "--instance", path, "ci/sarif-schema-2.1.0.json" });
         }
     }
 }
