@@ -1,5 +1,4 @@
 const std = @import("std");
-const preflight = @import("preflight");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -34,7 +33,12 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(library);
     check.dependOn(&library.step);
     check.dependOn(&example.step);
-    preflight.addCi(b, .{ .tests = test_step, .portable_tests = true });
+    // CI wiring is this repository's own. preflight is lazy and only the
+    // root build asks for it, so a project depending on gantry neither
+    // needs nor fetches it.
+    if (b.dep_prefix.len == 0) if (b.lazyImport(@This(), "preflight")) |preflight| {
+        preflight.addCi(b, .{ .tests = test_step, .portable_tests = true });
+    };
     const report_check = b.addExecutable(.{ .name = "check-reports", .root_module = b.createModule(.{
         .root_source_file = b.path("ci/reports.zig"),
         .target = b.graph.host,
