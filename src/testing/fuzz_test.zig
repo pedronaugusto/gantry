@@ -312,12 +312,14 @@ test "fuzz: Cargo.toml" {
     try manifest(&.{"Cargo.toml"}, .python, &.{
         "[package]\nname = 'x'\n[dependencies]\nserde = \"1\"\nengine = { git = \"https://h/e\", branch = \"main\" }\n[dev-dependencies]\nlocal = { path = \"../l\" }\n[target.'cfg(unix)'.build-dependencies]\ncc = '1'\n",
         "[workspace.dependencies]\na = { workspace = true }\n[dependencies.b]\nversion = \"2\"\n",
+        "[[bin]]\nname = 'tool'\n[dependencies]\nserde.version = \"1\"\nserde.features = [\"derive\"]\n\"q.x\".path = '../q'\n[[bench]]\nharness = false\n",
     });
 }
 test "fuzz: pyproject.toml" {
     try manifest(&.{"pyproject.toml"}, .python, &.{
         "[project]\nname = 'tool'\ndependencies = [\n 'requests>=2',\n 'mylib @ git+https://h/m.git@v1',\n]\n[project.optional-dependencies]\nx = ['y']\n",
         "[tool.poetry.dependencies]\npython = \"^3.11\"\nz = { path = \"../z\" }\n[dependency-groups]\ndev = ['pytest']\n",
+        "[project]\ndependencies = ['a']\n[[tool.mypy.overrides]]\nmodule = 'x.*'\n[[tool.poetry.source]]\nname = 'm'\n",
     });
 }
 test "fuzz: go.mod" {

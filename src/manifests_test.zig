@@ -734,3 +734,59 @@ test "Nimble requirements that are not string literals declare nothing and are k
     try std.testing.expectEqual(g.ScanDiagnostic.Phase.manifests, diagnostic.failure.?.phase);
     try std.testing.expectEqual(@as(?usize, std.mem.find(u8, text, "requires \"a\"")), diagnostic.failure.?.offset);
 }
+test "TOML array-of-tables headers and dotted dependency keys" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    const cargo = try g.manifests.parse(arena.allocator(), "Cargo.toml",
+        \\[package]
+        \\name = "x"
+        \\
+        \\[[bin]]
+        \\name = "tool"
+        \\path = "src/tool.rs"
+        \\
+        \\[[example]]
+        \\name = "demo"
+        \\
+        \\[dependencies]
+        \\serde = "1"
+        \\tokio.version = "1"
+        \\tokio.features = ["full"]
+        \\local.path = "../local"
+        \\shared.workspace = true
+        \\
+        \\[[bench]]
+        \\name = "speed"
+        \\harness = false
+    );
+    try eq(4, cargo.len);
+    try dep(cargo, "serde", "");
+    try dep(cargo, "local", "../local");
+    for (cargo) |d| {
+        try std.testing.expectEqualStrings("dependencies", d.group);
+        if (std.mem.eql(u8, d.name, "tokio")) try std.testing.expectEqualStrings("1", d.requirement);
+        if (std.mem.eql(u8, d.name, "local")) try eq(g.Dependency.Origin.local, d.origin);
+        if (std.mem.eql(u8, d.name, "shared")) try eq(g.Dependency.Origin.workspace, d.origin);
+    }
+    const py = try g.manifests.parse(arena.allocator(), "pyproject.toml",
+        \\[project]
+        \\dependencies = ["requests"]
+        \\
+        \\[[tool.mypy.overrides]]
+        \\module = "x.*"
+        \\ignore_missing_imports = true
+        \\
+        \\[[tool.poetry.source]]
+        \\name = "mirror"
+        \\url = "https://x/simple"
+        \\
+        \\[tool.poetry.dependencies]
+        \\local = { path = "../local" }
+    );
+    try eq(2, py.len);
+    try dep(py, "requests", "");
+    try dep(py, "local", "../local");
+    for ([_][]const u8{ "[[bin]\nname='x'", "[[bin]]]\n", "[[bin\n]]", "[ [bin]]" }) |text| {
+        try std.testing.expectError(error.InvalidManifest, g.manifests.parse(arena.allocator(), "Cargo.toml", text));
+    }
+}

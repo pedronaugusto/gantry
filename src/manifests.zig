@@ -158,6 +158,9 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
     const ts = try l.lex(.python, a, text);
     const cargo = std.mem.eql(u8, p.base(path), "Cargo.toml");
     var group: []const u8 = "";
+    // `[[name]]` starts one element of an array of tables (Cargo `[[bin]]`,
+    // `[[tool.mypy.overrides]]`); none of them declares dependencies.
+    var array_table = false;
     var i: usize = 0;
     while (i < ts.len) {
         if (ts[i].kind == .newline) {
@@ -165,13 +168,18 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
             continue;
         }
         if (ts[i].is("[")) {
+            array_table = i + 1 < ts.len and ts[i + 1].is("[") and ts[i + 1].offset == ts[i].end;
             var header: std.ArrayList(u8) = .empty;
-            i += 1;
+            i += if (array_table) 2 else 1;
             while (i < ts.len and !ts[i].is("]")) : (i += 1) {
                 if (ts[i].kind == .newline) return error.InvalidManifest;
                 try header.appendSlice(a, ts[i].text);
             }
             if (i == ts.len) return error.InvalidManifest;
+            if (array_table) {
+                if (i + 1 == ts.len or !ts[i + 1].is("]") or ts[i + 1].offset != ts[i].end) return error.InvalidManifest;
+                i += 1;
+            }
             group = try header.toOwnedSlice(a);
             i += 1;
             continue;
@@ -190,51 +198,12 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
         }
         if (depth != 0) return error.InvalidManifest;
         const equal = eq orelse continue;
-        if (equal + 1 >= i) continue;
+        if (equal + 1 >= i or array_table) continue;
         const key = if (equal == start + 1 and ts[start].kind == .string) ts[start].text else std.mem.trim(u8, text[ts[start].offset..ts[equal].offset], " \t");
         const value = ts[equal + 1 .. i];
         if (cargo) {
             const dep_at = dependencyTable(group) orelse continue;
-            const tail = group[dep_at..];
-            const sub = std.mem.findScalar(u8, tail, '.');
-            if (sub) |dot| {
-                const dep_name = tail[dot + 1 ..];
-                var entry: ?*t.Dependency = null;
-                for (out.items) |*item| if (std.mem.eql(u8, item.group, group) and std.mem.eql(u8, item.name, dep_name)) {
-                    entry = item;
-                    break;
-                };
-                if (entry == null) {
-                    try out.append(a, .{ .manifest = path, .name = dep_name, .group = group });
-                    entry = &out.items[out.items.len - 1];
-                }
-                if (value[0].kind == .string) {
-                    if (std.mem.eql(u8, key, "version")) entry.?.requirement = try string(a, text, value[0]);
-                    if (std.mem.eql(u8, key, "path") or std.mem.eql(u8, key, "git")) {
-                        entry.?.source = try string(a, text, value[0]);
-                        entry.?.origin = if (std.mem.eql(u8, key, "path")) .local else .remote;
-                    }
-                } else if (std.mem.eql(u8, key, "workspace") and value[0].is("true")) entry.?.origin = .workspace;
-            } else {
-                var dep: t.Dependency = .{ .manifest = path, .name = key, .group = group };
-                if (value[0].kind == .string) dep.requirement = try string(a, text, value[0]) else if (value[0].is("{")) {
-                    for (value, 0..) |token, j| {
-                        if (j + 2 >= value.len or !value[j + 1].is("=")) continue;
-                        if (value[j + 2].kind == .string) {
-                            const v = try string(a, text, value[j + 2]);
-                            if (token.is("version")) dep.requirement = v;
-                            if (token.is("path") or token.is("git")) {
-                                dep.source = v;
-                                dep.origin = if (token.is("path")) .local else .remote;
-                            }
-                        } else if (token.is("workspace") and value[j + 2].is("true")) {
-                            dep.source = "workspace";
-                            dep.origin = .workspace;
-                        }
-                    }
-                } else return error.InvalidManifest;
-                try out.append(a, dep);
-            }
+            try cargoValue(a, path, text, group, group[dep_at..], key, ts[start..equal], value, out);
         } else if ((std.mem.eql(u8, group, "project") and std.mem.eql(u8, key, "dependencies")) or std.mem.eql(u8, group, "project.optional-dependencies") or std.mem.eql(u8, group, "dependency-groups")) {
             if (!value[0].is("[")) return error.InvalidManifest;
             const label = try std.fmt.allocPrint(a, "{s}.{s}", .{ group, key });
@@ -259,6 +228,68 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
             try out.append(a, dep);
         }
     }
+}
+/// One key under a Cargo dependency table; `tail` is `group` from its
+/// `dependencies` part on.
+fn cargoValue(a: std.mem.Allocator, path: []const u8, text: []const u8, group: []const u8, tail: []const u8, key: []const u8, key_tokens: []const l.Token, value: []const l.Token, out: *std.ArrayList(t.Dependency)) !void {
+    // `[dependencies.name]` names the dependency in its header and
+    // `name.field = value` under `[dependencies]` in the key.
+    var dep_name: ?[]const u8 = if (std.mem.findScalar(u8, tail, '.')) |dot| tail[dot + 1 ..] else null;
+    var field = key;
+    if (dep_name == null) if (try dottedKey(a, text, key_tokens)) |dotted| {
+        dep_name = dotted.name;
+        field = dotted.field;
+    };
+    if (dep_name) |name| {
+        var entry: ?*t.Dependency = null;
+        for (out.items) |*item| if (std.mem.eql(u8, item.group, group) and std.mem.eql(u8, item.name, name)) {
+            entry = item;
+            break;
+        };
+        if (entry == null) {
+            try out.append(a, .{ .manifest = path, .name = name, .group = group });
+            entry = &out.items[out.items.len - 1];
+        }
+        if (value[0].kind == .string) {
+            if (std.mem.eql(u8, field, "version")) entry.?.requirement = try string(a, text, value[0]);
+            if (std.mem.eql(u8, field, "path") or std.mem.eql(u8, field, "git")) {
+                entry.?.source = try string(a, text, value[0]);
+                entry.?.origin = if (std.mem.eql(u8, field, "path")) .local else .remote;
+            }
+        } else if (std.mem.eql(u8, field, "workspace") and value[0].is("true")) {
+            entry.?.source = "workspace";
+            entry.?.origin = .workspace;
+        }
+    } else {
+        var dep: t.Dependency = .{ .manifest = path, .name = key, .group = group };
+        if (value[0].kind == .string) dep.requirement = try string(a, text, value[0]) else if (value[0].is("{")) {
+            for (value, 0..) |token, j| {
+                if (j + 2 >= value.len or !value[j + 1].is("=")) continue;
+                if (value[j + 2].kind == .string) {
+                    const v = try string(a, text, value[j + 2]);
+                    if (token.is("version")) dep.requirement = v;
+                    if (token.is("path") or token.is("git")) {
+                        dep.source = v;
+                        dep.origin = if (token.is("path")) .local else .remote;
+                    }
+                } else if (token.is("workspace") and value[j + 2].is("true")) {
+                    dep.source = "workspace";
+                    dep.origin = .workspace;
+                }
+            }
+        } else return error.InvalidManifest;
+        try out.append(a, dep);
+    }
+}
+/// A dotted key's first part and the rest, or null for a key without a dot.
+fn dottedKey(a: std.mem.Allocator, text: []const u8, key: []const l.Token) !?struct { name: []const u8, field: []const u8 } {
+    for (key, 0..) |token, d| {
+        if (!token.is(".")) continue;
+        if (d == 0 or d + 1 == key.len) return error.InvalidManifest;
+        const name = if (d == 1 and key[0].kind == .string) try string(a, text, key[0]) else std.mem.trim(u8, text[key[0].offset..token.offset], " \t");
+        return .{ .name = name, .field = std.mem.trim(u8, text[token.end..key[key.len - 1].end], " \t") };
+    }
+    return null;
 }
 fn dependencyTable(group: []const u8) ?usize {
     var start: usize = 0;
