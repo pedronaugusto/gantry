@@ -288,3 +288,16 @@ test "lexing returns only its tokens to a caller's allocator" {
     const tokens = try lexer_module.lex(.javascript, std.testing.allocator, "if (f(`a${ g({}) }`)) /x/.test(y);");
     std.testing.allocator.free(tokens);
 }
+test "an unclosed quote ends at its line where literals cannot span lines" {
+    try check(.javascript, "const A = () => <p>Don't</p>;\nconst B = lazy(() => import('./B.jsx'));\n", &.{"./B.jsx"});
+    try check(.c, "#include \"b.h\"\n#if 0\nthis won't build\n#endif\n#include \"c.h\"\n", &.{ "b.h", "c.h" });
+    try check(.c, "#include \"b.h\"\n#error \"it's broken\n#include \"c.h\"\n", &.{ "b.h", "c.h" });
+    try check(.zig, "const c = 'x;\nconst d = @import(\"d.zig\");\n", &.{"d.zig"});
+    try check(.python, "s = 'it\nimport os\n", &.{"os"});
+    try check(.go, "package a\nvar r = 'x\nimport \"fmt\"\n", &.{"fmt"});
+    // A Rust string and a backquoted Go string do span lines.
+    try check(.rust, "let s = \"a\nmod fake;\n\";\nmod real;\n", &.{"real"});
+    try check(.go, "package a\nvar s = `a\nimport \"fake\"\n`\n", &.{});
+    // A backslash before the newline continues the literal.
+    try check(.c, "const char *s = \"a\\\n#include \\\"fake.h\\\"\";\n#include \"real.h\"\n", &.{"real.h"});
+}

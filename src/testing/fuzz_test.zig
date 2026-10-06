@@ -250,6 +250,7 @@ test "fuzz: C source" {
         "#include \"f0.h\"\n/* comment */\nconst char *s = \"#include fake\";\n",
         "#include <sys/types.h>\n#define X \\\n  1\nconst char *r = R\"x(a\"b)x\"; char c = '\\033'; const char *e = \"\\e[\\x1b]\";",
         "#if 0\n#include \"g.h\"\n#endif\n// line\n#include",
+        "#if 0\nthis won't build\n#endif\n#include \"c.h\"\n",
     });
 }
 test "fuzz: JavaScript and TypeScript source" {
@@ -257,6 +258,7 @@ test "fuzz: JavaScript and TypeScript source" {
         "import './f0';\nconst dep = import('./f0');\n// comment\nconst text = `import './fake'`;\n",
         "const r = /a\\/b[/]/g; const t = `x ${ `y ${\"z\"}` } w`; require('./x'); export * from \"./y\";",
         "import type { A } from './a'; const s = '\\u{1b}[' + \"\\x1b]\"; label: { break label; }",
+        "const A = () => <p>Don't</p>;\nconst B = lazy(() => import('./B.jsx'));\n",
     });
 }
 test "fuzz: Python source" {

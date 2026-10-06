@@ -515,6 +515,10 @@ fn literal(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, start:
             }
         }
         const triple = lang == .python and i + 2 < text.len and text[i + 1] == c and text[i + 2] == c;
+        // Only these literals run across lines. Any other quote left open
+        // at a newline (an apostrophe in JSX text or `#if 0` prose) ends
+        // there, so the rest of the file is still read as code.
+        const multiline = triple or c == '`' or (lang == .rust and c == '"');
         const width: usize = if (triple) 3 else 1;
         i += width;
         const content = i;
@@ -523,12 +527,13 @@ fn literal(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, start:
                 i = @min(i + 2, text.len);
                 continue;
             }
+            if (!multiline and text[i] == '\n') break;
             if (text[i] == c and (!triple or (i + 2 < text.len and text[i + 1] == c and text[i + 2] == c))) break;
             i += 1;
         }
         const end = i;
-        const closed = i < text.len;
-        i = @min(i + width, text.len);
+        const closed = i < text.len and text[i] == c;
+        if (closed) i = @min(i + width, text.len);
         const character = c == '\'' and (lang == .zig or lang == .c or lang == .rust or lang == .java or lang == .kotlin);
         if (closed and !triple and !character and !(lang == .javascript and c == '`')) {
             try out.push(a, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
