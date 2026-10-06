@@ -78,7 +78,7 @@ pub fn evaluate(a: std.mem.Allocator, expression: []const u8, target: Target) !b
         } else {
             const op: Op = if (std.mem.startsWith(u8, expression[i..], "&&")) .both else if (std.mem.startsWith(u8, expression[i..], "||")) .either else return error.InvalidBuildConstraint;
             while (ops.getLastOrNull()) |previous| {
-                if (previous == .open or @intFromEnum(previous) < @intFromEnum(op)) break;
+                if (previous == .open or @backingInt(previous) < @backingInt(op)) break;
                 _ = ops.pop();
                 try apply(&values, previous);
             }

@@ -163,7 +163,7 @@ pub fn coalescePending(a: std.mem.Allocator, paths: []const []const u8, pending:
         fn less(_: void, x: Pending, y: Pending) bool {
             if (x.from != y.from) return x.from < y.from;
             if (x.to != y.to) return x.to < y.to;
-            return @intFromEnum(x.kind) < @intFromEnum(y.kind);
+            return @backingInt(x.kind) < @backingInt(y.kind);
         }
     }.less);
     var n: usize = 0;
@@ -186,10 +186,10 @@ pub fn coalescePending(a: std.mem.Allocator, paths: []const []const u8, pending:
 }
 
 pub fn owner(comptime Owner: type, state: *Storage) Owner {
-    return @enumFromInt(@intFromPtr(state)); // safe: the owning handle preserves the allocated state's address.
+    return @fromBackingInt(@intCast(@intFromPtr(state))); // safe: the owning handle preserves the allocated state's address.
 }
 pub fn get(g: anytype) *Storage {
-    return @ptrFromInt(@intFromEnum(g));
+    return @ptrFromInt(@backingInt(g));
 }
 
 comptime {

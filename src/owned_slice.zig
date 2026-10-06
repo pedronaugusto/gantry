@@ -32,10 +32,10 @@ pub fn Store(comptime T: type) type {
             return state;
         }
         pub fn owner(state: *State) Owner {
-            return @enumFromInt(@intFromPtr(state)); // safe: the owning handle preserves the allocated state's address.
+            return @fromBackingInt(@intCast(@intFromPtr(state))); // safe: the owning handle preserves the allocated state's address.
         }
         fn get(self: Owner) *State {
-            return @ptrFromInt(@intFromEnum(self));
+            return @ptrFromInt(@backingInt(self));
         }
     };
 }

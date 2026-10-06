@@ -206,7 +206,7 @@ pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out:
     var governing: std.HashMapUnmanaged(Key, std.ArrayList([]const u8), struct {
         pub const Self = @This();
         pub fn hash(_: Self, k: Key) u64 {
-            return std.hash.Wyhash.hash(@intFromEnum(k[0]), k[1]);
+            return std.hash.Wyhash.hash(@backingInt(k[0]), k[1]);
         }
         pub fn eql(_: Self, x: Key, y: Key) bool {
             return x[0] == y[0] and std.mem.eql(u8, x[1], y[1]);

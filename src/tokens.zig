@@ -23,7 +23,7 @@ pub const Recorder = struct {
         const done = try w.alloc(bool, files);
         @memset(done, false);
         var r: Recorder = .{ .rules = rules, .strings = strings, .done = done };
-        for (rules) |rule| for (rule.tokens) |token| r.filters[@intFromEnum(rule.kind)].add(token);
+        for (rules) |rule| for (rule.tokens) |token| r.filters[@backingInt(rule.kind)].add(token);
         return r;
     }
     pub fn active(r: *const Recorder) bool {
@@ -82,12 +82,12 @@ const File = struct {
         var kind: t.Token.Kind = undefined;
         var text: []const u8 = undefined;
         if (current.kind == .word) {
-            if (!r.filters[@intFromEnum(t.Token.Kind.identifier)].admits(current.text) or std.ascii.isDigit(current.text[0])) return;
+            if (!r.filters[@backingInt(t.Token.Kind.identifier)].admits(current.text) or std.ascii.isDigit(current.text[0])) return;
             kind = .identifier;
             text = current.text;
         } else {
             kind = if (f.language == .zig and quoted(tokens, i)) .identifier else .string;
-            const filter = &r.filters[@intFromEnum(kind)];
+            const filter = &r.filters[@backingInt(kind)];
             if (filter.empty()) return;
             // Go runes are not strings.
             if (f.language == .go and f.source[current.offset] == '\'') return;

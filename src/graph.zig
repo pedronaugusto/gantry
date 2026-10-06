@@ -76,7 +76,7 @@ pub const Graph = enum(usize) {
     }
     /// Analysis owns its results independently of the graph.
     pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !analysis_module.Analysis {
-        return @enumFromInt(@intFromPtr(try analyze_module.analyze(store.get(g.*), gpa))); // safe: the owning handle retains the newly allocated analysis state until deinit.
+        return @fromBackingInt(@intCast(@intFromPtr(try analyze_module.analyze(store.get(g.*), gpa)))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
     /// Findings borrow graph storage, rule names and required-path strings.
     /// Keep the graph and those caller strings alive until `Findings.deinit`,

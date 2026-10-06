@@ -311,5 +311,5 @@ pub fn edgesLess(_: void, a: Edge, b: Edge) bool {
     if (from != .eq) return from == .lt;
     const to = std.mem.order(u8, a.to, b.to);
     if (to != .eq) return to == .lt;
-    return @intFromEnum(a.kind) < @intFromEnum(b.kind);
+    return @backingInt(a.kind) < @backingInt(b.kind);
 }
