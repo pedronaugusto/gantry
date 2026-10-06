@@ -190,8 +190,9 @@ folder metrics count it. Edges of several kinds between two files are one depend
 
 Rules restrict ordered layers, source/target patterns, raw references, required paths
 and cycles. Exceptions apply to a named restriction. Path patterns use `*` and `?`
-within a component and `**` across components. Every matching restriction reports in
-rule order. These rules operate on the recovered graph.
+within a component; `**` is a whole component that stands for zero or more of them, so
+`a/**` also matches `a`, and `**` inside a component (`a**`) is `*`. A pattern without
+`/` matches the base name. Every matching restriction reports in rule order. These rules operate on the recovered graph.
 
 A `transitive` forbidden rule restricts chains of any length, as import-linter's
 forbidden contracts and dependency-cruiser's `reachable` rules do: each file matching
@@ -291,8 +292,6 @@ every byte outside the unreserved set and `/`.
 <!-- performance: quiet pass -->
 
 ## Testing
-
-Local build scripts clear `.zig-cache/{o,h,z,tmp}` above the measured cap in `ci/cache.sh`; run `sh ci/cache.sh` before direct Zig builds (only a rebuild is lost).
 
 `zig build test` runs the suite and usage example in Debug by default. Fixtures cover
 lexical exclusions, resolvers, manifests, diagnostics, strict imports and rules.

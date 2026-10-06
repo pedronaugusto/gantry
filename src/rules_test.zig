@@ -279,3 +279,13 @@ test "transitive findings agree with an independent nearest-target search" {
         try eq(k, findings.len);
     }
 }
+test "path patterns: ** is a whole component, a/** matches a, a slashless pattern the base name" {
+    const m = g.rules.matches;
+    try std.testing.expect(m("a/**", "a"));
+    try std.testing.expect(m("a/**", "a/b/c"));
+    try std.testing.expect(m("a/**/c", "a/c"));
+    try std.testing.expect(!m("a**/c", "ax/y/c"));
+    try std.testing.expect(m("a**/c", "ax/c"));
+    try std.testing.expect(m("*.zig", "src/x/a.zig"));
+    try std.testing.expect(!m("src/*.zig", "src/x/a.zig"));
+}
