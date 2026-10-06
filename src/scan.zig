@@ -320,7 +320,7 @@ fn readSources(gpa: std.mem.Allocator, a: std.mem.Allocator, g: *Graph, options:
             const specs = recovery.specs;
             for (specs) |spec| {
                 progress.at(.resolution, p);
-                const kind: Kind = if (spec.kind == .@"test" or indexes.test_files.contains(p) or code_kind_module.file(language.?, p)) .@"test" else spec.kind;
+                const kind: Kind = if (spec.kind == .@"test" or testFile(options, indexes.test_files, language.?, p)) .@"test" else spec.kind;
                 const targets = ctx.targets(p, language.?, spec) catch |err| unresolved: {
                     progress.offset = spec.offset;
                     try progress.tolerate(err);
@@ -338,7 +338,7 @@ fn readSources(gpa: std.mem.Allocator, a: std.mem.Allocator, g: *Graph, options:
                     if (children > 0 and !missing) continue;
                 }
                 for (targets) |target| {
-                    const edge_kind: Kind = if (kind == .@"test" or indexes.test_files.contains(target) or code_kind_module.file(language.?, target)) .@"test" else kind;
+                    const edge_kind: Kind = if (kind == .@"test" or (code_kind_module.targetDecides(language.?, spec.form) and testFile(options, indexes.test_files, language.?, target))) .@"test" else kind;
                     if (!enabled(options, edge_kind)) continue;
                     const to = indexes.position.get(target).?;
                     const entry = try seen.getOrPut(s, .{ spec.offset, to });
@@ -361,6 +361,14 @@ fn readSources(gpa: std.mem.Allocator, a: std.mem.Allocator, g: *Graph, options:
         }
         _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
     }
+}
+
+/// A file whose every import is `test`: by its language's convention, Rust
+/// cfg(test) propagation or the caller's `test_paths`.
+fn testFile(options: Options, rust_tests: std.StringHashMapUnmanaged(void), language: Language, file: []const u8) bool {
+    if (rust_tests.contains(file) or code_kind_module.file(language, file)) return true;
+    for (options.test_paths) |pattern| if (check_module.matches(pattern, file)) return true;
+    return false;
 }
 
 /// Publish sorted graph records only after every read succeeds.

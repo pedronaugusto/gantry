@@ -31,6 +31,19 @@ pub fn file(language: t.Language, name: []const u8) bool {
         else => false,
     };
 }
+/// Whether a test file as an import's target makes the edge `test`: only
+/// where the import names more than the file and a non-test build leaves
+/// the test file out. A Go or Java package import expands to the package's
+/// files, and a Rust `mod` of a cfg(test) file is compiled out with it.
+/// Elsewhere an import names one file, and only the importer decides: a
+/// production import of a test file is a production edge.
+pub fn targetDecides(language: t.Language, form: t.Form) bool {
+    return switch (language) {
+        .go, .java => true,
+        .rust => form == .rust_mod,
+        else => false,
+    };
+}
 /// File-module declarations propagate cfg(test) through their descendants.
 pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?t.Recovery, progress: *diagnostic_module.Progress, recorder: *tokens_module.Recorder) !std.StringHashMapUnmanaged(void) {
     progress.at(.rust_tests, null);

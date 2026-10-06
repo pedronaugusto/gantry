@@ -30,6 +30,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/lang/python.zig",
         "src/lang/rust.zig",
         "src/lang/zig.zig",
+        "src/lang/zig/liveness.zig",
         "src/manifests.zig",
         "src/lang/nim/config.zig",
         "src/tokens.zig",
@@ -95,6 +96,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/scan/diagnostic_test.zig",
         "src/tokens_test.zig",
         "src/testing/unsupported_test.zig",
+        "src/lang/zig_test.zig",
     } },
     .{ .name = "tests", .patterns = &.{
         "src/tests.zig",
@@ -136,6 +138,7 @@ pub const required = [_][]const u8{
     "src/lang/python.zig",
     "src/lang/rust.zig",
     "src/lang/zig.zig",
+    "src/lang/zig/liveness.zig",
     "src/manifests.zig",
     "src/manifests/maven.zig",
     "src/lang/nim/config.zig",
@@ -185,5 +188,6 @@ pub const required = [_][]const u8{
     "src/scan/diagnostic_test.zig",
     "src/tokens_test.zig",
     "src/testing/unsupported_test.zig",
+    "src/lang/zig_test.zig",
     "src/tests.zig",
 };

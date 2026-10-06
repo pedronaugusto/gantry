@@ -1,6 +1,7 @@
 const check_module = @import("../rules/check.zig");
 const std = @import("std");
 const l = @import("../lexer.zig");
+const liveness = @import("zig/liveness.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
 /// The token stream recovery reads; `seen` observes it as it grows.
@@ -12,10 +13,14 @@ pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
 }
 pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
+    // The token of each spec, which says whether only tests reach it.
+    var where: std.ArrayList(u32) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     var aliases: std.StringHashMapUnmanaged([]const u8) = .empty;
-    for (ts, 0..) |t, i| {
-        if (!t.is("@") or i + 1 >= ts.len or !ts[i + 1].is("import")) continue;
+    const shape = try liveness.Shape.read(a, ts);
+    for (shape.imports) |index| {
+        const i: usize = index;
+        const t = ts[i];
         if (i + 4 >= ts.len or !ts[i + 2].is("(") or ts[i + 3].kind != .string or !ts[i + 4].is(")")) {
             try unsupported.append(a, .{ .offset = t.offset, .expression = .zig_import });
             continue;
@@ -24,8 +29,11 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
         const plain = std.mem.indexOfAny(u8, ts[i + 3].text, "\\\n") == null;
         const name = if (plain) ts[i + 3].text else try std.zig.string_literal.parseAlloc(a, source[ts[i + 3].offset..ts[i + 3].end]);
         try out.append(a, .{ .name = name, .offset = t.offset });
-        if (i + 6 < ts.len and ts[i + 5].is(".") and ts[i + 6].kind == .word)
+        try where.append(a, index);
+        if (i + 6 < ts.len and ts[i + 5].is(".") and ts[i + 6].kind == .word) {
             try out.append(a, .{ .name = name, .member = ts[i + 6].text, .offset = t.offset });
+            try where.append(a, index);
+        }
         // const/var alias [: type] = @import(...); as used by layering checks.
         // The `;` comes first: it bounds the walk back to the declaration.
         if (i > 0 and ts[i - 1].is("=") and i + 5 < ts.len and ts[i + 5].is(";")) {
@@ -35,11 +43,20 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
                 try aliases.put(a, ts[j + 1].text, name);
         }
     }
-    if (aliases.count() > 0) for (ts, 0..) |t, i| {
-        if (t.kind != .word or i + 2 >= ts.len or !ts[i + 1].is(".") or ts[i + 2].kind != .word) continue;
+    // One pass over the words: references between declarations, and the
+    // members an alias reaches.
+    var words = if (out.items.len > 0) try liveness.Words.init(a, ts, shape) else null;
+    if (words != null or aliases.count() > 0) for (ts, 0..) |t, i| {
+        if (t.kind != .word) continue;
+        if (words) |*w| try w.see(i);
+        if (i + 2 >= ts.len or !ts[i + 1].is(".") or ts[i + 2].kind != .word) continue;
         if (i > 0 and ts[i - 1].is(".")) continue;
-        if (aliases.get(t.text)) |name| try out.append(a, .{ .name = name, .member = ts[i + 2].text, .offset = t.offset });
+        if (aliases.get(t.text)) |name| {
+            try out.append(a, .{ .name = name, .member = ts[i + 2].text, .offset = t.offset });
+            try where.append(a, @intCast(i));
+        }
     };
+    if (words) |*w| try w.classify(out.items, where.items);
     return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
 }
 

@@ -149,7 +149,23 @@ under `if TYPE_CHECKING:` (or `if name.TYPE_CHECKING:`), nested blocks included,
 `else` branch runs and stays `import` (Grimp drops it too).
 `importlib.import_module` and `__import__` with literal names give `dynamic` edges, a
 relative name resolving against `import_module`'s literal package; other arguments are
-unsupported. A test file's import is a `test` edge whatever its form. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and one-line wiki links while
+unsupported. A test file's import is a `test` edge whatever its form. A test file is one
+by its language's convention (Go `_test.go`; Python `test_*.py` and `*_test.py`; JS/TS
+`*.test.*`, `*.spec.*` and `__tests__/`; Nim's `tests/` layout; Java test source sets;
+Rust modules under `cfg(test)`) or one `Options.test_paths` names, in the pattern dialect
+of layer rules. Zig has no convention, so its callers name theirs (`src/testing/**`).
+
+In Zig an import is also `test` inside a `test` declaration, in the taken branch of
+`if (builtin.is_test)`, and in a container-level declaration only tests reach. Zig
+analyses lazily from `pub`, `export` and `comptime` declarations, fields and `main`, and
+forbids a local that shadows a container-level name, so a name in code is that
+declaration; `x.name(` and `Self.name` (with `Self = @This()`) count too. An import nothing
+reaches stays `import`.
+
+An edge's kind follows its importer, so a production file that imports a test file gives
+an `import` edge a rule can forbid. The target decides too only where an import names more
+than the file: a Go or Java package import, whose test files a non-test build leaves out,
+and a Rust `mod` of a `cfg(test)` file. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and one-line wiki links while
 excluding fenced code and comments. Asset recovery matches path tokens in supported text
 files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
 `go.mod`, `pyproject.toml`, `pom.xml`, `build.gradle`, `build.gradle.kts`

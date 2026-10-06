@@ -26,6 +26,10 @@ pub const Options = struct {
     go_target: ?GoTarget = null,
     python_initializers: PythonInitializers = .ancestors,
     python_star_reexports: bool = true,
+    /// Path patterns (as layer patterns read them) of test files beyond each
+    /// language's own conventions: every import of a matching file is `test`.
+    /// Zig has no convention, so its callers name theirs (`src/testing/**`).
+    test_paths: []const []const u8 = &.{},
     /// Record the identifiers and string values these rules name, from
     /// source files in a supported language, for `graph.tokens()` and the
     /// same rules in `rules.Rules.tokens`. Only `kind` and `token` are read.

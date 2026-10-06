@@ -388,3 +388,44 @@ test "fuzz: package names in import spellings" {
     };
     try testing.fuzz({}, Property.one, .{ .corpus = seeds(&.{ "@scope/pkg/sub", "node:fs", "requests.adapters.X", "::serde::de", "github.com/x/y/v2/pkg", "pkg/foo/bar", "com.google.common.collect.List", "" }) });
 }
+
+test "fuzz: Zig test context changes kinds only" {
+    const Property = struct {
+        fn one(_: void, smith: *testing.Smith) anyerror!void {
+            var buffer: [most]u8 = undefined;
+            const one_file: One = .{ .path = "src/a.zig", .text = bytesOf(smith, &buffer) };
+            const paths: []const []const u8 = &.{ "src/a.zig", "src/b.zig", "src/c.zig" };
+            var classified = try scanOnce(paths, one_file, .{ .manifests = false });
+            defer classified.deinit();
+            // Every import a test import: the pairs recovery gives unclassified.
+            var plain = try scanOnce(paths, one_file, .{ .manifests = false, .test_paths = &.{"**"} });
+            defer plain.deinit();
+            try testing.expectEqual(plain.references().len, classified.references().len);
+            for (plain.references(), classified.references()) |x, y| {
+                try testing.expectEqualStrings(x.name, y.name);
+                try testing.expectEqual(x.offset, y.offset);
+                try testing.expectEqualStrings(x.member orelse "", y.member orelse "");
+                try testing.expectEqual(x.resolved, y.resolved);
+                try testing.expect(x.kind == .@"test" and (y.kind == .import or y.kind == .@"test"));
+            }
+            // Coalesced by kind, so one plain edge is up to two classified ones.
+            var total: usize = 0;
+            for (classified.edges()) |e| {
+                total += e.count;
+                var found = false;
+                for (plain.edges()) |p| found = found or (std.mem.eql(u8, p.from, e.from) and std.mem.eql(u8, p.to, e.to));
+                try testing.expect(found);
+            }
+            for (plain.edges()) |p| {
+                try testing.expectEqual(g.Kind.@"test", p.kind);
+                total -= p.count;
+            }
+            try testing.expectEqual(0, total);
+        }
+    };
+    try testing.fuzz({}, Property.one, .{ .corpus = seeds(&.{
+        "const b = @import(\"b.zig\");\npub fn run() void { b.go(); }\ntest { _ = @import(\"c.zig\"); }\n",
+        "const builtin = @import(\"builtin\");\nconst c = @import(\"c.zig\");\nfn helper() void { _ = c; }\npub const T = if (builtin.is_test) @import(\"b.zig\") else struct {};\ntest { helper(); }\n",
+        "const Self = @This();\nconst b = @import(\"b.zig\");\nx: u8,\npub fn f(s: Self) void { s.g(); }\nfn g(_: Self) void { _ = b; }\ntest \"g\" { _ = @import(\"b.zig\").T; }\n",
+    }) });
+}

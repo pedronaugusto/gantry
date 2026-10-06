@@ -49,7 +49,9 @@ test "Rust cfg test items inline modules and file modules propagate test kind" {
     try f.edge(&graph, "src/lib.rs", "src/tests.rs", .@"test", 1);
     try f.edge(&graph, "src/fixture.rs", "src/fixture/child.rs", .@"test", 1);
     try f.edge(&graph, "src/fixture/child.rs", "src/util.rs", .@"test", 1);
-    try f.edge(&graph, "src/util.rs", "src/fixture.rs", .@"test", 2);
+    // The `use` outside cfg(test) is a production import of test code.
+    try f.edge(&graph, "src/util.rs", "src/fixture.rs", .@"test", 1);
+    try f.edge(&graph, "src/util.rs", "src/fixture.rs", .import, 1);
 }
 
 test "Rust inner cfg test marks the file including incoming edges" {
@@ -162,4 +164,53 @@ test "a test file's type-only import is a test edge" {
     defer graph.deinit();
     try f.edge(&graph, "app.spec.ts", "a.ts", .@"test", 1);
     try f.edge(&graph, "app.spec.ts", "b.ts", .@"test", 1);
+}
+
+test "test_paths make every import of a matching file test" {
+    const fixture: f.Fixture = .{ .items = &.{
+        .{ .path = "src/app.zig", .text = "pub const util = @import(\"util.zig\");" },
+        .{ .path = "src/util.zig" },
+        .{ .path = "src/testing/support.zig", .text = "pub const app = @import(\"../app.zig\");" },
+        .{ .path = "src/testing/deep/corpus.zig", .text = "pub const util = @import(\"../../util.zig\");" },
+    } };
+    var graph = try fixture.scan(a, .{ .test_paths = &.{"src/testing/**"} });
+    defer graph.deinit();
+    try f.edge(&graph, "src/app.zig", "src/util.zig", .import, 1);
+    try f.edge(&graph, "src/testing/support.zig", "src/app.zig", .@"test", 1);
+    try f.edge(&graph, "src/testing/deep/corpus.zig", "src/util.zig", .@"test", 1);
+    var plain = try fixture.scan(a, .{});
+    defer plain.deinit();
+    try f.edge(&plain, "src/testing/support.zig", "src/app.zig", .import, 1);
+}
+
+test "a production import of a test file is a production edge where an import names one file" {
+    const fixture: f.Fixture = .{ .items = &.{
+        .{ .path = "src/app.zig", .text = "pub const support = @import(\"testing/support.zig\");" },
+        .{ .path = "src/testing/support.zig" },
+        .{ .path = "app.py", .text = "import test_util" },
+        .{ .path = "test_util.py" },
+        .{ .path = "app.ts", .text = "import './util.test';" },
+        .{ .path = "util.test.ts" },
+    } };
+    var graph = try fixture.scan(a, .{ .test_paths = &.{"src/testing/**"} });
+    defer graph.deinit();
+    try f.edge(&graph, "src/app.zig", "src/testing/support.zig", .import, 1);
+    try f.edge(&graph, "app.py", "test_util.py", .import, 1);
+    try f.edge(&graph, "app.ts", "util.test.ts", .import, 1);
+    // So a rule can name production code reaching tests.
+    var findings = try graph.check(a, .{ .forbidden = &.{.{ .name = "production reaches tests", .to = "src/testing/**", .kind = .import }} });
+    defer findings.deinit();
+    try std.testing.expectEqual(1, findings.items().len);
+}
+
+test "Zig test context gives test edges in a scan" {
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "src/app.zig", .text = "const corpus = @import(\"testing/corpus.zig\");\npub fn run() void {}\ntest { _ = corpus; _ = @import(\"util.zig\"); }" },
+        .{ .path = "src/testing/corpus.zig" },
+        .{ .path = "src/util.zig" },
+    } }).scan(a, .{});
+    defer graph.deinit();
+    try f.edge(&graph, "src/app.zig", "src/testing/corpus.zig", .@"test", 1);
+    try f.edge(&graph, "src/app.zig", "src/util.zig", .@"test", 1);
+    try std.testing.expectEqual(2, graph.edges().len);
 }

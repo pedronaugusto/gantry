@@ -10,7 +10,8 @@ pub const Kind = enum {
     link,
     /// A path a text file names.
     asset,
-    /// An import in or of a test file.
+    /// An import in a test file or in code only a test build compiles, or
+    /// one a package import makes of a test file (Go, Java, a Rust `mod`).
     @"test",
     /// An import for types alone: a TypeScript `import type`, `export
     /// type`, braces whose every name is marked `type`, `typeof import("x")`

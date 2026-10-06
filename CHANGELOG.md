@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `Options.test_paths`: path patterns, in the layer-rule dialect, of files whose every import is `test`, beside each language's own test-file conventions. Zig has none, so its callers name theirs.
+
 - A selected file whose bytes are not valid for its format no longer aborts the scan: it is a record in `Graph.invalid()` (`InvalidFile`: path, phase, offset, `FileError` cause) and gives the scan nothing from that phase. A Go file with a bad `//go:build` line is in no package, as `go/build` leaves it; a broken or cyclic JS/TS config is as if absent and its children keep their own options. `scan` fails only with `ScanError` (`InvalidPath`, `UnsupportedImport`, `CountOverflow`, `OutOfMemory`) or the reader's errors, and its return type says so.
 
 - Named error sets: `ScanError`, `FileError`, `ReadError(read)`, `manifests.Error` and `manifests.ReadError`, `rules.CheckError`, `report.Error`, `path.Error`; `DirReader.read` returns `std.Io.Dir.ReadFileAllocError`; `imports` returns `InvalidEscape`, `InvalidLiteral` or `OutOfMemory`. `manifests.readSupported` reads a path `supported` takes. `Violation.reason` is the named `Violation.Reason`.
@@ -112,6 +114,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Check named source layers, cycles, entry files and dependency owners during source CI.
 
 - Bound local Zig build caches before builds, retaining downloaded packages and tools.
+
+### Breaking
+
+- Zig imports a test build alone sees are `test` edges: inside a `test` declaration, in the taken branch of `if (builtin.is_test)`, and in a container-level declaration only tests reach. They were `import` edges, so layer and cycle rules over `import` edges no longer see them. An import nothing reaches stays `import`.
+
+- An edge's kind follows its importer. A production file importing a test file gives an `import` edge in Zig, Python, JavaScript/TypeScript, Nim, C and through a Rust `use`; it was a `test` edge, which hid exactly what a rule against production code reaching tests has to catch. The target still makes the edge `test` where an import names more than the file: a Go or Java package import and a Rust `mod` of a `cfg(test)` file.
 
 ### Changed
 
