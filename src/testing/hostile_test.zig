@@ -15,6 +15,7 @@ const cases = [_]Case{
     .{ .path = "a.c", .unit = "R\"" },
     .{ .path = "a.c", .unit = "#include \"" },
     .{ .path = "a.zig", .unit = "@import(" },
+    .{ .path = "a.zig", .unit = "x = @import(\"y\") " },
     .{ .path = "a.ts", .unit = "import(" },
     .{ .path = "a.ts", .unit = "require(" },
     .{ .path = "a.ts", .unit = "import {" },

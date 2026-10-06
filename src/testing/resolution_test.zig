@@ -354,3 +354,12 @@ test "Rust 2018 use paths name the current module's own modules first, as rustc 
     // The declaration's own edge stays; the conflicting use adds none.
     try f.edge(&graph, "conflict/src/lib.rs", "conflict/src/util.rs", .import, 1);
 }
+test "Zig imports a .zon file beside the importer" {
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "src/a.zig", .text = "const d = @import(\"data.zon\"); const m = @import(\"data\");" },
+        .{ .path = "src/data.zon", .text = ".{}" },
+    } }).scan(a, .{});
+    defer graph.deinit();
+    try std.testing.expectEqual(1, graph.edges().len);
+    try f.edge(&graph, "src/a.zig", "src/data.zon", .import, 1);
+}

@@ -27,10 +27,11 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
         if (i + 6 < ts.len and ts[i + 5].is(".") and ts[i + 6].kind == .word)
             try out.append(a, .{ .name = name, .member = ts[i + 6].text, .offset = t.offset });
         // const/var alias [: type] = @import(...); as used by layering checks.
-        if (i > 0 and ts[i - 1].is("=")) {
+        // The `;` comes first: it bounds the walk back to the declaration.
+        if (i > 0 and ts[i - 1].is("=") and i + 5 < ts.len and ts[i + 5].is(";")) {
             var j = i - 1;
             while (j > 0 and !ts[j - 1].is(";") and !ts[j - 1].is("{") and !ts[j - 1].is("}")) : (j -= 1) {}
-            if (j + 1 < i and (ts[j].is("const") or ts[j].is("var")) and ts[j + 1].kind == .word and i + 5 < ts.len and ts[i + 5].is(";"))
+            if (j + 1 < i and (ts[j].is("const") or ts[j].is("var")) and ts[j + 1].kind == .word)
                 try aliases.put(a, ts[j + 1].text, name);
         }
     }
@@ -48,7 +49,8 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     const a = c.allocator;
     const dir = p.dir(from);
     const name = spec.name;
-    if (std.mem.endsWith(u8, name, ".zig")) {
+    // A `.zig` or `.zon` name is a file beside the importer; any other a module.
+    if (std.mem.endsWith(u8, name, ".zig") or std.mem.endsWith(u8, name, ".zon")) {
         if (try c.candidate(dir, name, &.{""})) |v| try out.append(a, v);
     } else for (c.named_modules) |m| {
         if (std.mem.eql(u8, name, m.name) and check_module.matches(m.from, from)) {
