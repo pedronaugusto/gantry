@@ -59,17 +59,23 @@ pub const ReferenceRule = struct {
     except_from: []const []const u8 = &.{},
 };
 pub const Required = struct { name: []const u8, paths: []const []const u8 };
-/// A token only its owners may spell: an identifier, or the value of a
-/// string literal after its escapes. Comments and character literals never
-/// match. `token` is exact, or a pattern where `*` matches any run of bytes
-/// and `?` one byte. A scan records occurrences only for the rules passed
-/// in `Options.tokens`.
+/// Tokens only their owners may spell: identifiers, or the values of
+/// string literals after their escapes. Comments and character literals
+/// never match. Each of `tokens` is exact, or a pattern where `*` matches
+/// any run of bytes and `?` one byte. A scan records occurrences only for
+/// the rules passed in `Options.tokens`.
 pub const TokenRule = struct {
     name: []const u8,
     kind: t.Token.Kind = .identifier,
-    token: []const u8,
-    /// Path patterns, as layers use them, of the files that may spell it.
+    tokens: []const []const u8,
+    /// Path patterns, as layers use them, of the files that may spell them.
     owners: []const []const u8 = &.{},
+
+    /// Whether one of `tokens` matches `text`.
+    pub fn names(r: TokenRule, text: []const u8) bool {
+        for (r.tokens) |token| if (matchesToken(token, text)) return true;
+        return false;
+    }
 };
 /// Imports joined to the manifests that govern them: for a source file,
 /// the manifests of its ecosystem in the nearest directory at or above it
@@ -246,7 +252,7 @@ pub fn check(comptime dependencies: type, a: std.mem.Allocator, g: anytype, rule
         if (!except) try out.items.append(out.a, .{ .rule = r.name, .reason = .reference, .reference = ref });
     };
     for (rules.tokens) |r| for (g.tokens()) |*token| {
-        if (token.kind != r.kind or !matchesToken(r.token, token.text)) continue;
+        if (token.kind != r.kind or !r.names(token.text)) continue;
         for (r.owners) |owner| {
             if (matches(owner, token.path)) break;
         } else try out.items.append(out.a, .{ .rule = r.name, .reason = .token, .token = token });

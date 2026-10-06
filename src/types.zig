@@ -34,8 +34,19 @@ pub const Form = enum {
     rust_crate,
 };
 /// Raw references borrow the source or the allocator passed to the lexer.
-pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false };
-pub const Reference = struct { from: []const u8, name: []const u8, offset: usize, member: ?[]const u8 = null, resolved: bool = false, kind: Kind = .import };
+/// `dead` as on `Reference`.
+pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false, dead: bool = false };
+pub const Reference = struct {
+    from: []const u8,
+    name: []const u8,
+    offset: usize,
+    member: ?[]const u8 = null,
+    resolved: bool = false,
+    kind: Kind = .import,
+    /// In code no build analyses: a Zig container-level declaration that
+    /// nothing reaches, neither a root nor a test.
+    dead: bool = false,
+};
 /// An identifier or string literal in a source file that a token rule names.
 pub const Token = struct {
     pub const Kind = enum { identifier, string };

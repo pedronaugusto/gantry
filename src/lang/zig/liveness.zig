@@ -21,7 +21,8 @@ pub const Shape = struct {
     partner: []const u32,
     /// Disjoint and in order: `test` bodies at any depth, and the
     /// then-branches of `if (builtin.is_test)`, `if (comptime
-    /// builtin.is_test)` and `if (@import("builtin").is_test)`.
+    /// builtin.is_test)` and `if (@import("builtin").is_test)`, where
+    /// `builtin` is any container-level `const` bound to `@import("builtin")`.
     tests: []const Range,
 
     pub fn read(a: std.mem.Allocator, ts: []const Token) !Shape {
@@ -29,6 +30,7 @@ pub const Shape = struct {
         var open: std.ArrayList(u32) = .empty;
         var imports: std.ArrayList(u32) = .empty;
         var marks: std.ArrayList(u32) = .empty;
+        var builtins: std.ArrayList([]const u8) = .empty;
         for (ts, 0..) |t, i| switch (t.kind) {
             .punctuation => switch (t.text[0]) {
                 '(', '[', '{' => try open.append(a, @intCast(i)),
@@ -37,7 +39,11 @@ pub const Shape = struct {
                     partner[o] = @intCast(i);
                     partner[i] = o;
                 },
-                '@' => if (i + 1 < ts.len and ts[i + 1].is("import")) try imports.append(a, @intCast(i)),
+                '@' => if (i + 1 < ts.len and ts[i + 1].is("import")) {
+                    try imports.append(a, @intCast(i));
+                    if (open.items.len == 0 and i >= 3 and ts[i - 3].is("const") and ts[i - 2].kind == .word and ts[i - 1].is("=") and builtinImport(ts, i))
+                        try builtins.append(a, ts[i - 2].text);
+                },
                 else => {},
             },
             .word => if (t.text.len == 4 or t.text.len == 7) if (t.is("test") or t.is("is_test")) try marks.append(a, @intCast(i)),
@@ -48,7 +54,7 @@ pub const Shape = struct {
         // the ranges come in order of their first token.
         var tests: std.ArrayList(Range) = .empty;
         for (marks.items) |i| {
-            const range: Range = if (testDecl(ts, i)) |brace| .{ .first = i, .last = partner[brace] } else if (isTestCondition(ts, i)) then: {
+            const range: Range = if (testDecl(ts, i)) |brace| .{ .first = i, .last = partner[brace] } else if (isTestCondition(ts, i, builtins.items)) then: {
                 const first = i + 2;
                 if (first >= ts.len) continue;
                 const last = if (ts[first].is("{")) partner[first] else expressionEnd(ts, partner, first) orelse continue;
@@ -78,13 +84,23 @@ fn testDecl(ts: []const Token, i: usize) ?usize {
     return null;
 }
 
-fn isTestCondition(ts: []const Token, i: usize) bool {
+/// `@import("builtin")` from the `@` at `i`.
+fn builtinImport(ts: []const Token, i: usize) bool {
+    return i + 4 < ts.len and ts[i + 2].is("(") and ts[i + 3].kind == .string and std.mem.eql(u8, ts[i + 3].text, "builtin") and ts[i + 4].is(")");
+}
+/// `is_test` at `i` closes `if (B.is_test)` or `if (comptime B.is_test)`,
+/// where `B` is `@import("builtin")` or one of `builtins`, the names bound
+/// to it. Another value's `is_test` is no evidence of a test build.
+fn isTestCondition(ts: []const Token, i: usize, builtins: []const []const u8) bool {
     if (!ts[i].is("is_test") or i < 3 or i + 1 >= ts.len or !ts[i + 1].is(")") or !ts[i - 1].is(".")) return false;
     var k = i - 2;
     if (ts[k].kind == .word) {
+        for (builtins) |name| {
+            if (std.mem.eql(u8, name, ts[k].text)) break;
+        } else return false;
         if (k == 0) return false;
         k -= 1;
-    } else if (k >= 4 and ts[k].is(")") and ts[k - 1].kind == .string and std.mem.eql(u8, ts[k - 1].text, "builtin") and ts[k - 2].is("(") and ts[k - 3].is("import") and ts[k - 4].is("@")) {
+    } else if (k >= 4 and ts[k].is(")") and builtinImport(ts, k - 4)) {
         if (k < 5) return false;
         k -= 5;
     } else return false;
@@ -240,11 +256,14 @@ const Names = struct {
 };
 
 /// References between container-level members, gathered as recovery walks
-/// a file's words. Live from the roots (`pub`, `export`, `comptime`, fields,
-/// `main`), else test-only from `test` declarations and references in test
-/// context. References are names outside field position, `x.name(` calls
-/// and `Self.name` where `Self` is `@This()`: Zig forbids a local that
-/// shadows a container-level name, so a matching name is that declaration.
+/// a file's words and strings. Live from the roots (`pub`, `export`,
+/// `comptime`, fields, `main`), else test-only from `test` declarations and
+/// references in test context, else dead. References are names outside
+/// field position, `x.name(` calls, `Self.name` where `Self` is `@This()`,
+/// decl and enum literals (`.name` that follows no operand and initialises
+/// no field) and `@field(Self, "name")`: Zig forbids a local that shadows a
+/// container-level name, so a matching name is that declaration. A doubtful
+/// case is a reference, so it errs towards live.
 pub const Words = struct {
     const Ref = struct { from: u32, to: u32 };
     a: std.mem.Allocator,
@@ -262,10 +281,7 @@ pub const Words = struct {
     at: usize = 0,
     in: usize = 0,
 
-    /// Null when nothing in the file is test context, so every spec keeps
-    /// the kind it was recovered with.
-    pub fn init(a: std.mem.Allocator, ts: []const Token, shape: Shape) !?Words {
-        if (shape.tests.len == 0) return null;
+    pub fn init(a: std.mem.Allocator, ts: []const Token, shape: Shape) !Words {
         const members = try rootMembers(a, ts, shape.partner);
         const named_by = try a.alloc(u32, members.len);
         @memset(named_by, Names.none);
@@ -273,7 +289,7 @@ pub const Words = struct {
         @memset(seeded, false);
         return .{ .a = a, .ts = ts, .tests = shape.tests, .members = members, .names = try .init(a, members), .named_by = named_by, .seeded = seeded };
     }
-    /// Each word of the stream, in order.
+    /// Each word and string of the stream, in order.
     pub fn see(self: *Words, i: usize) !void {
         const target = self.names.find(self.ts[i].text) orelse return;
         if (!reference(self.ts, i, self.names)) return;
@@ -288,14 +304,16 @@ pub const Words = struct {
         }
     }
     /// After every word: marks `test` each spec whose token only a test
-    /// build analyses. An import that nothing reaches keeps its kind, since
-    /// dead code is no evidence of a test. `where` holds the index in the
-    /// stream of each spec's token.
+    /// build analyses, and `dead` each one no build analyses. A dead import
+    /// keeps its kind, since dead code is no evidence of a test. `where`
+    /// holds the index in the stream of each spec's token.
     pub fn classify(self: *Words, specs: []types.Spec, where: []const u32) !void {
         std.debug.assert(specs.len == where.len);
         const reach = try self.reachable();
         for (specs, where) |*spec, at| {
-            if (spec.kind == .import and (rangeAt(self.tests, at) or reach[memberAt(self.members, at)] == .test_only)) spec.kind = .@"test";
+            const member = reach[memberAt(self.members, at)];
+            spec.dead = member == .dead;
+            if (spec.kind == .import and (rangeAt(self.tests, at) or member == .test_only)) spec.kind = .@"test";
         }
     }
     fn reachable(self: *Words) ![]const Reach {
@@ -328,23 +346,53 @@ pub const Words = struct {
     }
 };
 fn reference(ts: []const Token, i: usize, names: Names) bool {
+    if (ts[i].kind == .string) return i >= 2 and ts[i - 1].is(",") and i + 1 < ts.len and ts[i + 1].is(")") and fieldOfThis(ts, i - 2, names);
     const next_colon = i + 1 < ts.len and ts[i + 1].is(":");
     if (i == 0) return !next_colon;
     const prev = ts[i - 1];
-    // `.name` is a member of something else unless called, or of `@This()`;
-    // `..name` is a range bound.
+    // `.name` after an operand is a member of something else unless called,
+    // or of `@This()`; `..name` is a range bound.
     if (prev.is(".") and !(i >= 2 and ts[i - 2].is("."))) {
         if (i + 1 < ts.len and ts[i + 1].is("(")) return true;
-        if (i < 2) return false;
-        const owner = ts[i - 2];
-        if (owner.kind == .word) {
-            for (names.this) |name| if (std.mem.eql(u8, name, owner.text)) return true;
-            return false;
-        }
-        return owner.is(")") and i >= 5 and ts[i - 3].is("(") and ts[i - 4].is("This") and ts[i - 5].is("@");
+        if (i < 2) return true;
+        if (operand(ts, i - 2)) return containerThis(ts, i - 2, names);
+        // A decl or enum literal, unless it names a field it initialises:
+        // `.{ .name = x }`.
+        const field = (ts[i - 2].is("{") or ts[i - 2].is(",")) and i + 2 < ts.len and ts[i + 1].is("=") and !(ts[i + 2].is("=") or ts[i + 2].is(">"));
+        return !field;
     }
+    // The label of `break :name` or `continue :name`.
+    if (prev.is(":") and i >= 2 and (ts[i - 2].is("break") or ts[i - 2].is("continue"))) return false;
     // A field, parameter or label name, but not a sentinel `[n:0]` or `[a..n :0]`.
     return !next_colon or prev.is("[") or prev.is(".");
+}
+
+/// Whether the expression ending at `k` is `@This()` or a name bound to it.
+fn containerThis(ts: []const Token, k: usize, names: Names) bool {
+    const owner = ts[k];
+    if (owner.kind == .word) {
+        for (names.this) |name| if (std.mem.eql(u8, name, owner.text)) return true;
+        return false;
+    }
+    return owner.is(")") and k >= 3 and ts[k - 1].is("(") and ts[k - 2].is("This") and ts[k - 3].is("@");
+}
+/// `@field(T, ` before the `,` that follows `k`, with `T` the container.
+fn fieldOfThis(ts: []const Token, k: usize, names: Names) bool {
+    if (!containerThis(ts, k, names)) return false;
+    const open = if (ts[k].kind == .word) k -| 1 else k -| 4;
+    return open >= 2 and ts[open].is("(") and ts[open - 1].is("field") and ts[open - 2].is("@");
+}
+/// Whether token `k` ends an operand, so a `.name` after it is a member:
+/// a name that is no keyword (`error` is one), a literal, a closer, or the
+/// `?` and `*` of `x.?` and `x.*`. A label (`break :blk .x`) is none.
+fn operand(ts: []const Token, k: usize) bool {
+    const t = ts[k];
+    return switch (t.kind) {
+        .word => (std.zig.Token.getKeyword(t.text) == null or t.is("error")) and !(k >= 2 and ts[k - 1].is(":") and (ts[k - 2].is("break") or ts[k - 2].is("continue"))),
+        .string, .template => true,
+        .punctuation => closer(t) or ((t.is("?") or t.is("*")) and k >= 1 and ts[k - 1].is(".")),
+        .newline => false,
+    };
 }
 
 /// The member holding token `i`; members tile the stream.

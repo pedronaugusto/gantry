@@ -133,7 +133,8 @@ of them. Types of the importer's own package and
 fully qualified names need no import, so they give no edge. Sources are read once for
 their package and imports. `Class.forName` and `loadClass` calls are unsupported.
 
-`graph.references()` keeps import spellings, offsets, kinds and resolution status.
+`graph.references()` keeps import spellings, offsets, kinds and resolution status, and
+marks `dead` a Zig import in code no build analyses (see below).
 Detectable unsupported constructs appear in `graph.unsupported()` without guessed edges.
 `strict_imports` refuses the first such construct with `UnsupportedImport`, even when
 import edges are disabled. An unresolved supported literal is a reference, not an
@@ -159,8 +160,11 @@ In Zig an import is also `test` inside a `test` declaration, in the taken branch
 `if (builtin.is_test)`, and in a container-level declaration only tests reach. Zig
 analyses lazily from `pub`, `export` and `comptime` declarations, fields and `main`, and
 forbids a local that shadows a container-level name, so a name in code is that
-declaration; `x.name(` and `Self.name` (with `Self = @This()`) count too. An import nothing
-reaches stays `import`.
+declaration; `x.name(`, `Self.name` (with `Self = @This()`), decl and enum literals
+(`return .default;`, `x = .empty`, but not a field initialiser `.{ .name = v }`) and
+`@field(Self, "name")` count too, so a doubtful case is live. `is_test` counts on
+`@import("builtin")` or a container-level `const` bound to it, never on another value. An
+import nothing reaches stays `import` and is `dead` on its reference: no build compiles it.
 
 An edge's kind follows its importer, so a production file that imports a test file gives
 an `import` edge a rule can forbid. The target decides too only where an import names more
@@ -246,9 +250,10 @@ that no chain from an entry reaches (`unreached`), as madge's orphans and
 dependency-cruiser's `no-orphans` and `reachable: false` rules do; a file with no edges
 at all is unreached unless it is an entry. `kind` restricts the edges chains follow.
 
-A token rule names an identifier, or a string literal's value after its escapes, that
-only its owners' files may spell: `.{ .name = "console", .token = "CreateFileW", .owners =
-&.{"src/os/**"} }`. `*` in a token matches any bytes and `?` one byte. Pass the same rules
+A token rule names identifiers, or string literals' values after their escapes, that
+only its owners' files may spell: `.{ .name = "console", .tokens = &.{ "CreateFileW",
+"WriteConsoleW" }, .owners = &.{"src/os/**"} }`. `*` in a token matches any bytes and `?`
+one byte. Pass the same rules
 in `Options.tokens` and `Rules.tokens`: the scan records their occurrences from the token
 streams it lexes for imports (`graph.tokens()`, with path, line and byte column), and
 `check` reports those outside the owners, or `error.UnscannedToken` for a rule the scan

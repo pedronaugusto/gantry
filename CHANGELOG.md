@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `TokenRule.tokens` replaces `token`: one rule names several tokens under one name (`.{ .name = "clock", .tokens = &.{ "nanoTimestamp", "milliTimestamp" } }`). `TokenRule.names(text)` says whether one of them matches.
+
+- `Reference.dead` and `Spec.dead`: a Zig import in a container-level declaration that nothing reaches, neither a root nor a test, which no build compiles. Every Zig file is read for it, with or without tests.
+
+- Zig: `if (x.is_test)` is a test branch only when `x` is `@import("builtin")` or a container-level `const` bound to it, so `if (options.is_test)` keeps its imports `import`. Decl and enum literals (`return .default;`, `x = .empty`) and `@field(@This(), "name")` reach the declaration they name, where before such a declaration could be read as test-only or unreached. The label in `break :blk` is no reference.
+
 - `Options.test_paths`: path patterns, in the layer-rule dialect, of files whose every import is `test`, beside each language's own test-file conventions. Zig has none, so its callers name theirs.
 
 - A selected file whose bytes are not valid for its format no longer aborts the scan: it is a record in `Graph.invalid()` (`InvalidFile`: path, phase, offset, `FileError` cause) and gives the scan nothing from that phase. A Go file with a bad `//go:build` line is in no package, as `go/build` leaves it; a broken or cyclic JS/TS config is as if absent and its children keep their own options. `scan` fails only with `ScanError` (`InvalidPath`, `UnsupportedImport`, `CountOverflow`, `OutOfMemory`) or the reader's errors, and its return type says so.

@@ -6,8 +6,8 @@ const eq = std.testing.expectEqual;
 const eqs = std.testing.expectEqualStrings;
 
 const rules: []const g.rules.TokenRule = &.{
-    .{ .name = "owned name", .token = "Owned" },
-    .{ .name = "owned value", .kind = .string, .token = "owned value" },
+    .{ .name = "owned name", .tokens = &.{"Owned"} },
+    .{ .name = "owned value", .kind = .string, .tokens = &.{"owned value"} },
 };
 
 /// Each language spells `Owned` once as a name and `owned value` once as a
@@ -59,8 +59,8 @@ test "a token rule reports path line and column outside its owners" {
         .{ .path = "src/tests/fixture.zig", .text = "const t = \"\\u{1b}[\";" },
     } };
     const owned: []const g.rules.TokenRule = &.{
-        .{ .name = "console", .token = "CreateFileW", .owners = &.{"src/owner/*.zig"} },
-        .{ .name = "sequences", .kind = .string, .token = "*\x1b[*", .owners = &.{ "src/owner/**", "fixture.zig" } },
+        .{ .name = "console", .tokens = &.{"CreateFileW"}, .owners = &.{"src/owner/*.zig"} },
+        .{ .name = "sequences", .kind = .string, .tokens = &.{"*\x1b[*"}, .owners = &.{ "src/owner/**", "fixture.zig" } },
     };
     var graph = try fixture.scan(a, .{ .tokens = owned });
     defer graph.deinit();
@@ -93,7 +93,7 @@ test "string values are compared after each language's escapes" {
         .{ .path = "a.nim", .text = "let a = \"\\e[\"\nlet b = \"\\27[\"\nlet c = \"\\x1b[\"\nlet raw = r\"\\x1b[\"\n" },
         .{ .path = "A.java", .text = "class A { String a = \"\\u001b[\"; String b = \"\\033[\"; String c = \"\\x1b[\"; }" },
     } };
-    const owned: []const g.rules.TokenRule = &.{.{ .name = "csi", .kind = .string, .token = "\x1b[" }};
+    const owned: []const g.rules.TokenRule = &.{.{ .name = "csi", .kind = .string, .tokens = &.{"\x1b["} }};
     var graph = try fixture.scan(a, .{ .tokens = owned });
     defer graph.deinit();
     var per_file: [8]usize = @splat(0);
@@ -114,8 +114,8 @@ test "numbers are not names and Zig quoted names are" {
         .{ .path = "a.zig", .text = "const a = 27; const b = @\"kill\"; const c = .kill; const d = \"kill\";" },
     } };
     const owned: []const g.rules.TokenRule = &.{
-        .{ .name = "number", .token = "27" },
-        .{ .name = "kill", .token = "kill" },
+        .{ .name = "number", .tokens = &.{"27"} },
+        .{ .name = "kill", .tokens = &.{"kill"} },
     };
     var graph = try fixture.scan(a, .{ .tokens = owned });
     defer graph.deinit();
@@ -132,7 +132,7 @@ test "token rules read sources when no reference kind would" {
         .{ .path = "a.py", .text = "x = waitpid" },
         .{ .path = "notes.md", .text = "waitpid" },
     } };
-    const owned: []const g.rules.TokenRule = &.{.{ .name = "process", .token = "waitpid" }};
+    const owned: []const g.rules.TokenRule = &.{.{ .name = "process", .tokens = &.{"waitpid"} }};
     for ([_]bool{ false, true }) |reexports| {
         var graph = try fixture.scan(a, .{ .kinds = &.{.link}, .manifests = false, .python_star_reexports = reexports, .tokens = owned });
         defer graph.deinit();
@@ -147,8 +147,8 @@ test "a token rule the scan did not record is refused" {
     var graph = try (f.Fixture{ .items = &.{.{ .path = "a.zig", .text = "const x = kill;" }} }).scan(a, .{});
     defer graph.deinit();
     try eq(0, graph.tokens().len);
-    try std.testing.expectError(error.UnscannedToken, graph.check(a, .{ .tokens = &.{.{ .name = "kill", .token = "kill" }} }));
-    try std.testing.expectError(error.UnscannedToken, g.rules.check(a, &graph, .{ .tokens = &.{.{ .name = "kill", .token = "kill" }} }));
+    try std.testing.expectError(error.UnscannedToken, graph.check(a, .{ .tokens = &.{.{ .name = "kill", .tokens = &.{"kill"} }} }));
+    try std.testing.expectError(error.UnscannedToken, g.rules.check(a, &graph, .{ .tokens = &.{.{ .name = "kill", .tokens = &.{"kill"} }} }));
 }
 
 test "token patterns: star spans any bytes and question mark one" {
@@ -171,4 +171,25 @@ fn tokenAllocations(allocator: std.mem.Allocator) !void {
 }
 test "token rule scans and checks release everything when allocation fails" {
     try std.testing.checkAllAllocationFailures(a, tokenAllocations, .{});
+}
+
+test "a token rule names several tokens under one name" {
+    const fixture: f.Fixture = .{ .items = &.{
+        .{ .path = "src/clock.zig", .text = "const a = nanoTimestamp; const b = milliTimestamp;" },
+        .{ .path = "src/app.zig", .text = "const a = nanoTimestamp;\nconst b = milliTimestamp;\nconst c = timestamp;" },
+    } };
+    const owned: []const g.rules.TokenRule = &.{.{ .name = "clock", .tokens = &.{ "nanoTimestamp", "milliTimestamp" }, .owners = &.{"src/clock.zig"} }};
+    var graph = try fixture.scan(a, .{ .tokens = owned });
+    defer graph.deinit();
+    var findings = try graph.check(a, .{ .tokens = owned });
+    defer findings.deinit();
+    try eq(2, findings.items().len);
+    for (findings.items(), [_][]const u8{ "nanoTimestamp", "milliTimestamp" }) |finding, text| {
+        try eqs("clock", finding.rule);
+        try eqs("src/app.zig", finding.token.?.path);
+        try eqs(text, finding.token.?.text);
+    }
+    // A rule is checked only when the scan recorded every token it names.
+    const wider: []const g.rules.TokenRule = &.{.{ .name = "clock", .tokens = &.{ "nanoTimestamp", "timestamp" } }};
+    try std.testing.expectError(error.UnscannedToken, graph.check(a, .{ .tokens = wider }));
 }

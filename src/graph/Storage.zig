@@ -14,8 +14,8 @@ dependencies: []const t.Dependency = &.{},
 references: []const t.Reference = &.{},
 unsupported: []const t.UnsupportedReference = &.{},
 tokens: []const t.Token = &.{},
-/// The token rules the scan recorded occurrences for, by kind and text.
-scanned_tokens: []const check_module.TokenRule = &.{},
+/// The tokens the scan recorded occurrences for.
+scanned_tokens: []const ScannedToken = &.{},
 /// Whether the scan read manifest declarations, which dependency rules need.
 manifests: bool = false,
 /// Selected files for which the caller returned null; never silently omitted.
@@ -47,9 +47,15 @@ pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: 
     std.debug.assert(g.paths.len == g.files.count());
     return g;
 }
+pub const ScannedToken = struct { kind: t.Token.Kind, text: []const u8 };
+/// Whether the scan recorded every token `rule` names.
 pub fn scannedFor(g: *const Storage, rule: check_module.TokenRule) bool {
-    for (g.scanned_tokens) |scanned| if (scanned.kind == rule.kind and std.mem.eql(u8, scanned.token, rule.token)) return true;
-    return false;
+    for (rule.tokens) |token| {
+        for (g.scanned_tokens) |scanned| {
+            if (scanned.kind == rule.kind and std.mem.eql(u8, scanned.text, token)) break;
+        } else return false;
+    }
+    return true;
 }
 pub fn deinit(g: *Storage) void {
     const gpa = g.allocator;

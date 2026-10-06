@@ -46,9 +46,10 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
     // One pass over the words: references between declarations, and the
     // members an alias reaches.
     var words = if (out.items.len > 0) try liveness.Words.init(a, ts, shape) else null;
-    if (words != null or aliases.count() > 0) for (ts, 0..) |t, i| {
+    if (words != null) for (ts, 0..) |t, i| {
+        if (t.kind == .string) try words.?.see(i);
         if (t.kind != .word) continue;
-        if (words) |*w| try w.see(i);
+        try words.?.see(i);
         if (i + 2 >= ts.len or !ts[i + 1].is(".") or ts[i + 2].kind != .word) continue;
         if (i > 0 and ts[i - 1].is(".")) continue;
         if (aliases.get(t.text)) |name| {

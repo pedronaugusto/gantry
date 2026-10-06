@@ -4,7 +4,6 @@ const std = @import("std");
 const t = @import("types.zig");
 const l = @import("lexer.zig");
 const TokenRule = check_module.TokenRule;
-const matchesToken = check_module.matchesToken;
 
 /// Collects the identifiers and string values the rules name, at most once
 /// per file. With no rules every call returns at once.
@@ -24,7 +23,7 @@ pub const Recorder = struct {
         const done = try w.alloc(bool, files);
         @memset(done, false);
         var r: Recorder = .{ .rules = rules, .strings = strings, .done = done };
-        for (rules) |rule| r.filters[@intFromEnum(rule.kind)].add(rule.token);
+        for (rules) |rule| for (rule.tokens) |token| r.filters[@intFromEnum(rule.kind)].add(token);
         return r;
     }
     pub fn active(r: *const Recorder) bool {
@@ -96,7 +95,7 @@ const File = struct {
             if (!filter.admits(text)) return;
         }
         for (r.rules) |rule| {
-            if (rule.kind == kind and matchesToken(rule.token, text)) break;
+            if (rule.kind == kind and rule.names(text)) break;
         } else return;
         while (f.counted < current.offset) : (f.counted += 1) if (f.source[f.counted] == '\n') {
             f.line += 1;

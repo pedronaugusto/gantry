@@ -77,15 +77,16 @@ test "Zig method calls, Self members, fields and comptime blocks keep declaratio
     , &.{ .{ "io.zig", .import }, .{ "kind.zig", .import }, .{ "late.zig", .import }, .{ "table.zig", .import } });
 }
 
-test "Zig field names, labels, enum literals and member access are not references" {
+test "Zig field names, labels and member access are not references; an enum literal is" {
     try expectKinds(
         \\const mem = @import("mem.zig");
         \\const len = @import("len.zig");
+        \\const blk = @import("blk.zig");
         \\const tag = @import("tag.zig");
         \\pub const S = struct { len: usize, fn f(s: S) usize { return blk: { _ = .tag; break :blk s.len; }; } };
         \\pub fn g(x: anytype) void { _ = x.mem; }
-        \\test { _ = mem; _ = len; _ = tag; }
-    , &.{ .{ "mem.zig", .@"test" }, .{ "len.zig", .@"test" }, .{ "tag.zig", .@"test" } });
+        \\test { _ = mem; _ = len; _ = blk; _ = tag; }
+    , &.{ .{ "mem.zig", .@"test" }, .{ "len.zig", .@"test" }, .{ "blk.zig", .@"test" }, .{ "tag.zig", .import } });
 }
 
 test "Zig sentinels and range bounds are references" {
@@ -137,4 +138,91 @@ test "Zig source without tests is all import, whatever its shape" {
         \\} ) ] const x = @import("x.zig"); fn ( { @import("y.zig")
     , &.{ .{ "x.zig", .import }, .{ "y.zig", .import } });
     try expectKinds("test { const x = @import(\"x.zig\"); } } } test", &.{.{ "x.zig", .@"test" }});
+}
+
+test "Zig is_test is a test condition only on an alias of builtin or the literal form" {
+    try expectKinds(
+        \\const options = @import("options");
+        \\const b = @import("builtin");
+        \\pub fn run(opts: anytype) void {
+        \\    if (options.is_test) { _ = @import("a.zig"); }
+        \\    if (opts.is_test) _ = @import("b.zig");
+        \\    if (b.is_test) _ = @import("c.zig");
+        \\}
+    , &.{ .{ "options", .import }, .{ "builtin", .import }, .{ "a.zig", .import }, .{ "b.zig", .import }, .{ "c.zig", .@"test" } });
+}
+
+test "Zig decl literals and @field of the container are references" {
+    try expectKinds(
+        \\const Pool = @This();
+        \\const defaults = @import("testing/defaults.zig");
+        \\const empties = @import("empties.zig");
+        \\const fielded = @import("fielded.zig");
+        \\const selfed = @import("selfed.zig");
+        \\items: u8,
+        \\const default: Pool = .{ .items = defaults.empty };
+        \\const empty: Pool = .{ .items = empties.empty };
+        \\const by_field = fielded.x;
+        \\const by_self = selfed.x;
+        \\pub fn init() Pool { return .default; }
+        \\pub fn reset(p: *Pool) void { p.* = .empty; _ = @field(@This(), "by_field"); _ = @field(Pool, "by_self"); }
+        \\test { _ = default; _ = empty; _ = by_field; _ = by_self; }
+    , &.{ .{ "testing/defaults.zig", .import }, .{ "empties.zig", .import }, .{ "fielded.zig", .import }, .{ "selfed.zig", .import } });
+}
+
+test "Zig field initialisers and member access are not decl literals" {
+    try expectKinds(
+        \\const items = @import("items.zig");
+        \\const len = @import("len.zig");
+        \\pub const S = struct { items: u8, len: u8 };
+        \\pub fn f(s: S) S { _ = s.len; return .{ .items = 1, .len = 2 }; }
+        \\test { _ = items; _ = len; }
+    , &.{ .{ "items.zig", .@"test" }, .{ "len.zig", .@"test" } });
+}
+
+/// The `@import` names of `source` that no build analyses, in source order.
+fn expectDead(source: []const u8, expected: []const []const u8) !void {
+    var imports = try g.imports(a, .zig, source);
+    defer imports.deinit();
+    var n: usize = 0;
+    for (imports.items()) |spec| if (spec.member == null and spec.dead) {
+        if (n >= expected.len) return error.TestUnexpectedImport;
+        try std.testing.expectEqualStrings(expected[n], spec.name);
+        n += 1;
+    };
+    try std.testing.expectEqual(expected.len, n);
+}
+
+test "Zig imports in declarations nothing reaches are dead, tests or none" {
+    try expectDead("const a = @import(\"a.zig\");\npub fn f() void {}\n", &.{"a.zig"});
+    try expectDead("const std = @import(\"std\");\npub fn f() void {}\n", &.{"std"});
+    // A chain from a dead declaration stays dead.
+    try expectDead("const a = @import(\"a.zig\");\nfn helper() void { _ = a; }\npub fn f() void {}\n", &.{"a.zig"});
+    try expectDead("const a = @import(\"a.zig\");\nconst S = struct { const b = @import(\"b.zig\"); };\n", &.{ "a.zig", "b.zig" });
+    // A member of another value with the same name is not a use.
+    try expectDead("const object = @import(\"object.zig\");\npub const U = union(enum) { none, object: struct { x: u8 }, };\n", &.{"object.zig"});
+    try expectDead("const fs = @import(\"repo/fs.zig\");\nconst std = @import(\"std\");\npub const sep = std.fs.path.sep;\n", &.{"repo/fs.zig"});
+    try expectDead("const a = @import(\"a.zig\");\npub fn f() void {}\ntest {}\n", &.{"a.zig"});
+}
+
+test "Zig imports a root, a test, a field, a call or a decl literal reaches are not dead" {
+    for ([_][]const u8{
+        "pub const a = @import(\"a.zig\");\n",
+        "const a = @import(\"a.zig\");\npub fn f() void { _ = a; }\n",
+        "const a = @import(\"a.zig\");\nfn helper() void { _ = a; }\npub fn f() void { helper(); }\n",
+        "const a = @import(\"a.zig\");\ntest { _ = a; }\n",
+        "const a = @import(\"a.zig\");\ntest a {}\n",
+        "const a = @import(\"a.zig\");\ncomptime { _ = a; }\n",
+        "const len = @import(\"a.zig\").len;\npub const B = [len:0]u8;\n",
+        "const n = @import(\"a.zig\").n;\npub fn f(b: [:0]const u8) [:0]const u8 { return b[0..n :0]; }\n",
+        "const a = @import(\"a.zig\");\nfield: a.T,\n",
+        "const a = @import(\"a.zig\");\nexport fn f() void { _ = a; }\n",
+        "const a = @import(\"a.zig\");\nfn main() void { _ = a; }\n",
+        "const a = @import(\"a.zig\");\nfn helper(self: @This()) void { _ = self; _ = a; }\npub fn f(self: @This()) void { self.helper(); }\n",
+        "const Self = @This();\nconst a = @import(\"a.zig\");\nconst helper = a.x;\npub const y = Self.helper;\n",
+        "const a = @import(\"a.zig\");\nconst helper = a.x;\npub const y = @This().helper;\n",
+        "const builtin = @import(\"builtin\");\nconst a = @import(\"a.zig\");\npub fn f() void { if (builtin.is_test) _ = a; }\n",
+        "const Self = @This();\nconst a = @import(\"a.zig\");\nx: u32,\nconst default: Self = .{ .x = a.v };\npub fn init() Self { return .default; }\n",
+        "const a = @import(\"a.zig\");\nconst helper = a.x;\npub fn f() void { _ = @field(@This(), \"helper\"); }\n",
+    }) |text| try expectDead(text, &.{});
 }

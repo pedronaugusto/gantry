@@ -56,8 +56,8 @@ fn documented(err: anyerror) bool {
 }
 
 const everything: []const g.rules.TokenRule = &.{
-    .{ .name = "names", .token = "*" },
-    .{ .name = "values", .kind = .string, .token = "*" },
+    .{ .name = "names", .tokens = &.{"*"} },
+    .{ .name = "values", .kind = .string, .tokens = &.{"*"} },
 };
 
 /// A scan fails only for its reader; bytes it cannot read are records.

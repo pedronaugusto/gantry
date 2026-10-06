@@ -144,9 +144,9 @@ fn scanGraph(gpa: std.mem.Allocator, paths: []const []const u8, context: anytype
     };
     var recorder: Recorder = try .init(w, a, options.tokens, g.paths.len);
     if (recorder.active()) {
-        const scanned = try a.alloc(check_module.TokenRule, options.tokens.len);
-        for (options.tokens, scanned) |rule, *dest| dest.* = .{ .name = "", .kind = rule.kind, .token = try a.dupe(u8, rule.token) };
-        g.scanned_tokens = scanned;
+        var scanned: std.ArrayList(Graph.ScannedToken) = .empty;
+        for (options.tokens) |rule| for (rule.tokens) |token| try scanned.append(a, .{ .kind = rule.kind, .text = try a.dupe(u8, token) });
+        g.scanned_tokens = scanned.items;
     }
     const cached: []?t.Recovery = if (needs_cache) try w.alloc(?t.Recovery, g.paths.len) else &.{};
     @memset(cached, null);
@@ -326,7 +326,7 @@ fn readSources(gpa: std.mem.Allocator, a: std.mem.Allocator, g: *Graph, options:
                     try progress.tolerate(err);
                     break :unresolved &.{};
                 };
-                try refs.append(a, .{ .from = p, .name = if (prior != null) spec.name else try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| (if (prior != null) member else try a.dupe(u8, member)) else null, .resolved = targets.len > 0, .kind = kind });
+                try refs.append(a, .{ .from = p, .name = if (prior != null) spec.name else try a.dupe(u8, spec.name), .offset = spec.offset, .member = if (spec.member) |member| (if (prior != null) member else try a.dupe(u8, member)) else null, .resolved = targets.len > 0, .kind = kind, .dead = spec.dead });
                 if (spec.member != null) continue;
                 if (language == .python and options.python_initializers == .explicit and spec.python_base and !spec.star) {
                     var children: usize = 0;
