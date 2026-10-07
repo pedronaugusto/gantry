@@ -55,7 +55,7 @@ pub fn rustFiles(arena: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.
         if (!std.mem.endsWith(u8, from, ".rs")) continue;
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
-        const text = (try read(s, context, from)) orelse continue;
+        const text = (try read(context, s, from)) orelse continue;
         progress.at(.rust_tests, from);
         const tokens = try recorder.lex(rust, s, index, from, .rust, text);
         if (rust.testFileTokens(tokens)) try marked.put(arena, from, {});

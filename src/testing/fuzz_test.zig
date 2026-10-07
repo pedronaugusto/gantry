@@ -37,7 +37,7 @@ fn bytesOf(smith: *testing.Smith, buffer: *[most]u8) []const u8 {
 const One = struct {
     path: []const u8,
     text: []const u8,
-    fn read(a: std.mem.Allocator, _: std.Io, one: One, path: []const u8) !?[]const u8 {
+    fn read(one: One, a: std.mem.Allocator, _: std.Io, path: []const u8) !?[]const u8 {
         if (std.mem.eql(u8, path, one.path)) {
             const value = try a.dupe(u8, one.text);
             return value;

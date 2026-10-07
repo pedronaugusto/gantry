@@ -60,7 +60,7 @@ fn ms(start: std.Io.Timestamp, end: std.Io.Timestamp) f64 {
     return @as(f64, @floatFromInt(start.durationTo(end).nanoseconds)) / 1_000_000;
 }
 
-fn readMemory(_: std.mem.Allocator, _: std.Io, store: *const std.StringHashMapUnmanaged([]const u8), p: []const u8) error{}!?[]const u8 {
+fn readMemory(store: *const std.StringHashMapUnmanaged([]const u8), _: std.mem.Allocator, _: std.Io, p: []const u8) error{}!?[]const u8 {
     return store.get(p);
 }
 

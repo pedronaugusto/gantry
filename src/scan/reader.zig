@@ -4,6 +4,7 @@ const types_module = @import("../types.zig");
 const std = @import("std");
 
 pub fn Reader(comptime Context: type, comptime read: anytype) type {
+    comptime check(Context, read);
     return struct {
         const Self = @This();
         context: Context,
@@ -17,9 +18,9 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
             self.unread.deinit(self.allocator);
             self.* = undefined;
         }
-        pub fn readFile(scratch: std.mem.Allocator, self: *Self, path: []const u8) (diagnostic_module.ReadError(read) || error{OutOfMemory})!?[]const u8 {
+        pub fn readFile(self: *Self, scratch: std.mem.Allocator, path: []const u8) (diagnostic_module.ReadError(read) || error{OutOfMemory})!?[]const u8 {
             self.progress.at(.read, path);
-            const bytes = try read(scratch, self.io, self.context, path);
+            const bytes = try read(self.context, scratch, self.io, path);
             if (bytes == null) try self.unread.put(self.allocator, path, {});
             return bytes;
         }
@@ -34,4 +35,18 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
             return paths;
         }
     };
+}
+
+/// A reader is `fn (context, scratch: std.mem.Allocator, io: std.Io, path:
+/// []const u8) E!?[]const u8`, the value it is called on first, as every
+/// method takes it; anything else fails here by that name.
+fn check(comptime Context: type, comptime read: anytype) void {
+    const expected = "gantry.scan: read must be fn (context: " ++ @typeName(Context) ++ ", scratch: std.mem.Allocator, io: std.Io, path: []const u8) E!?[]const u8, not ";
+    const info = switch (@typeInfo(@TypeOf(read))) {
+        .@"fn" => |f| f,
+        else => @compileError(expected ++ @typeName(@TypeOf(read))),
+    };
+    const params = info.param_types;
+    const shaped = params.len == 4 and params[1] == std.mem.Allocator and params[2] == std.Io and params[3] == []const u8;
+    if (!shaped) @compileError(expected ++ @typeName(@TypeOf(read)));
 }

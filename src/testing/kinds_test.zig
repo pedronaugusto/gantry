@@ -69,7 +69,7 @@ test "Rust test propagation reads each source once and releases reader scratch" 
     const Reader = struct {
         const Self = @This();
         calls: usize = 0,
-        fn read(scratch: std.mem.Allocator, _: std.Io, self: *Self, name: []const u8) !?[]const u8 {
+        fn read(self: *Self, scratch: std.mem.Allocator, _: std.Io, name: []const u8) !?[]const u8 {
             self.calls += 1;
             const value = try scratch.dupe(u8, if (std.mem.eql(u8, name, "src/lib.rs")) "#[cfg(test)] mod helper;" else if (std.mem.eql(u8, name, "src/helper.rs")) "mod child; use crate::util;" else if (std.mem.eql(u8, name, "src/helper/child.rs")) "use crate::util;" else "");
             return value;

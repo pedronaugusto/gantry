@@ -162,7 +162,7 @@ fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype
     for (g.paths, 0..) |p, file_index| if (languageOf(p) == .go) {
         const s = scratch.allocator();
         defer _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
-        const text = (try Reader.readFile(s, reader, p)) orelse continue;
+        const text = (try Reader.readFile(reader, s, p)) orelse continue;
         progress.at(.go_constraints, p);
         const tokens = try recorder.lex(languages.go, s, file_index, p, .go, text);
         var info = build_module.parseTokens(s, p, text, options.go_target, tokens) catch |err| {
@@ -272,7 +272,7 @@ fn readManifests(w: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
         if (!is_work and !is_mod and (!manifests.supported(p) or !options.manifests)) continue;
         const s = scratch.allocator();
         defer _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
-        const text = (try @TypeOf(reader.*).readFile(s, reader, p)) orelse continue;
+        const text = (try @TypeOf(reader.*).readFile(reader, s, p)) orelse continue;
         progress.at(.manifests, p);
         if (is_mod or is_work) {
             // A module file that does not parse gives neither routing nor declarations.
@@ -314,7 +314,7 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
         if (!code and !lexed and !links and !assets) continue;
         const s = scratch.allocator();
         const prior = if (cached.len > 0) cached[file_index] else null;
-        const text = (if (prior != null) "" else try @TypeOf(reader.*).readFile(s, reader, p)) orelse {
+        const text = (if (prior != null) "" else try @TypeOf(reader.*).readFile(reader, s, p)) orelse {
             _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
             continue;
         };

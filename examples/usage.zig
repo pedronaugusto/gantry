@@ -6,7 +6,7 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
     // --- README:usage ---
     const paths = &.{ "src/main.zig", "src/store.zig", "src/model.zig" };
-    var graph = try gantry.scan(gpa, io, paths, {}, read, .{});
+    var graph = try gantry.scan(gpa, io, paths, Files{}, Files.read, .{});
     defer graph.deinit();
 
     for (graph.edges()) |edge| {
@@ -38,7 +38,7 @@ fn scanDiagnosed(gpa: std.mem.Allocator, io: std.Io, paths: []const []const u8) 
     // --- README:diagnostic ---
     var diagnostic = gantry.Diagnostics.init(gpa);
     defer diagnostic.deinit();
-    return gantry.scan(gpa, io, paths, {}, read, .{ .diagnostics = &diagnostic }) catch |cause| {
+    return gantry.scan(gpa, io, paths, Files{}, Files.read, .{ .diagnostics = &diagnostic }) catch |cause| {
         if (diagnostic.failure) |failure| {
             std.log.info("{s}: {s}: {s}", .{
                 failure.path orelse "<scan>",
@@ -53,8 +53,10 @@ fn scanDiagnosed(gpa: std.mem.Allocator, io: std.Io, paths: []const []const u8) 
 
 // Replace this with bytes from your own file store. The supplied allocator
 // lives for one file; returned bytes are consumed before the next read.
-fn read(_: std.mem.Allocator, _: std.Io, _: void, path: []const u8) !?[]const u8 {
-    if (std.mem.eql(u8, path, "src/main.zig")) return "const store = @import(\"store.zig\");";
-    if (std.mem.eql(u8, path, "src/store.zig")) return "const model = @import(\"model.zig\");";
-    return "";
-}
+const Files = struct {
+    fn read(_: Files, _: std.mem.Allocator, _: std.Io, path: []const u8) !?[]const u8 {
+        if (std.mem.eql(u8, path, "src/main.zig")) return "const store = @import(\"store.zig\");";
+        if (std.mem.eql(u8, path, "src/store.zig")) return "const model = @import(\"model.zig\");";
+        return "";
+    }
+};

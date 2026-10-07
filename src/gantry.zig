@@ -91,7 +91,7 @@ pub const DirReader = struct {
     dir: std.Io.Dir,
     limit: std.Io.Limit = .unlimited,
     pub const ReadError = std.Io.Dir.ReadFileAllocError;
-    pub fn read(scratch: std.mem.Allocator, io: std.Io, self: DirReader, p: []const u8) DirReader.ReadError!?[]const u8 {
+    pub fn read(self: DirReader, scratch: std.mem.Allocator, io: std.Io, p: []const u8) DirReader.ReadError!?[]const u8 {
         const value = try self.dir.readFileAlloc(io, p, scratch, self.limit);
         return value;
     }

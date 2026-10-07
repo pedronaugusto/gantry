@@ -12,7 +12,7 @@ const comment120 = repeated("comment ", 120);
 const comment16 = repeated("comment ", 16);
 
 /// `text` repeated `n` times, at compile time.
-fn repeated(comptime text: []const u8, comptime n: usize) *const [text.len * n]u8 {
+pub fn repeated(comptime text: []const u8, comptime n: usize) *const [text.len * n]u8 {
     comptime {
         var out: [text.len * n]u8 = undefined;
         for (0..n) |i| @memcpy(out[i * text.len ..][0..text.len], text);

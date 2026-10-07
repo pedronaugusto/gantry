@@ -14,7 +14,7 @@ fn failed(diagnostic: *const g.Diagnostics, path: ?[]const u8, phase: g.Diagnost
 const Reader = struct {
     fail_on: usize = 1,
     calls: usize = 0,
-    fn read(_: std.mem.Allocator, _: std.Io, self: *Reader, _: []const u8) !?[]const u8 {
+    fn read(self: *Reader, _: std.mem.Allocator, _: std.Io, _: []const u8) !?[]const u8 {
         self.calls += 1;
         if (self.calls == self.fail_on) return error.ReaderRefused;
         return "";

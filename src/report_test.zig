@@ -119,17 +119,21 @@ test "sarif with source keeps a finding whose file reads null or is shorter than
     };
     var out: std.Io.Writer.Allocating = .init(a);
     defer out.deinit();
-    try report.sarif(a, std.testing.io, &out.writer, &findings, {}, struct {
-        fn read(_: std.mem.Allocator, _: std.Io, _: void, p: []const u8) !?[]const u8 {
+    const Short = struct {
+        const Self = @This();
+        fn read(_: Self, _: std.mem.Allocator, _: std.Io, p: []const u8) !?[]const u8 {
             return if (std.mem.eql(u8, p, "a.zig")) "ab" else null;
         }
-    }.read, .{});
+    };
+    try report.sarif(a, std.testing.io, &out.writer, &findings, Short{}, Short.read, .{});
     try eq(0, std.mem.count(u8, out.written(), "\"region\""));
-    try std.testing.expectError(error.Unreadable, report.sarif(a, std.testing.io, &out.writer, &findings, {}, struct {
-        fn read(_: std.mem.Allocator, _: std.Io, _: void, _: []const u8) !?[]const u8 {
+    const Unreadable = struct {
+        const Self = @This();
+        fn read(_: Self, _: std.mem.Allocator, _: std.Io, _: []const u8) !?[]const u8 {
             return error.Unreadable;
         }
-    }.read, .{}));
+    };
+    try std.testing.expectError(error.Unreadable, report.sarif(a, std.testing.io, &out.writer, &findings, Unreadable{}, Unreadable.read, .{}));
 }
 
 const hostile: []const []const u8 = &.{ "a b/#hash&<tag>`tick`.zig", "bad\xffbyte.zig", "new\nline.zig", "pct%20.zig", "q\"uote.zig", "tab\there.zig", "ünï/cödé.zig" };

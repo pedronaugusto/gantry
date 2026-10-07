@@ -199,7 +199,7 @@ fn locate(gpa: std.mem.Allocator, io: std.Io, findings: []const Violation, conte
         while (end < spots.items.len and std.mem.eql(u8, spots.items[end].path, file)) end += 1;
         defer s = end;
         _ = scratch.reset(.retain_capacity);
-        const bytes = (try read(scratch.allocator(), io, context, file)) orelse continue;
+        const bytes = (try read(context, scratch.allocator(), io, file)) orelse continue;
         var line: usize = 1;
         var start: usize = 0;
         var at: usize = 0;

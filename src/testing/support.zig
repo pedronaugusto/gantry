@@ -3,7 +3,7 @@ const g = @import("../gantry.zig");
 pub const Item = struct { path: []const u8, text: ?[]const u8 = "" };
 pub const Fixture = struct {
     items: []const Item,
-    pub fn read(a: std.mem.Allocator, _: std.Io, self: Fixture, path: []const u8) !?[]const u8 {
+    pub fn read(self: Fixture, a: std.mem.Allocator, _: std.Io, path: []const u8) !?[]const u8 {
         for (self.items) |item| if (std.mem.eql(u8, item.path, path)) {
             return if (item.text) |text| try a.dupe(u8, text) else null;
         };

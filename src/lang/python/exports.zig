@@ -98,7 +98,7 @@ pub fn index(arena: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.
         if (!std.mem.endsWith(u8, file, ".py")) continue;
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
-        const source = (try read(s, context, file)) orelse continue;
+        const source = (try read(context, s, file)) orelse continue;
         progress.at(.python_exports, file);
         const tokens = try recorder.lex(python, s, file_index, file, .python, source);
         const recovery = python.recoverTokens(s, source, tokens) catch |err| {

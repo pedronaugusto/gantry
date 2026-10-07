@@ -13,7 +13,7 @@ const Module = struct {
     counter: f.Peak = .{ .child = a },
     before_big: usize = 0,
     after_big: usize = 0,
-    fn read(s: std.mem.Allocator, _: std.Io, self: *Module, path: []const u8) !?[]const u8 {
+    fn read(self: *Module, s: std.mem.Allocator, _: std.Io, path: []const u8) !?[]const u8 {
         if (std.mem.eql(u8, path, "go.mod")) return "module example.org/m";
         if (std.mem.eql(u8, path, "big/big.go")) {
             self.before_big = self.counter.live;

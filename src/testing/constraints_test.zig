@@ -46,7 +46,7 @@ test "Go constraints and imports share one source read" {
     const Reader = struct {
         const Self = @This();
         calls: usize = 0,
-        fn read(scratch: std.mem.Allocator, _: std.Io, self: *Self, name: []const u8) !?[]const u8 {
+        fn read(self: *Self, scratch: std.mem.Allocator, _: std.Io, name: []const u8) !?[]const u8 {
             self.calls += 1;
             const value = try scratch.dupe(u8, if (std.mem.eql(u8, name, "go.mod")) "module example.org/app" else if (std.mem.eql(u8, name, "main.go")) "//go:build linux\n\npackage app\nimport \"example.org/app/lib\"" else "package lib");
             return value;

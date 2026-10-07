@@ -41,7 +41,7 @@ test "Python reexports and imports share one source read" {
     const Reader = struct {
         const Self = @This();
         calls: usize = 0,
-        fn read(scratch: std.mem.Allocator, _: std.Io, self: *Self, name: []const u8) !?[]const u8 {
+        fn read(self: *Self, scratch: std.mem.Allocator, _: std.Io, name: []const u8) !?[]const u8 {
             self.calls += 1;
             const value = try scratch.dupe(u8, if (std.mem.eql(u8, name, "pkg/__init__.py")) "from .api import *" else if (std.mem.eql(u8, name, "pkg/api.py")) "from .impl import Public as Exposed\n__all__ = ['Exposed']" else "");
             return value;

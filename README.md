@@ -13,8 +13,8 @@ settings.
 
 ## Usage
 
-[examples/usage.zig](examples/usage.zig) supplies `read` from an in-memory file store.
-Its reader callback is `read(scratch, io, context, path) E!?[]const u8`; `gantry.DirReader`
+[examples/usage.zig](examples/usage.zig) supplies `Files.read` from an in-memory file store.
+Its reader callback is `read(context, scratch, io, path) E!?[]const u8`; `gantry.DirReader`
 reads from an open directory.
 
 <!-- BEGIN GENERATED zig build docs -- usage -->
@@ -22,7 +22,7 @@ reads from an open directory.
 const gantry = @import("gantry");
 
 const paths = &.{ "src/main.zig", "src/store.zig", "src/model.zig" };
-var graph = try gantry.scan(gpa, io, paths, {}, read, .{});
+var graph = try gantry.scan(gpa, io, paths, Files{}, Files.read, .{});
 defer graph.deinit();
 
 for (graph.edges()) |edge| {
@@ -56,7 +56,7 @@ const gantry = @import("gantry");
 
 var diagnostic = gantry.Diagnostics.init(gpa);
 defer diagnostic.deinit();
-return gantry.scan(gpa, io, paths, {}, read, .{ .diagnostics = &diagnostic }) catch |cause| {
+return gantry.scan(gpa, io, paths, Files{}, Files.read, .{ .diagnostics = &diagnostic }) catch |cause| {
     if (diagnostic.failure) |failure| {
         std.log.info("{s}: {s}: {s}", .{
             failure.path orelse "<scan>",
@@ -316,6 +316,11 @@ every byte outside the unreserved set and `/`.
 
 <!-- performance: quiet pass -->
 
+## Built with
+
+[preflight](https://github.com/pedronaugusto/preflight), one local and one hosted gate for
+Zig packages, and **tycho**, every coding agent in one folder (in development).
+
 ## Testing
 
 `zig build test` runs the suite and usage example in Debug by default. Fixtures cover
@@ -350,11 +355,6 @@ Compile-only jobs use the default `zig build` for `x86_64-linux-gnu`,
 times its walk, scans from disk and from memory, analysis and aggregation, and `ops`
 times each public operation in process (`ops --list` names them; `fixtures operations
 <dir>` writes the files they read). CI compiles them and runs none.
-
-## Built with
-
-[preflight](https://github.com/pedronaugusto/preflight), one local and one hosted gate for
-Zig packages, and **tycho**, every coding agent in one folder (in development).
 
 ## Licence
 

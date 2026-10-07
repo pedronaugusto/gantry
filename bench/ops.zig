@@ -8,6 +8,7 @@
 const smoke = @import("bench_options").smoke;
 const std = @import("std");
 const gantry = @import("gantry");
+const fixtures = @import("fixtures.zig");
 
 const budget_ns: i96 = 200 * std.time.ns_per_ms;
 
@@ -236,20 +237,11 @@ const Corpus = struct {
     fn deinit(c: *Corpus) void {
         c.arena.deinit();
     }
-    fn read(_: std.mem.Allocator, _: std.Io, store: *const std.StringHashMapUnmanaged([]const u8), p: []const u8) error{}!?[]const u8 {
+    fn read(store: *const std.StringHashMapUnmanaged([]const u8), _: std.mem.Allocator, _: std.Io, p: []const u8) error{}!?[]const u8 {
         return store.get(p);
     }
 };
-const filler = repeated("comment ", 16);
-/// `text` repeated `n` times, at compile time.
-fn repeated(comptime text: []const u8, comptime n: usize) *const [text.len * n]u8 {
-    comptime {
-        var out: [text.len * n]u8 = undefined;
-        for (0..n) |i| @memcpy(out[i * text.len ..][0..text.len], text);
-        const final = out;
-        return &final;
-    }
-}
+const filler = fixtures.repeated("comment ", 16);
 
 const token_rule_list = [_]gantry.rules.TokenRule{.{ .name = "owned", .tokens = &.{"Forbidden"}, .owners = &.{"g0/**"} }};
 

@@ -25,11 +25,13 @@ const hostile_test_module = @import("testing/hostile_test.zig");
 const std = @import("std");
 const g = @import("gantry.zig");
 test "empty graph owns its result" {
-    var graph = try g.scan(std.testing.allocator, std.testing.io, &.{}, {}, struct {
-        fn read(_: std.mem.Allocator, _: std.Io, _: void, _: []const u8) !?[]const u8 {
+    const Empty = struct {
+        const Self = @This();
+        fn read(_: Self, _: std.mem.Allocator, _: std.Io, _: []const u8) !?[]const u8 {
             return "";
         }
-    }.read, .{});
+    };
+    var graph = try g.scan(std.testing.allocator, std.testing.io, &.{}, Empty{}, Empty.read, .{});
     defer graph.deinit();
     var a = try graph.analyze(std.testing.allocator);
     defer a.deinit();

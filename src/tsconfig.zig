@@ -62,7 +62,7 @@ pub fn load(arena: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []c
         const file = entries.items[i].config.path;
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
-        const text = (try read(s, context, file)) orelse continue;
+        const text = (try read(context, s, file)) orelse continue;
         progress.at(.configs, file);
         const value = jsonc_module.parse(arena, s, text) catch |err| {
             try invalidate(&entries.items[i], progress, err);

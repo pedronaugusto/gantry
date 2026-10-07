@@ -25,7 +25,7 @@ pub fn load(arena: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []c
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
         progress.at(.configs, file);
-        const text = (try read(s, context, file)) orelse continue;
+        const text = (try read(context, s, file)) orelse continue;
         progress.at(.configs, file);
         const values = (if (std.mem.endsWith(u8, file, ".nims")) script(s, text) else cfg(s, text)) catch |err| {
             try progress.tolerate(err);

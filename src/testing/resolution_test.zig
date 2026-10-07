@@ -199,7 +199,7 @@ const ScratchReader = struct {
     accounting: *std.testing.FailingAllocator,
     config: bool,
     calls: usize = 0,
-    fn read(scratch: std.mem.Allocator, _: std.Io, self: *ScratchReader, _: []const u8) !?[]const u8 {
+    fn read(self: *ScratchReader, scratch: std.mem.Allocator, _: std.Io, _: []const u8) !?[]const u8 {
         const retained = self.accounting.allocated_bytes - self.accounting.freed_bytes;
         // A 64 KiB read buffer must be reused rather than retaining one for
         // every file. Leave room for graph nodes and parser/index workspaces.

@@ -1,15 +1,15 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Breaking
 
-- `scan` takes an `io` after its allocator and hands it to the reader, which is `read(scratch, io, context, path)`. `DirReader` holds no `Io` (`.{ .dir = dir }`); nothing gantry returns keeps one.
+- `scan` takes an `io` after its allocator and hands it to the reader, which is `read(context, scratch, io, path)`: the value it is called on first, as every method takes it. `DirReader.read(self, scratch, io, path)` follows it, and a reader of another shape fails to compile in `scan` with the expected signature by name. `DirReader` holds no `Io` (`.{ .dir = dir }`); nothing gantry returns keeps one.
+- `manifests` names each error set after the function that returns it: `parse` returns `ParseError`, `read` `ReadError` (which now has `UnsupportedManifest`) and `readSupported` `ReadSupportedError`. The module-wide `Error` is gone.
 - `scanWithDiagnostic` is gone: set `Options.diagnostics = &diagnostics` and call `scan`. `ScanDiagnostic` is `Diagnostics`.
 - `report.sarifWithSource` is gone: `report.sarif(gpa, io, w, findings, context, read, options)` reads the sources when given a reader, and `{}, null` gives none. `report.SourceError(read)` names the errors a reader adds.
 - `rules.check` is gone; call `graph.check(gpa, rules)`.

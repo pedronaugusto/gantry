@@ -24,7 +24,7 @@ pub fn index(arena: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.
         const descriptor = std.mem.eql(u8, base, "package-info.java") or std.mem.eql(u8, base, "module-info.java");
         const s = scratch.allocator();
         defer _ = scratch.reset(.retain_capacity);
-        const source = (try read(s, context, file)) orelse continue;
+        const source = (try read(context, s, file)) orelse continue;
         progress.at(.java_packages, file);
         const tokens = try recorder.lex(java, s, file_index, file, .java, source);
         const recovery = java.recoverTokens(s, source, tokens) catch |err| {
