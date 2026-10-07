@@ -50,6 +50,14 @@ test "fixture: manifest fixtures name dependencies and their sources from temp f
     try dep(graph.dependencies(), "requests", "");
     try dep(graph.dependencies(), "mylib", "git+https://github.com/me/mylib");
 }
+test "each manifests function returns the error set named after it" {
+    const m = g.manifests;
+    const parse: fn (std.mem.Allocator, []const u8, []const u8) m.ParseError![]const g.Dependency = m.parse;
+    const read: fn (std.mem.Allocator, []const u8, []const u8) m.ReadError!m.Declarations = m.read;
+    const read_supported: fn (std.mem.Allocator, []const u8, []const u8) m.ReadSupportedError!m.Declarations = m.readSupported;
+    _ = .{ parse, read, read_supported };
+    try std.testing.expectError(error.UnsupportedManifest, read(a, "lockfile", ""));
+}
 test "package JSON retains all declaration groups and requirements" {
     var arena: std.heap.ArenaAllocator = .init(a);
     defer arena.deinit();

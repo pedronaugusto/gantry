@@ -24,25 +24,28 @@ pub const Declarations = struct {
     dependencies: []const t.Dependency,
     unsupported: []const t.UnsupportedReference,
 };
-/// What reading a supported manifest fails with: `InvalidManifest` and
-/// `InvalidEscape` are its bytes.
-pub const ReadError = error{ InvalidManifest, InvalidEscape, OutOfMemory };
-/// `ReadError`, or `UnsupportedManifest` for a path `supported` refuses.
-pub const Error = error{ InvalidManifest, InvalidEscape, UnsupportedManifest, OutOfMemory };
+/// What `readSupported` fails with: `InvalidManifest` and `InvalidEscape`
+/// are the manifest's bytes.
+pub const ReadSupportedError = error{ InvalidManifest, InvalidEscape, OutOfMemory };
+/// What `read` fails with: `ReadSupportedError`, or `UnsupportedManifest`
+/// for a path `supported` refuses.
+pub const ReadError = error{ InvalidManifest, InvalidEscape, UnsupportedManifest, OutOfMemory };
+/// What `parse` fails with: `read`'s errors.
+pub const ParseError = ReadError;
 /// `arena` must be an arena: parser workspaces and strings share its lifetime.
 /// Returned declarations borrow text or that arena; parse does not own either.
 /// ZON validates the whole document and reads only the root struct dependencies.
 /// Invalid ZON or dependency shapes return InvalidManifest, with no partial result.
-pub fn parse(arena: std.mem.Allocator, path: []const u8, text: []const u8) Error![]const t.Dependency {
+pub fn parse(arena: std.mem.Allocator, path: []const u8, text: []const u8) ParseError![]const t.Dependency {
     return (try read(arena, path, text)).dependencies;
 }
 /// `parse`, keeping the declarations it cannot read (records without a path).
-pub fn read(arena: std.mem.Allocator, path: []const u8, text: []const u8) Error!Declarations {
+pub fn read(arena: std.mem.Allocator, path: []const u8, text: []const u8) ReadError!Declarations {
     if (!supported(path)) return error.UnsupportedManifest;
     return readSupported(arena, path, text);
 }
 /// `read` for a path `supported` takes.
-pub fn readSupported(arena: std.mem.Allocator, path: []const u8, text: []const u8) ReadError!Declarations {
+pub fn readSupported(arena: std.mem.Allocator, path: []const u8, text: []const u8) ReadSupportedError!Declarations {
     std.debug.assert(supported(path));
     var out: std.ArrayList(t.Dependency) = .empty;
     var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
@@ -65,7 +68,7 @@ pub fn readSupported(arena: std.mem.Allocator, path: []const u8, text: []const u
     }
     return .{ .dependencies = try out.toOwnedSlice(arena), .unsupported = try unsupported.toOwnedSlice(arena) };
 }
-fn json(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+fn json(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadSupportedError!void {
     // npm skips a leading byte order mark.
     const body = if (std.mem.startsWith(u8, text, l.bom)) text[l.bom.len..] else text;
     const value = std.json.parseFromSliceLeaky(std.json.Value, arena, body, .{}) catch |err| switch (err) {
@@ -98,7 +101,7 @@ fn npmOrigin(s: []const u8) t.Dependency.Origin {
 fn place(s: []const u8) bool {
     return std.mem.findScalar(u8, s, '/') != null or std.mem.startsWith(u8, s, "git") or std.mem.startsWith(u8, s, "file:") or std.mem.startsWith(u8, s, "github:") or std.mem.startsWith(u8, s, "workspace:");
 }
-fn zon(gpa: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+fn zon(gpa: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadSupportedError!void {
     const source = try gpa.dupeSentinel(u8, text, 0);
     defer gpa.free(source);
     var ast = try std.zig.Ast.parse(gpa, source, .{ .mode = .zon });
@@ -142,11 +145,11 @@ fn zonString(zoir: *const std.zig.Zoir, node: std.zig.Zoir.Node, name: []const u
     if (value != .string_literal) return error.InvalidManifest;
     return value.string_literal;
 }
-fn goMod(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+fn goMod(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadSupportedError!void {
     const parsed = try go_config.parse(arena, p.dir(path), text);
     for (parsed.requires) |req| try out.append(arena, .{ .manifest = path, .name = req.name, .source = req.name, .requirement = req.version, .group = if (req.indirect) "indirect" else "require", .origin = .remote });
 }
-fn toml(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+fn toml(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadSupportedError!void {
     const ts = try l.lex(.python, arena, text);
     const cargo = std.mem.eql(u8, p.base(path), "Cargo.toml");
     var group: []const u8 = "";
@@ -223,7 +226,7 @@ fn toml(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.
 }
 /// One key under a Cargo dependency table; `tail` is `group` from its
 /// `dependencies` part on.
-fn cargoValue(arena: std.mem.Allocator, path: []const u8, text: []const u8, group: []const u8, tail: []const u8, key: []const u8, key_tokens: []const l.Token, value: []const l.Token, out: *std.ArrayList(t.Dependency)) ReadError!void {
+fn cargoValue(arena: std.mem.Allocator, path: []const u8, text: []const u8, group: []const u8, tail: []const u8, key: []const u8, key_tokens: []const l.Token, value: []const l.Token, out: *std.ArrayList(t.Dependency)) ReadSupportedError!void {
     // `[dependencies.name]` names the dependency in its header and
     // `name.field = value` under `[dependencies]` in the key.
     var dep_name: ?[]const u8 = if (std.mem.findScalar(u8, tail, '.')) |dot| tail[dot + 1 ..] else null;
@@ -274,7 +277,7 @@ fn cargoValue(arena: std.mem.Allocator, path: []const u8, text: []const u8, grou
     }
 }
 /// A dotted key's first part and the rest, or null for a key without a dot.
-fn dottedKey(arena: std.mem.Allocator, text: []const u8, key: []const l.Token) ReadError!?struct { name: []const u8, field: []const u8 } {
+fn dottedKey(arena: std.mem.Allocator, text: []const u8, key: []const l.Token) ReadSupportedError!?struct { name: []const u8, field: []const u8 } {
     for (key, 0..) |token, d| {
         if (!token.is(".")) continue;
         if (d == 0 or d + 1 == key.len) return error.InvalidManifest;
@@ -292,7 +295,7 @@ fn dependencyTable(group: []const u8) ?usize {
     }
     return null;
 }
-fn pythonDep(arena: std.mem.Allocator, path: []const u8, group: []const u8, requirement: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+fn pythonDep(arena: std.mem.Allocator, path: []const u8, group: []const u8, requirement: []const u8, out: *std.ArrayList(t.Dependency)) ReadSupportedError!void {
     const raw = std.mem.trim(u8, requirement, " \t");
     const end = std.mem.findAny(u8, raw, "<>=!~[; @(") orelse raw.len;
     if (end == 0) return error.InvalidManifest;
@@ -302,6 +305,6 @@ fn pythonDep(arena: std.mem.Allocator, path: []const u8, group: []const u8, requ
     try out.append(arena, .{ .manifest = path, .name = raw[0..end], .requirement = raw, .source = source, .group = group, .origin = origin });
 }
 
-fn string(arena: std.mem.Allocator, text: []const u8, token: l.Token) ReadError![]const u8 {
+fn string(arena: std.mem.Allocator, text: []const u8, token: l.Token) ReadSupportedError![]const u8 {
     return if (text[token.offset] == '\'') token.text else try l.decode(arena, token.text);
 }
