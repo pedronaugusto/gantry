@@ -30,3 +30,8 @@ pub const CheckError = engine.CheckError;
 pub const matches = engine.matches;
 /// Whether a token pattern matches a token's text.
 pub const matchesToken = engine.matchesToken;
+/// The dialects a rule's patterns are read in: `path`, `name` and `token`.
+pub const Dialect = engine.Dialect;
+/// The sweep options a dialect reads a pattern with, to compile one with
+/// `sweep.Pattern` and match it many times.
+pub const patternOptions = engine.patternOptions;

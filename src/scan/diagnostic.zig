@@ -90,10 +90,12 @@ pub const FileError = error{
 };
 
 /// What a scan fails with besides its reader's own errors: a selected path
-/// `path.normalize` refuses, a construct recovery cannot read under
+/// `path.normalize` refuses, a pattern in the options sweep refuses
+/// (`InvalidPattern`, `PatternTooLong`: a test path, a named module's
+/// `from` or a token), a construct recovery cannot read under
 /// `Options.strict_imports`, more edges between two files than a count
 /// holds, or memory. Nothing a file's bytes hold is among them.
-pub const ScanError = error{ InvalidPath, UnsupportedImport, CountOverflow, OutOfMemory };
+pub const ScanError = error{ InvalidPath, InvalidPattern, PatternTooLong, UnsupportedImport, CountOverflow, OutOfMemory };
 
 /// The errors a scan's `read` function returns, from its signature.
 pub fn ReadError(comptime read: anytype) type {

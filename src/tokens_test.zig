@@ -159,6 +159,12 @@ test "token patterns: star spans any bytes and question mark one" {
         .{ .pattern = "*.git*", .text = "a/.git/config", .want = true },
         .{ .pattern = "*.git", .text = ".gitignore", .want = false },
         .{ .pattern = "\x1b?", .text = "\x1b]", .want = true },
+        // Every byte but `*` and `?` matches itself: brackets and `\` too.
+        .{ .pattern = "*\x1b[*", .text = "say \x1b[0m", .want = true },
+        .{ .pattern = "a\\b", .text = "a\\b", .want = true },
+        .{ .pattern = "[ab]", .text = "a", .want = false },
+        // A star is a star wherever the text has one.
+        .{ .pattern = "*a", .text = "*ba", .want = true },
     };
     for (cases) |case| try eq(case.want, g.rules.matchesToken(case.pattern, case.text));
 }
@@ -192,4 +198,18 @@ test "a token rule names several tokens under one name" {
     // A rule is checked only when the scan recorded every token it names.
     const wider: []const g.rules.TokenRule = &.{.{ .name = "clock", .tokens = &.{ "nanoTimestamp", "timestamp" } }};
     try std.testing.expectError(error.UnscannedToken, graph.check(a, .{ .tokens = wider }));
+}
+
+test "token rules with many patterns all keep matching" {
+    // Enough patterns that the scan's compiled table grows several times
+    // while the recorder holds what it compiled first.
+    var tokens: [200][]const u8 = undefined;
+    var names: [200][8]u8 = undefined;
+    for (&tokens, &names, 0..) |*t, *n, i| t.* = try std.mem.print(n, "tok{d:0>4}", .{i});
+    const owned = [_]g.rules.TokenRule{.{ .name = "owned", .tokens = &tokens }};
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "a.zig", .text = "const tok0000 = 1; const tok0199 = tok0000;" },
+    } }).scan(a, .{ .tokens = &owned });
+    defer graph.deinit();
+    try eq(3, graph.tokens().len);
 }

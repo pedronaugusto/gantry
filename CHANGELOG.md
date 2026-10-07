@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Breaking
 
+- Path rules are git's glob dialect, read by sweep, gantry's one dependency: `a/**` is what lies under `a` and no longer matches `a`, brackets (`[ch]`, `[!a-z]`) and `\` escapes are syntax, and `*` and `?` stay within a component as before. Token rules are unchanged: `*` and `?` are the only wildcards. `rules.matches` and `rules.matchesToken` keep their names.
+- A rule, test path, named module `from` or token pattern sweep refuses (an unclosed `[`, a trailing `\`, or one past `sweep.Pattern.max_units`) fails: `check` returns `error.InvalidPattern` or `error.PatternTooLong`, both in `rules.CheckError`, whatever the graph holds, and `scan` returns them, both in `ScanError`. Such a pattern matched nothing before.
 - `scan` takes an `io` after its allocator and hands it to the reader, which is `read(context, scratch, io, path)`: the value it is called on first, as every method takes it. `DirReader.read(self, scratch, io, path)` follows it, and a reader of another shape fails to compile in `scan` with the expected signature by name. `DirReader` holds no `Io` (`.{ .dir = dir }`); nothing gantry returns keeps one.
 - `manifests` names each error set after the function that returns it: `parse` returns `ParseError`, `read` `ReadError` (which now has `UnsupportedManifest`) and `readSupported` `ReadSupportedError`. The module-wide `Error` is gone.
 - `scanWithDiagnostic` is gone: set `Options.diagnostics = &diagnostics` and call `scan`. `ScanDiagnostic` is `Diagnostics`.
@@ -70,6 +72,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- A check compiles each pattern once, finds each path's layer once, and a scan matches test paths once per file: `rules/forbidden` and `rules/nothing-imports` run 7.5 times faster, `rules/allowed` 6 times, transitive rules 2.5 times, ordered layers 1.8 times. `rules.matches` and `rules.matchesToken` match one pattern once; a caller matching one many times compiles it with `sweep.Pattern` and `rules.patternOptions`.
 - Zig: `if (x.is_test)` is a test branch only when `x` is `@import("builtin")` or a container-level `const` bound to it, so `if (options.is_test)` keeps its imports `import`. Decl and enum literals (`return .default;`, `x = .empty`) and `@field(@This(), "name")` reach the declaration they name, where before such a declaration could be read as test-only or unreached. The label in `break :blk` is no reference.
 - Paths refuse only a drive spelling (`C:` at the start), not every colon; `walk` skips names a scan would refuse. `path.valid` says whether `normalize` takes a path.
 - Take a Zig import path as written when it has no escape, and look for alias members only in files that declare an alias.
@@ -90,6 +93,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A token pattern's `*` no longer matches a literal `*` in the text as one byte and stops there: `*a` matches `*ba`.
 - TOML array-of-tables headers (`[[bin]]`, `[[tool.mypy.overrides]]`) and dotted keys under a Cargo dependency table (`serde.features = [...]`, `local.path = "../x"`) are read instead of failing the manifest.
 - A dependency whose imports resolve to selected files (a Go `replace` or workspace member, a Zig path dependency under a named module) is used, not reported unused.
 - A single- or double-quoted literal that cannot span lines ends at its newline when unclosed, so an apostrophe in JSX text or `#if 0` prose no longer hides the imports after it.

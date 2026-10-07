@@ -4,6 +4,7 @@
 //! rule; nothing is installed or looked up.
 const options_module = @import("../scan/options.zig");
 const std = @import("std");
+const sweep = @import("sweep");
 const t = @import("../types.zig");
 const p = @import("../path.zig");
 const engine = @import("check.zig");
@@ -170,9 +171,8 @@ fn samePython(x: []const u8, y: []const u8) bool {
         j += 1;
     }
 }
-fn ignored(rule: engine.DependencyRule, name: []const u8) bool {
-    for (rule.ignore) |pattern| if (engine.matchesToken(pattern, name)) return true;
-    return false;
+fn ignored(ignore: []const *const sweep.Pattern, name: []const u8) bool {
+    return engine.anyOf(ignore, name);
 }
 /// What an import's package is called in its manifests: a `names`
 /// entry's package, or the package itself.
@@ -196,7 +196,9 @@ const Manifests = struct { first: usize, end: usize };
 
 /// Undeclared imports in reference order, then unused declarations in
 /// declaration order. Findings borrow the graph and the rule.
-pub fn check(arena: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out: *engine.Collector) std.mem.Allocator.Error!void {
+pub fn check(arena: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, globs: *engine.Globs, out: *engine.Collector) (std.mem.Allocator.Error || sweep.CompileError)!void {
+    const from = try globs.get(.path, rule.from);
+    const ignore = try globs.list(.token, rule.ignore);
     const paths = g.paths();
     const deps = g.dependencies();
     var unread: std.StringHashMapUnmanaged(void) = .empty;
@@ -242,7 +244,7 @@ pub fn check(arena: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, 
             }
         }
     };
-    for (paths) |path| if (engine.matches(rule.from, path)) {
+    for (paths) |path| if (from.matches(path)) {
         const language = languageOf(path) orelse continue;
         const e = Ecosystem.of(language) orelse continue;
         for (Lookup.find(governing, e, path) orelse continue) |manifest| try active.put(arena, manifest, {});
@@ -250,7 +252,7 @@ pub fn check(arena: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, 
     for (g.references()) |*ref| {
         // A resolved import still uses its declaration: a Go `replace` or
         // workspace member, a Zig path dependency under a named module.
-        if (!engine.matches(rule.from, ref.from)) continue;
+        if (!from.matches(ref.from)) continue;
         const e = Ecosystem.of(languageOf(ref.from) orelse continue) orelse continue;
         const package = packageOf(e, ref.name) orelse continue;
         const manifests = Lookup.find(governing, e, ref.from) orelse continue;
@@ -270,7 +272,7 @@ pub fn check(arena: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, 
             }
             if (longest) |i| used[i] = true;
         }
-        if (found or ref.resolved or !rule.undeclared or ignored(rule, package) or (alias != null and ignored(rule, alias.?))) continue;
+        if (found or ref.resolved or !rule.undeclared or ignored(ignore, package) or (alias != null and ignored(ignore, alias.?))) continue;
         // Once per file and package: a `from` import spells several names.
         const key = try arena.print("{s}\x00{s}", .{ ref.from, package });
         if ((try reported.getOrPut(arena, key)).found_existing) continue;
@@ -282,7 +284,7 @@ pub fn check(arena: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, 
         for (rule.unused) |wanted| {
             if (wanted == scope) break;
         } else continue;
-        if (ignored(rule, dep.name) or ignored(rule, dep.shortName()) or quiet(dep.*)) continue;
+        if (ignored(ignore, dep.name) or ignored(ignore, dep.shortName()) or quiet(dep.*)) continue;
         try out.items.append(out.gpa, .{ .rule = rule.name, .reason = .unused, .dependency = dep, .path = dep.manifest });
     }
 }

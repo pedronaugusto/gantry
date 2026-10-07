@@ -2,6 +2,7 @@
 const path_module = @import("../path.zig");
 const reach_module = @import("../analysis/reach.zig");
 const std = @import("std");
+const sweep = @import("sweep");
 const t = @import("../types.zig");
 pub const Layer = struct { name: []const u8, patterns: []const []const u8 };
 pub const OrderedLayers = struct {
@@ -182,81 +183,173 @@ pub const Findings = struct {
     }
 };
 /// What `check` fails with: a token rule the graph was not scanned for, a
-/// dependency rule on a graph scanned without manifests, or memory.
-pub const CheckError = error{ UnscannedToken, UnscannedManifests, OutOfMemory };
-fn allowed(rules: Rules, name: []const u8, e: t.Edge) bool {
-    for (rules.allowed) |r| if (std.mem.eql(u8, r.rule, name) and matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind)) return true;
+/// dependency rule on a graph scanned without manifests, a pattern sweep
+/// refuses (`InvalidPattern`, `PatternTooLong`), or memory.
+pub const CheckError = error{ UnscannedToken, UnscannedManifests, InvalidPattern, PatternTooLong, OutOfMemory };
+/// The dialects a rule's patterns are read in.
+pub const Dialect = enum {
+    /// A path rule's pattern, as `matches` reads it.
+    path,
+    /// A raw import name, matched in full.
+    name,
+    /// A token rule's text, as `matchesToken` reads it.
+    token,
+};
+pub fn patternOptions(dialect: Dialect) sweep.Options {
+    return switch (dialect) {
+        .path => path_options,
+        .name => full_options,
+        .token => token_options,
+    };
+}
+/// Every pattern one check or scan reads, each compiled once by its text and
+/// dialect. The patterns live in `arena`, each at an address of its own that
+/// later patterns never move.
+pub const Globs = struct {
+    arena: std.mem.Allocator,
+    compiled: [3]std.StringHashMapUnmanaged(*const sweep.Pattern) = @splat(.empty),
+
+    pub fn get(g: *Globs, dialect: Dialect, text: []const u8) sweep.CompileError!*const sweep.Pattern {
+        const entry = try g.compiled[@backingInt(dialect)].getOrPut(g.arena, text);
+        if (entry.found_existing) return entry.value_ptr.*;
+        errdefer _ = g.compiled[@backingInt(dialect)].remove(text);
+        const pattern = try g.arena.create(sweep.Pattern);
+        pattern.* = try .compile(g.arena, text, patternOptions(dialect));
+        entry.value_ptr.* = pattern;
+        return pattern;
+    }
+    /// Compiles every pattern `rules` names, so a pattern sweep refuses fails
+    /// the check whatever the graph holds.
+    fn prepare(g: *Globs, rules: Rules) sweep.CompileError!void {
+        for (rules.ordered) |r| for (r.layers) |l| for (l.patterns) |p| {
+            _ = try g.get(.path, p);
+        };
+        for (rules.forbidden) |r| _ = .{ try g.get(.path, r.from), try g.get(.path, r.to) };
+        for (rules.allowed) |r| _ = .{ try g.get(.path, r.from), try g.get(.path, r.to) };
+        for (rules.nothing_imports) |r| _ = try g.get(.path, r.to);
+        for (rules.references) |r| {
+            _ = .{ try g.get(.path, r.from), try g.get(.name, r.target) };
+            if (r.member) |member| _ = try g.get(.path, member);
+            for (r.except_targets) |p| _ = try g.get(.name, p);
+            for (r.except_from) |p| _ = try g.get(.path, p);
+        }
+        for (rules.tokens) |r| {
+            for (r.tokens) |p| _ = try g.get(.token, p);
+            for (r.owners) |p| _ = try g.get(.path, p);
+        }
+        for (rules.reachable) |r| {
+            for (r.entries) |p| _ = try g.get(.path, p);
+            _ = try g.get(.path, r.files);
+        }
+        for (rules.dependencies) |r| {
+            _ = try g.get(.path, r.from);
+            for (r.ignore) |p| _ = try g.get(.token, p);
+        }
+    }
+    /// `patterns`, each compiled, for a loop that matches them many times.
+    pub fn list(g: *Globs, dialect: Dialect, patterns: []const []const u8) sweep.CompileError![]const *const sweep.Pattern {
+        const out = try g.arena.alloc(*const sweep.Pattern, patterns.len);
+        for (patterns, out) |p, *compiled| compiled.* = try g.get(dialect, p);
+        return out;
+    }
+};
+/// Whether some pattern of `patterns` matches `text`.
+pub fn anyOf(patterns: []const *const sweep.Pattern, text: []const u8) bool {
+    for (patterns) |p| if (p.matches(text)) return true;
     return false;
 }
-fn layer(r: OrderedLayers, path: []const u8) usize {
-    return named(r, path) orelse r.default_layer;
-}
-fn named(r: OrderedLayers, path: []const u8) ?usize {
-    for (r.layers, 0..) |item, i| for (item.patterns) |pattern| if (matches(pattern, path)) return i;
-    return null;
-}
+/// An allowance with its patterns compiled.
+const Allowance = struct { rule: Allow, from: *const sweep.Pattern, to: *const sweep.Pattern };
+/// What a check reads besides the graph: the rules, their compiled patterns
+/// and allowances.
+const Context = struct {
+    rules: Rules,
+    globs: *Globs,
+    allowances: []const Allowance,
+
+    fn init(arena: std.mem.Allocator, rules: Rules, globs: *Globs) !Context {
+        try globs.prepare(rules);
+        const allowances = try arena.alloc(Allowance, rules.allowed.len);
+        for (rules.allowed, allowances) |r, *a| a.* = .{ .rule = r, .from = try globs.get(.path, r.from), .to = try globs.get(.path, r.to) };
+        return .{ .rules = rules, .globs = globs, .allowances = allowances };
+    }
+    fn allowed(c: Context, name: []const u8, e: t.Edge) bool {
+        for (c.allowances) |a| if (std.mem.eql(u8, a.rule.rule, name) and (a.rule.kind == null or a.rule.kind.? == e.kind) and a.from.matches(e.from) and a.to.matches(e.to)) return true;
+        return false;
+    }
+};
+/// An ordered rule's patterns in order, compiled, each with its layer.
+const Layering = struct {
+    rule: OrderedLayers,
+    patterns: []const Placed,
+    /// The layer each path has, as edges ask for it.
+    places: std.StringHashMapUnmanaged(usize) = .empty,
+    const Placed = struct { at: usize, pattern: *const sweep.Pattern };
+
+    fn init(arena: std.mem.Allocator, globs: *Globs, rule: OrderedLayers) !Layering {
+        var patterns: std.ArrayList(Placed) = .empty;
+        for (rule.layers, 0..) |item, i| for (item.patterns) |p| try patterns.append(arena, .{ .at = i, .pattern = try globs.get(.path, p) });
+        return .{ .rule = rule, .patterns = patterns.items };
+    }
+    fn named(l: *const Layering, path: []const u8) ?usize {
+        for (l.patterns) |p| if (p.pattern.matches(path)) return p.at;
+        return null;
+    }
+    /// Each path's layer is found once, however many edges touch it.
+    fn layer(l: *Layering, arena: std.mem.Allocator, path: []const u8) !usize {
+        const entry = try l.places.getOrPut(arena, path);
+        if (!entry.found_existing) entry.value_ptr.* = l.named(path) orelse l.rule.default_layer;
+        return entry.value_ptr.*;
+    }
+};
 /// Findings borrow graph storage, rule names and required-path strings.
 /// Keep the graph and those caller strings alive until findings are released.
-/// `dependencies` joins imports to manifests: `check(g, gpa, rule, out)`.
-pub fn check(comptime dependencies: type, gpa: std.mem.Allocator, g: anytype, rules: Rules) error{OutOfMemory}!Findings {
+/// `dependencies` joins imports to manifests: `check(arena, g, rule, globs, out)`.
+pub fn check(comptime dependencies: type, gpa: std.mem.Allocator, g: anytype, rules: Rules) (sweep.CompileError || error{OutOfMemory})!Findings {
     var out: Collector = .{ .gpa = gpa };
     errdefer out.deinit();
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
+    const arena = scratch.allocator();
+    var globs: Globs = .{ .arena = arena };
+    const c: Context = try .init(arena, rules, &globs);
     var walks: ?Walks = null;
     for (rules.ordered) |r| {
+        var layering: Layering = try .init(arena, &globs, r);
         if (r.transitive) {
-            if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
-            try walks.?.layers(&out, g.edges(), rules, r);
+            if (walks == null) walks = try .init(arena, g.paths(), g.edges());
+            try walks.?.layers(&out, g.edges(), c, &layering);
         } else for (g.edges()) |*e| {
-            if (layer(r, e.to) > layer(r, e.from) and !allowed(rules, r.name, e.*)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .upward, .edge = e });
+            if (try layering.layer(arena, e.to) > try layering.layer(arena, e.from) and !c.allowed(r.name, e.*)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .upward, .edge = e });
         }
     }
     for (rules.forbidden) |r| {
         if (r.transitive) {
-            if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
-            try walks.?.forbidden(&out, g.edges(), rules, r);
-        } else for (g.edges()) |*e| {
-            if (matches(r.from, e.from) and matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e.*)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .forbidden, .edge = e });
+            if (walks == null) walks = try .init(arena, g.paths(), g.edges());
+            try walks.?.forbidden(&out, g.edges(), c, r);
+            continue;
+        }
+        const from = try globs.get(.path, r.from);
+        const to = try globs.get(.path, r.to);
+        for (g.edges()) |*e| {
+            if ((r.kind == null or r.kind.? == e.kind) and from.matches(e.from) and to.matches(e.to) and !c.allowed(r.name, e.*)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .forbidden, .edge = e });
         }
     }
-    for (rules.nothing_imports) |r| for (g.edges()) |*e| {
-        if (matches(r.to, e.to) and (r.kind == null or r.kind.? == e.kind) and !allowed(rules, r.name, e.*)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .entry, .edge = e });
-    };
-    for (rules.references) |r| for (g.references()) |*ref| {
-        if (!matches(r.from, ref.from) or (r.unresolved_only and ref.resolved) or (r.kind != null and r.kind.? != ref.kind)) continue;
-        if (r.suffix) |suffix| if (!std.mem.endsWith(u8, ref.name, suffix)) continue;
-        var normalized: ?[]const u8 = null;
-        defer if (normalized) |path| gpa.free(path);
-        if (r.relative) {
-            const dir = path_module.dir(ref.from);
-            const raw = try std.mem.join(gpa, "/", if (dir.len == 0) &.{ref.name} else &.{ dir, ref.name });
-            defer gpa.free(raw);
-            normalized = path_module.normalize(gpa, raw) catch |err| switch (err) {
-                error.InvalidPath => null,
-                else => |e| return e,
-            };
+    for (rules.nothing_imports) |r| {
+        const to = try globs.get(.path, r.to);
+        for (g.edges()) |*e| {
+            if ((r.kind == null or r.kind.? == e.kind) and to.matches(e.to) and !c.allowed(r.name, e.*)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .entry, .edge = e });
         }
-        const target_name = normalized orelse ref.name;
-        if (!matchesFull(r.target, target_name)) continue;
-        if (r.member) |member| {
-            if (ref.member == null or !matches(member, ref.member.?)) continue;
-        } else if (ref.member != null) continue;
-        var except = false;
-        for (r.except_targets) |target| if (matchesFull(target, target_name)) {
-            except = true;
-        };
-        for (r.except_from) |from| if (matches(from, ref.from)) {
-            except = true;
-        };
-        if (!except) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .reference, .reference = ref });
-    };
-    for (rules.tokens) |r| for (g.tokens()) |*token| {
-        if (token.kind != r.kind or !r.names(token.text)) continue;
-        for (r.owners) |owner| {
-            if (matches(owner, token.path)) break;
-        } else try out.items.append(out.gpa, .{ .rule = r.name, .reason = .token, .token = token });
-    };
+    }
+    for (rules.references) |r| try references(gpa, &globs, g, r, &out);
+    for (rules.tokens) |r| {
+        const tokens = try globs.list(.token, r.tokens);
+        const owners = try globs.list(.path, r.owners);
+        for (g.tokens()) |*token| {
+            if (token.kind != r.kind or !anyOf(tokens, token.text)) continue;
+            if (!anyOf(owners, token.path)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .token, .token = token });
+        }
+    }
     for (rules.required) |r| for (r.paths) |path| if (!g.contains(path)) {
         try out.items.append(out.gpa, .{ .rule = r.name, .reason = .missing, .path = path });
     };
@@ -276,11 +369,39 @@ pub fn check(comptime dependencies: type, gpa: std.mem.Allocator, g: anytype, ru
         }
     }
     for (rules.reachable) |r| {
-        if (walks == null) walks = try .init(scratch.allocator(), g.paths(), g.edges());
-        try walks.?.unreached(&out, g.edges(), r);
+        if (walks == null) walks = try .init(arena, g.paths(), g.edges());
+        try walks.?.unreached(&out, g.edges(), c, r);
     }
-    for (rules.dependencies) |r| try dependencies.check(scratch.allocator(), g, r, &out);
+    for (rules.dependencies) |r| try dependencies.check(arena, g, r, &globs, &out);
     return out.finish();
+}
+fn references(gpa: std.mem.Allocator, globs: *Globs, g: anytype, r: ReferenceRule, out: *Collector) !void {
+    const from = try globs.get(.path, r.from);
+    const target = try globs.get(.name, r.target);
+    const except_targets = try globs.list(.name, r.except_targets);
+    const except_from = try globs.list(.path, r.except_from);
+    for (g.references()) |*ref| {
+        if ((r.unresolved_only and ref.resolved) or (r.kind != null and r.kind.? != ref.kind) or !from.matches(ref.from)) continue;
+        if (r.suffix) |suffix| if (!std.mem.endsWith(u8, ref.name, suffix)) continue;
+        var normalized: ?[]const u8 = null;
+        defer if (normalized) |path| gpa.free(path);
+        if (r.relative) {
+            const dir = path_module.dir(ref.from);
+            const raw = try std.mem.join(gpa, "/", if (dir.len == 0) &.{ref.name} else &.{ dir, ref.name });
+            defer gpa.free(raw);
+            normalized = path_module.normalize(gpa, raw) catch |err| switch (err) {
+                error.InvalidPath => null,
+                else => |e| return e,
+            };
+        }
+        const target_name = normalized orelse ref.name;
+        if (!target.matches(target_name)) continue;
+        if (r.member) |member| {
+            if (ref.member == null or !(try globs.get(.path, member)).matches(ref.member.?)) continue;
+        } else if (ref.member != null) continue;
+        if (anyOf(except_targets, target_name) or anyOf(except_from, ref.from)) continue;
+        try out.items.append(out.gpa, .{ .rule = r.name, .reason = .reference, .reference = ref });
+    }
 }
 /// Findings, appended in place to `items`, and their chains gathered
 /// into one block that `Findings` owns.
@@ -332,30 +453,33 @@ const Walks = struct {
         return .{ .arena = arena, .paths = paths, .forward = try .init(arena, paths.len, from, to, true), .backward = try .init(arena, paths.len, to, from, true) };
     }
     /// Which edges a rule's chains follow: its kind, less its allowances.
-    fn follow(w: Walks, edges: []const t.Edge, rules: Rules, name: []const u8, kind: ?t.Kind) ![]const bool {
+    fn follow(w: Walks, edges: []const t.Edge, c: Context, name: []const u8, kind: ?t.Kind) ![]const bool {
         const result = try w.arena.alloc(bool, edges.len);
-        for (edges, result) |e, *dest| dest.* = (kind == null or kind.? == e.kind) and !allowed(rules, name, e);
+        for (edges, result) |e, *dest| dest.* = (kind == null or kind.? == e.kind) and !c.allowed(name, e);
         return result;
     }
-    fn forbidden(w: Walks, out: *Collector, edges: []const t.Edge, rules: Rules, r: EdgeRule) !void {
-        const filter: walk.Filter = .{ .follow = try w.follow(edges, rules, r.name, r.kind) };
+    fn forbidden(w: Walks, out: *Collector, edges: []const t.Edge, c: Context, r: EdgeRule) !void {
+        const filter: walk.Filter = .{ .follow = try w.follow(edges, c, r.name, r.kind) };
+        const from = try c.globs.get(.path, r.from);
+        const to = try c.globs.get(.path, r.to);
         const targets = try w.arena.alloc(bool, w.paths.len);
-        for (w.paths, targets) |path, *dest| dest.* = matches(r.to, path);
+        for (w.paths, targets) |path, *dest| dest.* = to.matches(path);
         const dist = try w.arena.alloc(u32, w.paths.len);
         try walk.distances(w.arena, w.backward, targets, filter, dist);
         var nodes: std.ArrayList(u32) = .empty;
-        for (w.paths, 0..) |path, v| if (matches(r.from, path)) {
+        for (w.paths, 0..) |path, v| if (from.matches(path)) {
             nodes.clearRetainingCapacity();
             const first = try walk.chain(w.arena, w.forward, dist, filter, @intCast(v), &nodes) orelse continue;
             try out.appendChain(.{ .rule = r.name, .reason = .forbidden, .edge = &edges[first], .path = w.paths[nodes.items[nodes.items.len - 1]] }, w.paths, nodes.items);
         };
     }
-    fn layers(w: Walks, out: *Collector, edges: []const t.Edge, rules: Rules, r: OrderedLayers) !void {
-        const filter_edges = try w.follow(edges, rules, r.name, null);
+    fn layers(w: Walks, out: *Collector, edges: []const t.Edge, c: Context, layering: *const Layering) !void {
+        const r = layering.rule;
+        const filter_edges = try w.follow(edges, c, r.name, null);
         const place = try w.arena.alloc(?usize, w.paths.len);
         const passable = try w.arena.alloc(bool, w.paths.len);
         for (w.paths, place, passable) |path, *at, *through| {
-            at.* = named(r, path);
+            at.* = layering.named(path);
             through.* = at.* == null;
         }
         const filter: walk.Filter = .{ .follow = filter_edges, .passable = passable };
@@ -374,14 +498,15 @@ const Walks = struct {
             try out.appendChain(.{ .rule = r.name, .reason = .upward, .edge = &edges[first], .path = w.paths[nodes.items[nodes.items.len - 1]] }, w.paths, nodes.items);
         };
     }
-    fn unreached(w: Walks, out: *Collector, edges: []const t.Edge, r: Reachable) !void {
+    fn unreached(w: Walks, out: *Collector, edges: []const t.Edge, c: Context, r: Reachable) !void {
+        const files = try c.globs.get(.path, r.files);
         const marks = try w.arena.alloc(bool, w.paths.len);
         @memset(marks, false);
         var queue: std.ArrayList(u32) = .empty;
-        for (w.paths, 0..) |path, v| for (r.entries) |entry| if (matches(entry, path)) {
+        const entries = try c.globs.list(.path, r.entries);
+        for (w.paths, 0..) |path, v| if (anyOf(entries, path)) {
             marks[v] = true;
             try queue.append(w.arena, @intCast(v));
-            break;
         };
         var head: usize = 0;
         while (head < queue.items.len) : (head += 1) {
@@ -393,75 +518,27 @@ const Walks = struct {
                 try queue.append(w.arena, next);
             }
         }
-        for (w.paths, marks) |path, mark| if (!mark and matches(r.files, path)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .unreached, .path = path });
+        for (w.paths, marks) |path, mark| if (!mark and files.matches(path)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .unreached, .path = path });
     }
 };
-/// Slash-separated globs: * and ? within components, ** as a complete
-/// component across zero or more directories. A pattern without '/' matches
-/// the basename. Byte and case exact on every platform; no regex engine.
+/// A path rule's pattern, in git's dialect: `*`, `?` and brackets stay
+/// within a component, `**` standing as a whole component spans zero or
+/// more of them, `\` escapes, and a pattern without `/` matches the last
+/// component at any depth. Byte and case exact on every platform. A pattern
+/// sweep refuses matches nothing.
 pub fn matches(pattern: []const u8, path: []const u8) bool {
-    if (std.mem.findScalar(u8, pattern, '/') == null and !std.mem.eql(u8, pattern, "**")) return component(pattern, path_module.base(path));
-    return matchesFull(pattern, path);
+    return sweep.match(pattern, path, path_options) catch false;
 }
+const path_options: sweep.Options = .{ .anywhere = true };
 /// A raw import name is matched in full; unlike file rules, an unqualified
 /// pattern does not also match the basename of a package path.
 fn matchesFull(pattern: []const u8, path: []const u8) bool {
-    var pi: usize = 0;
-    var si: usize = 0;
-    var retry_pattern: ?usize = null;
-    var retry_path: usize = 0;
-    while (true) {
-        const pe = end(pattern, pi);
-        const se = end(path, si);
-        if (pi < pattern.len and std.mem.eql(u8, pattern[pi..pe], "**")) {
-            pi = if (pe < pattern.len) pe + 1 else pattern.len;
-            if (pi == pattern.len) return true;
-            retry_pattern = pi;
-            retry_path = si;
-            continue;
-        }
-        if (pi == pattern.len and si == path.len) return true;
-        if (pi < pattern.len and si < path.len and component(pattern[pi..pe], path[si..se])) {
-            pi = if (pe < pattern.len) pe + 1 else pattern.len;
-            si = if (se < path.len) se + 1 else path.len;
-            continue;
-        }
-        if (retry_pattern) |rp| {
-            if (retry_path == path.len) return false;
-            const re = end(path, retry_path);
-            retry_path = if (re < path.len) re + 1 else path.len;
-            si = retry_path;
-            pi = rp;
-        } else return false;
-    }
+    return sweep.match(pattern, path, full_options) catch false;
 }
+const full_options: sweep.Options = .{};
 /// A token rule's text: `*` matches any run of bytes, including `/`, and
 /// `?` one byte; every other byte matches itself.
 pub fn matchesToken(pattern: []const u8, text: []const u8) bool {
-    return component(pattern, text);
+    return sweep.match(pattern, text, token_options) catch false;
 }
-fn end(s: []const u8, i: usize) usize {
-    return std.mem.findScalarPos(u8, s, i, '/') orelse s.len;
-}
-fn component(pattern: []const u8, text: []const u8) bool {
-    var i: usize = 0;
-    var j: usize = 0;
-    var star: ?usize = null;
-    var retry: usize = 0;
-    while (j < text.len) {
-        if (i < pattern.len and (pattern[i] == '?' or pattern[i] == text[j])) {
-            i += 1;
-            j += 1;
-        } else if (i < pattern.len and pattern[i] == '*') {
-            star = i;
-            i += 1;
-            retry = j;
-        } else if (star) |s| {
-            retry += 1;
-            j = retry;
-            i = s + 1;
-        } else return false;
-    }
-    while (i < pattern.len and pattern[i] == '*') : (i += 1) {}
-    return i == pattern.len;
-}
+const token_options: sweep.Options = .{ .syntax = .{ .separator = null, .escape = false, .brackets = .none } };

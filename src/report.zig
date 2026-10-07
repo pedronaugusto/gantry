@@ -3,6 +3,7 @@
 //! gantry draws nothing itself. Output is the same for the same input.
 const graph_module = @import("graph.zig");
 const std = @import("std");
+const sweep = @import("sweep");
 const t = @import("types.zig");
 const Graph = graph_module.Graph;
 const engine = @import("rules/check.zig");
@@ -99,7 +100,7 @@ fn draw(comptime format: Format, gpa: std.mem.Allocator, w: *Writer, graph: *con
         .layer => {
             const layer = try gpa.alloc(usize, paths.len);
             defer gpa.free(layer);
-            for (paths, layer) |p, *l| l.* = firstLayer(options.layers, p);
+            try placeLayers(gpa, options.layers, paths, layer);
             for (options.layers, 0..) |l, li| {
                 if (std.mem.findScalar(usize, layer, li) == null) continue;
                 try out.openLayer(li, l.name);
@@ -309,9 +310,28 @@ fn position(paths: []const []const u8, p: []const u8) ?usize {
     return if (i < paths.len and std.mem.eql(u8, paths[i], p)) i else null;
 }
 
-fn firstLayer(layers: []const engine.Layer, p: []const u8) usize {
-    for (layers, 0..) |l, i| for (l.patterns) |pattern| if (engine.matches(pattern, p)) return i;
-    return layers.len;
+/// Each path's first layer, `layers.len` for none, with every pattern
+/// compiled once. A pattern sweep refuses names no path, as in
+/// `rules.matches`.
+fn placeLayers(gpa: std.mem.Allocator, layers: []const engine.Layer, paths: []const []const u8, out: []usize) std.mem.Allocator.Error!void {
+    var arena: std.heap.ArenaAllocator = .init(gpa);
+    defer arena.deinit();
+    var globs: engine.Globs = .{ .arena = arena.allocator() };
+    var placed: std.ArrayList(struct { at: usize, pattern: *const sweep.Pattern }) = .empty;
+    for (layers, 0..) |l, i| for (l.patterns) |pattern| {
+        const compiled = globs.get(.path, pattern) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.InvalidPattern, error.PatternTooLong => continue,
+        };
+        try placed.append(arena.allocator(), .{ .at = i, .pattern = compiled });
+    };
+    for (paths, out) |p, *at| {
+        at.* = layers.len;
+        for (placed.items) |entry| if (entry.pattern.matches(p)) {
+            at.* = entry.at;
+            break;
+        };
+    }
 }
 
 fn parent(p: []const u8) []const u8 {

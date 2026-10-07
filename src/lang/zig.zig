@@ -1,4 +1,3 @@
-const check_module = @import("../rules/check.zig");
 const std = @import("std");
 const l = @import("../lexer.zig");
 const liveness = @import("zig/liveness.zig");
@@ -70,8 +69,8 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) types.ResolveError![]co
     // A `.zig` or `.zon` name is a file beside the importer; any other a module.
     if (std.mem.endsWith(u8, name, ".zig") or std.mem.endsWith(u8, name, ".zon")) {
         if (try c.candidate(dir, name, &.{""})) |v| try out.append(a, v);
-    } else for (c.named_modules) |m| {
-        if (std.mem.eql(u8, name, m.name) and check_module.matches(m.from, from)) {
+    } else for (c.named_modules, c.named_from) |m, named_from| {
+        if (std.mem.eql(u8, name, m.name) and named_from.matches(from)) {
             if (try c.candidate("", m.path, &.{""})) |v| try out.append(a, v);
             break;
         }

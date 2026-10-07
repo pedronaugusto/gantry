@@ -1,6 +1,7 @@
 //! Token rule occurrences, taken from the token streams recovery lexes anyway.
 const check_module = @import("rules/check.zig");
 const std = @import("std");
+const sweep = @import("sweep");
 const t = @import("types.zig");
 const l = @import("lexer.zig");
 const TokenRule = check_module.TokenRule;
@@ -9,6 +10,8 @@ const TokenRule = check_module.TokenRule;
 /// per file. With no rules every call returns at once.
 pub const Recorder = struct {
     rules: []const TokenRule = &.{},
+    /// Every rule's tokens compiled, with the kind each names.
+    patterns: []const Named = &.{},
     /// Graph storage for matched text.
     strings: std.mem.Allocator = undefined,
     found: std.ArrayList(t.Token) = .empty,
@@ -18,11 +21,15 @@ pub const Recorder = struct {
     /// The file being lexed, which `observer` points the lexer at.
     current: File = undefined,
 
-    pub fn init(w: std.mem.Allocator, strings: std.mem.Allocator, rules: []const TokenRule, files: usize) std.mem.Allocator.Error!Recorder {
+    const Named = struct { kind: t.Token.Kind, pattern: *const sweep.Pattern };
+
+    pub fn init(w: std.mem.Allocator, strings: std.mem.Allocator, rules: []const TokenRule, globs: *check_module.Globs, files: usize) sweep.CompileError!Recorder {
         if (rules.len == 0) return .{};
         const done = try w.alloc(bool, files);
         @memset(done, false);
-        var r: Recorder = .{ .rules = rules, .strings = strings, .done = done };
+        var patterns: std.ArrayList(Named) = .empty;
+        for (rules) |rule| for (rule.tokens) |token| try patterns.append(w, .{ .kind = rule.kind, .pattern = try globs.get(.token, token) });
+        var r: Recorder = .{ .rules = rules, .patterns = patterns.items, .strings = strings, .done = done };
         for (rules) |rule| for (rule.tokens) |token| r.filters[@backingInt(rule.kind)].add(token);
         return r;
     }
@@ -94,8 +101,8 @@ const File = struct {
             text = try value(f.scratch, f.language, current.text, raw(f.language, f.source, tokens, i));
             if (!filter.admits(text)) return;
         }
-        for (r.rules) |rule| {
-            if (rule.kind == kind and rule.names(text)) break;
+        for (r.patterns) |named| {
+            if (named.kind == kind and named.pattern.matches(text)) break;
         } else return;
         while (f.counted < current.offset) : (f.counted += 1) if (f.source[f.counted] == '\n') {
             f.line += 1;

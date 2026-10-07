@@ -14,6 +14,7 @@ const code_kind_module = @import("code_kind.zig");
 const packages_module = @import("lang/java/packages.zig");
 const exports_module = @import("lang/python/exports.zig");
 const std = @import("std");
+const sweep = @import("sweep");
 const t = @import("types.zig");
 const resolver = @import("resolve.zig");
 const recover = @import("recover.zig");
@@ -149,7 +150,13 @@ fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype
         };
         break :blk false;
     };
-    var recorder: Recorder = try .init(w, a, options.tokens, g.paths.len);
+    // Every pattern the options name compiles once, before any file is read.
+    var globs: check_module.Globs = .{ .arena = w };
+    var recorder: Recorder = try .init(w, a, options.tokens, &globs, g.paths.len);
+    const named_from = try w.alloc(*const sweep.Pattern, options.named_modules.len);
+    for (options.named_modules, named_from) |m, *from| from.* = try globs.get(.path, m.from);
+    const test_paths = try w.alloc(*const sweep.Pattern, options.test_paths.len);
+    for (options.test_paths, test_paths) |pattern, *compiled| compiled.* = try globs.get(.path, pattern);
     if (recorder.active()) {
         var scanned: std.ArrayList(Graph.ScannedToken) = .empty;
         for (options.tokens) |rule| for (rule.tokens) |token| try scanned.append(a, .{ .kind = rule.kind, .text = try a.dupe(u8, token) });
@@ -204,8 +211,13 @@ fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype
     const nim_configs = try config_module_.load(w, gpa, g.paths, reader, Reader.readFile, progress);
     progress.at(.resolution, null);
     const index = try recover.names(w, g.paths);
-    const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs, .nim_configs = nim_configs };
-    const test_files = try code_kind_module.rustFiles(w, gpa, a, g.paths, base_ctx, reader, Reader.readFile, cached, progress, &recorder);
+    const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .named_from = named_from, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs, .nim_configs = nim_configs };
+    var test_files = try code_kind_module.rustFiles(w, gpa, a, g.paths, base_ctx, reader, Reader.readFile, cached, progress, &recorder);
+    // The caller's test paths, matched once per file rather than per import.
+    for (g.paths) |file| for (test_paths) |pattern| if (pattern.matches(file)) {
+        try test_files.put(w, file, {});
+        break;
+    };
     const java_packages = if (code_enabled) try packages_module.index(w, gpa, a, g.paths, reader, Reader.readFile, cached, progress, &recorder) else std.StringHashMapUnmanaged(std.ArrayList([]const u8)).empty;
     const reexports = if (options.python_star_reexports) try exports_module.index(w, gpa, a, g.paths, base_ctx, reader, Reader.readFile, cached, progress, &recorder) else std.StringHashMapUnmanaged([]const []const u8).empty;
     // Edges wait as path positions outside graph storage: a quarter of an
@@ -346,7 +358,7 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
             const specs = recovery.specs;
             for (specs) |spec| {
                 progress.at(.resolution, p);
-                const kind: Kind = if (spec.kind == .@"test" or testFile(options, indexes.test_files, language.?, p)) .@"test" else spec.kind;
+                const kind: Kind = if (spec.kind == .@"test" or testFile(indexes.test_files, language.?, p)) .@"test" else spec.kind;
                 const targets = ctx.targets(p, language.?, spec) catch |err| unresolved: {
                     progress.offset = spec.offset;
                     try progress.tolerate(err);
@@ -364,7 +376,7 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
                     if (children > 0 and !missing) continue;
                 }
                 for (targets) |target| {
-                    const edge_kind: Kind = if (kind == .@"test" or (code_kind_module.targetDecides(language.?, spec.form) and testFile(options, indexes.test_files, language.?, target))) .@"test" else kind;
+                    const edge_kind: Kind = if (kind == .@"test" or (code_kind_module.targetDecides(language.?, spec.form) and testFile(indexes.test_files, language.?, target))) .@"test" else kind;
                     if (!enabled(options, edge_kind)) continue;
                     const to = indexes.position.get(target).?;
                     const entry = try seen.getOrPut(s, .{ spec.offset, to });
@@ -390,11 +402,9 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
 }
 
 /// A file whose every import is `test`: by its language's convention, Rust
-/// cfg(test) propagation or the caller's `test_paths`.
-fn testFile(options: Options, rust_tests: std.StringHashMapUnmanaged(void), language: Language, file: []const u8) bool {
-    if (rust_tests.contains(file) or code_kind_module.file(language, file)) return true;
-    for (options.test_paths) |pattern| if (check_module.matches(pattern, file)) return true;
-    return false;
+/// cfg(test) propagation or the caller's `test_paths`, which `tests` holds.
+fn testFile(tests: std.StringHashMapUnmanaged(void), language: Language, file: []const u8) bool {
+    return tests.contains(file) or code_kind_module.file(language, file);
 }
 
 /// Publish sorted graph records only after every read succeeds.

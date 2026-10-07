@@ -4,6 +4,7 @@ const config_module_ = @import("lang/nim/config.zig");
 const path_module = @import("resolve/path.zig");
 const languages_module = @import("lang.zig");
 const std = @import("std");
+const sweep = @import("sweep");
 const p = @import("path.zig");
 const t = @import("types.zig");
 pub const PythonInitializers = enum { ancestors, explicit, modulefinder };
@@ -16,6 +17,8 @@ pub const Context = struct {
     go_modules: []const GoModule,
     go_workspaces: []const config_module.Workspace = &.{},
     named_modules: []const NamedModule,
+    /// Each named module's `from`, compiled, in the same order.
+    named_from: []const *const sweep.Pattern,
     include_roots: []const []const u8,
     python_roots: []const []const u8,
     python_initializers: PythonInitializers = .ancestors,
