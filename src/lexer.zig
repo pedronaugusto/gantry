@@ -25,6 +25,7 @@ pub fn lex(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8) st
 pub const Observer = struct {
     context: *anyopaque,
     punctuation: bool = false,
+    boundary: ?*const fn (context: *anyopaque) void = null,
     token: *const fn (context: *anyopaque, stream: []const Token) error{OutOfMemory}!void,
 };
 /// `lex`, telling `seen` of each code token and string as it is emitted. One
@@ -65,6 +66,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
             // Retain an opaque boundary so a string inside an interpolation
             // cannot become the literal operand of an enclosing import call.
             try out.push(gpa, .{ .kind = .template, .text = text[start .. start + 1], .offset = start, .end = start + 1 });
+            if (seen) |observer| if (observer.punctuation) try observer.token(observer.context, out.list.items);
             if (c == '}') _ = templates.pop();
             i += 1;
             while (i < text.len) {
@@ -91,6 +93,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
             continue;
         }
         if (lang == .javascript and c == '/' and regex_allowed) {
+            if (seen) |observer| if (observer.boundary) |boundary| boundary(observer.context);
             i += 1;
             var bracket = false;
             while (i < text.len and text[i] != '\n') {
@@ -110,7 +113,11 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
             regex_allowed = false;
             continue;
         }
+        const before_literal = out.list.items.len;
         if (try literal(lang, gpa, text, start, &out, seen)) |end| {
+            if (seen) |observer| if (observer.boundary) |boundary| {
+                if (out.list.items.len == before_literal or out.list.items[out.list.items.len - 1].kind == .template) boundary(observer.context);
+            };
             i = end;
             regex_allowed = false;
             continue;
@@ -557,4 +564,20 @@ fn literal(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, st
 
 comptime {
     std.debug.assert(space.len == 1 << @bitSizeOf(u8));
+}
+
+/// Length of Zig's longest punctuation token at this byte. Recovery keeps
+/// punctuation bytes separate; sequence rules must not cut an operator in
+/// half. The compiler's token vocabulary owns which runs are operators.
+pub fn zigOperatorLength(text: []const u8) usize {
+    if (text.len < 2 or std.ascii.isWhitespace(text[1]) or std.ascii.isAlphanumeric(text[1])) return @min(text.len, 1);
+    var length: usize = 1;
+    inline for (comptime std.meta.tags(std.zig.Token.Tag)) |tag| {
+        if (comptime tag.lexeme()) |spelling| {
+            if (comptime spelling.len > 1 and !std.ascii.isAlphabetic(spelling[0])) {
+                if (spelling.len > length and std.mem.startsWith(u8, text, spelling)) length = spelling.len;
+            }
+        }
+    }
+    return length;
 }

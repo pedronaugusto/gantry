@@ -222,7 +222,7 @@ test "token sequences ignore trivia and retain boundaries and locations" {
         .{ .name = "slots", .sequences = &.{&.{ "vtable", ".", "*", "=" }} },
     };
     const fixture: f.Fixture = .{ .items = &.{
-        .{ .path = "src/app.zig", .text = "// file.sync( io.async(\nconst literal = \"file.sync(\";\nfile . // comment\n sync\n (io); io . async (work); vtable.read = value;\nfile.resync(io); otherio.async(work); vtable.read + value;\n" },
+        .{ .path = "src/app.zig", .text = "// file.sync( io.async(\nconst literal = \"file.sync(\";\nfile . // comment\n sync\n (io); io . async (work); vtable.read = value;\nfile.resync(io); otherio.async(work); vtable.read == value;\n" },
         .{ .path = "src/airlock/write.zig", .text = "file.sync(io);" },
     } };
     var graph = try fixture.scan(a, .{ .tokens = owned });
@@ -253,4 +253,31 @@ test "token sequences clean up under every allocation failure" {
     };
     var no_resize = shakedown.alloc.NoResize.init(a);
     try std.testing.checkAllAllocationFailures(no_resize.allocator(), Probe.run, .{});
+}
+
+test "token sequences cannot match fragments of Zig operators" {
+    const owned = [_]g.rules.TokenRule{.{ .name = "assignment", .sequences = &.{ &.{ "vtable", ".", "*", "=" }, &.{ "=", "value" } } }};
+    var graph = try (f.Fixture{ .items = &.{
+        .{ .path = "comparison.zig", .text = "vtable.read == value;" },
+        .{ .path = "assignment.zig", .text = "vtable.read = value;" },
+    } }).scan(a, .{ .tokens = &owned });
+    defer graph.deinit();
+    var findings = try graph.check(a, .{ .tokens = &owned });
+    defer findings.deinit();
+    try eq(2, findings.items().len);
+    for (findings.items()) |finding| try eqs("assignment.zig", finding.token.?.path);
+}
+
+test "token sequences match quoted Zig identifiers and whole operators" {
+    const owned = [_]g.rules.TokenRule{
+        .{ .name = "sync", .sequences = &.{&.{ ".", "sync", "(" }} },
+        .{ .name = "comparison", .sequences = &.{&.{ "vtable", ".", "*", "==" }} },
+    };
+    var graph = try (f.Fixture{ .items = &.{.{ .path = "a.zig", .text = "file.@\"sync\"(io); vtable.read == value; const s = \".sync(\";" }} }).scan(a, .{ .tokens = &owned });
+    defer graph.deinit();
+    var findings = try graph.check(a, .{ .tokens = &owned });
+    defer findings.deinit();
+    try eq(2, findings.items().len);
+    try eqs(". sync (", findings.items()[0].token.?.text);
+    try eqs("vtable . read ==", findings.items()[1].token.?.text);
 }

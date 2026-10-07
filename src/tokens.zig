@@ -23,6 +23,7 @@ pub const Recorder = struct {
 
     sequences: []const []const *const sweep.Pattern = &.{},
     endings: Filter = .{},
+    width: usize = 0,
 
     const Named = struct { kind: t.Token.Kind, pattern: *const sweep.Pattern };
 
@@ -41,6 +42,7 @@ pub const Recorder = struct {
         for (rules) |rule| for (rule.sequences) |sequence| {
             try sequences.append(w, try globs.sequence(sequence));
             r.endings.add(sequence[sequence.len - 1]);
+            r.width = @max(r.width, sequence.len);
         };
         r.sequences = sequences.items;
         return r;
@@ -66,7 +68,7 @@ pub const Recorder = struct {
         if (!r.wants(index)) return null;
         r.done[index] = true;
         r.current = .{ .recorder = r, .scratch = scratch, .path = path, .language = language, .source = source };
-        return .{ .context = &r.current, .token = if (r.sequences.len > 0) File.sequenceToken else File.token, .punctuation = r.sequences.len > 0 };
+        return .{ .context = &r.current, .token = if (r.sequences.len > 0) File.sequenceToken else File.token, .punctuation = r.sequences.len > 0, .boundary = if (r.sequences.len > 0) File.boundary else null };
     }
     /// Occurrences by path and offset, in graph storage.
     pub fn finish(r: *Recorder) std.mem.Allocator.Error![]const t.Token {
@@ -92,6 +94,10 @@ const File = struct {
     line: usize = 1,
     line_start: usize = 0,
     counted: usize = 0,
+    window: []l.Token = &.{},
+    used: usize = 0,
+    next: usize = 0,
+    operator: ?l.Token = null,
 
     fn token(context: *anyopaque, tokens: []const l.Token) error{OutOfMemory}!void {
         const f: *File = @ptrCast(@alignCast(context)); // safe: `observer` hands the lexer the recorder's own File as the context.
@@ -130,56 +136,89 @@ const File = struct {
         });
     }
 
-    fn sequenceToken(context: *anyopaque, tokens: []const l.Token) error{OutOfMemory}!void {
+    fn sequenceToken(context: *anyopaque, stream: []const l.Token) error{OutOfMemory}!void {
         const f: *File = @ptrCast(@alignCast(context)); // safe: observer supplies the recorder's own File
-        const kind = tokens[tokens.len - 1].kind;
-        if (kind == .word or kind == .punctuation) try f.sequences(tokens);
-        if (kind == .word or kind == .string) try token(context, tokens);
+        const current = stream[stream.len - 1];
+        switch (current.kind) {
+            .word => try f.sequence(current),
+            .punctuation => {
+                if (f.operator) |op| {
+                    if (current.end == op.end) {
+                        f.operator = null;
+                        try f.sequence(op);
+                    }
+                } else {
+                    const length = if (f.language == .zig) l.zigOperatorLength(f.source[current.offset..]) else 1;
+                    if (length > 1) {
+                        f.operator = .{ .kind = .punctuation, .text = f.source[current.offset..][0..length], .offset = current.offset, .end = current.offset + length };
+                    } else try f.sequence(current);
+                }
+            },
+            .string => {
+                if (f.language == .zig and quoted(stream, stream.len - 1)) {
+                    // @"name" is code. Replace its @ marker with the decoded
+                    // identifier, retaining the start of the whole spelling.
+                    const marker = f.back(1);
+                    f.next = (f.next + f.window.len - 1) % f.window.len;
+                    f.used -= 1;
+                    try f.sequence(.{ .kind = .word, .text = try value(f.scratch, .zig, current.text, false), .offset = marker.offset, .end = current.end });
+                } else f.used = 0;
+            },
+            .template => f.used = 0,
+            .newline => {},
+        }
+        if (current.kind == .word or current.kind == .string) try token(context, stream);
     }
 
-    fn sequences(f: *File, tokens: []const l.Token) !void {
+    fn boundary(context: *anyopaque) void {
+        const f: *File = @ptrCast(@alignCast(context)); // safe: observer supplies the recorder's own File
+        f.used = 0;
+        f.operator = null;
+    }
+
+    /// The nth code token back from the end of the bounded sequence window.
+    fn back(f: *const File, n: usize) l.Token {
+        return f.window[(f.next + f.window.len - n) % f.window.len];
+    }
+
+    fn sequence(f: *File, current: l.Token) !void {
         const r = f.recorder;
-        if (r.sequences.len == 0 or !r.endings.admits(tokens[tokens.len - 1].text)) return;
+        if (f.window.len == 0) f.window = try f.scratch.alloc(l.Token, r.width);
+        f.window[f.next] = current;
+        f.next = (f.next + 1) % f.window.len;
+        f.used = @min(f.used + 1, f.window.len);
+        if (!r.endings.admits(current.text)) return;
         const recorded = r.found.items.len;
-        for (r.sequences) |sequence| {
-            var end = tokens.len;
-            var first: usize = end;
-            var at = sequence.len;
-            while (at > 0) {
-                while (end > 0 and tokens[end - 1].kind == .newline) end -= 1;
-                if (end == 0) break;
-                end -= 1;
-                const part = tokens[end];
-                if ((part.kind != .word and part.kind != .punctuation) or !sequence[at - 1].matches(part.text)) break;
-                first = end;
-                at -= 1;
-            }
-            if (at != 0) continue;
-            var text: std.ArrayList(u8) = .empty;
-            for (tokens[first..]) |part| {
-                if (part.kind == .newline) continue;
-                if (text.items.len > 0) try text.append(f.scratch, ' ');
-                try text.appendSlice(f.scratch, part.text);
-            }
-            // Several rules may name the same occurrence.
-            for (r.found.items[recorded..]) |found| {
-                if (found.kind == .sequence and found.offset == tokens[first].offset and std.mem.eql(u8, found.path, f.path) and std.mem.eql(u8, found.text, text.items)) break;
+        for (r.sequences) |parts| {
+            if (parts.len > f.used) continue;
+            for (parts, 0..) |part, i| {
+                if (!part.matches(f.back(parts.len - i).text)) break;
             } else {
-                const offset = tokens[first].offset;
-                while (f.counted < offset) : (f.counted += 1) if (f.source[f.counted] == '\n') {
-                    f.line += 1;
-                    f.line_start = f.counted + 1;
-                };
-                const back = std.mem.count(u8, f.source[offset..f.counted], "\n");
-                const start = if (back == 0) f.line_start else if (std.mem.findScalarLast(u8, f.source[0..offset], '\n')) |n| n + 1 else 0;
-                try r.found.append(r.strings, .{
-                    .kind = .sequence,
-                    .path = f.path,
-                    .text = try r.strings.dupe(u8, text.items),
-                    .offset = offset,
-                    .line = f.line - back,
-                    .column = offset - start + 1,
-                });
+                var text: std.ArrayList(u8) = .empty;
+                for (0..parts.len) |i| {
+                    if (text.items.len > 0) try text.append(f.scratch, ' ');
+                    try text.appendSlice(f.scratch, f.back(parts.len - i).text);
+                }
+                const offset = f.back(parts.len).offset;
+                // Several rules may name the same occurrence.
+                for (r.found.items[recorded..]) |found| {
+                    if (found.kind == .sequence and found.offset == offset and std.mem.eql(u8, found.text, text.items)) break;
+                } else {
+                    while (f.counted < offset) : (f.counted += 1) if (f.source[f.counted] == '\n') {
+                        f.line += 1;
+                        f.line_start = f.counted + 1;
+                    };
+                    const back_lines = std.mem.count(u8, f.source[offset..f.counted], "\n");
+                    const start = if (back_lines == 0) f.line_start else if (std.mem.findScalarLast(u8, f.source[0..offset], '\n')) |n| n + 1 else 0;
+                    try r.found.append(r.strings, .{
+                        .kind = .sequence,
+                        .path = f.path,
+                        .text = try r.strings.dupe(u8, text.items),
+                        .offset = offset,
+                        .line = f.line - back_lines,
+                        .column = offset - start + 1,
+                    });
+                }
             }
         }
     }

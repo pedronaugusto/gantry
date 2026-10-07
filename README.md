@@ -271,7 +271,8 @@ one byte; every other byte, brackets and `\` included, matches itself
 (`rules.matchesToken`, returning pattern errors). A rule may also name `sequences`, each
 an array of adjacent code token patterns: `.sequences = &.{ &.{ ".", "sync", "(" },
 &.{ "io", ".", "async", "(" } }`. Whitespace and comments between tokens are ignored;
-strings cannot become code, and each wildcard matches just one token. Sequence evidence
+strings cannot become code, quoted Zig identifiers are decoded as names, and each wildcard
+matches just one token. Zig operators remain whole: `=` never matches part of `==`. Sequence evidence
 is joined with spaces and points to the first token. Pass the same rules
 in `Options.tokens` and `Rules.tokens`: the scan records their occurrences from the token
 streams it lexes for imports (`graph.tokens()`, with path, line and byte column), and
