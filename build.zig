@@ -25,6 +25,8 @@ pub fn build(b: *std.Build) void {
     const examples = b.step("examples", "Build and run the usage example");
     examples.dependOn(&run.step);
     test_step.dependOn(examples);
+    // The benchmarks are this repository's own, like its CI wiring.
+    if (b.dep_prefix.len == 0) addBench(b, target, optimize, test_step);
     const library = b.addLibrary(.{ .name = "gantry", .root_module = module });
     b.installArtifact(library);
     check.dependOn(&library.step);
@@ -42,4 +44,31 @@ pub fn build(b: *std.Build) void {
     };
     b.getInstallStep().dependOn(&tests.step);
     b.getInstallStep().dependOn(&example.step);
+}
+
+/// `zig build bench` installs the benchmarks in ReleaseFast under
+/// `zig-out/bench`; the test step compiles them in the requested mode and
+/// runs none. `-Dbench-smoke` builds them to sample no clock.
+fn addBench(b: *std.Build, target: std.Build.ResolvedTarget, optimize_tests: std.lang.Optimize, test_step: *std.Build.Step) void {
+    const smoke = b.option(bool, "bench-smoke", "Benchmarks run once and sample no clock") orelse false;
+    const bench = b.step("bench", "Install the benchmarks in ReleaseFast under zig-out/bench");
+    const fixtures_tests = b.addTest(.{ .root_module = b.createModule(.{ .root_source_file = b.path("bench/fixtures.zig"), .target = target }) });
+    b.step("bench-test", "Run the benchmark fixture tests").dependOn(&b.addRunArtifact(fixtures_tests).step);
+    for ([_]std.lang.Optimize{ .fast, optimize_tests }, 0..) |optimize, i| {
+        const options = b.addOptions();
+        options.addOption(bool, "smoke", smoke);
+        const gantry = b.createModule(.{ .root_source_file = b.path("src/gantry.zig"), .target = target, .optimize = optimize });
+        for ([_][2][]const u8{ .{ "scan", "bench/scan.zig" }, .{ "ops", "bench/ops.zig" }, .{ "fixtures", "bench/fixtures.zig" } }) |program| {
+            const exe = b.addExecutable(.{ .name = program[0], .root_module = b.createModule(.{
+                .root_source_file = b.path(program[1]),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{.{ .name = "gantry", .module = gantry }},
+            }) });
+            exe.root_module.addOptions("bench_options", options);
+            if (i == 0) {
+                bench.dependOn(&b.addInstallArtifact(exe, .{ .dest_dir = .{ .override = .{ .custom = "bench" } } }).step);
+            } else test_step.dependOn(&exe.step);
+        }
+    }
 }
