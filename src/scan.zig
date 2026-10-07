@@ -214,7 +214,7 @@ fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype
     const base_ctx: resolver.Context = .{ .allocator = w, .files = &g.files, .packages = &packages, .go_modules = modules.items, .go_workspaces = workspaces.items, .named_modules = options.named_modules, .named_from = named_from, .include_roots = options.include_roots, .python_roots = options.python_roots, .python_initializers = options.python_initializers, .ts_configs = configs, .nim_configs = nim_configs };
     var test_files = try code_kind_module.rustFiles(w, gpa, a, g.paths, base_ctx, reader, Reader.readFile, cached, progress, &recorder);
     // The caller's test paths, matched once per file rather than per import.
-    for (g.paths) |file| for (test_paths) |pattern| if (pattern.matches(file)) {
+    if (test_paths.len > 0) for (g.paths) |file| for (test_paths) |pattern| if (pattern.matches(file)) {
         try test_files.put(w, file, {});
         break;
     };
