@@ -277,7 +277,7 @@ pub const Dependency = struct {
     }
 
     fn baseName(manifest: []const u8) []const u8 {
-        const slash = std.mem.lastIndexOfAny(u8, manifest, "/\\") orelse return manifest;
+        const slash = std.mem.findLastAny(u8, manifest, "/\\") orelse return manifest;
         return manifest[slash + 1 ..];
     }
 };

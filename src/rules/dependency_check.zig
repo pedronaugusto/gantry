@@ -272,7 +272,7 @@ pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out:
         }
         if (found or ref.resolved or !rule.undeclared or ignored(rule, package) or (alias != null and ignored(rule, alias.?))) continue;
         // Once per file and package: a `from` import spells several names.
-        const key = try std.fmt.allocPrint(a, "{s}\x00{s}", .{ ref.from, package });
+        const key = try a.print("{s}\x00{s}", .{ ref.from, package });
         if ((try reported.getOrPut(a, key)).found_existing) continue;
         try out.items.append(out.a, .{ .rule = rule.name, .reason = .undeclared, .reference = ref, .package = package, .path = manifests[0] });
     }

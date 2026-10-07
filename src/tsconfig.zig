@@ -81,7 +81,7 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
             // Package-based extends would require an installed environment.
             if (!std.mem.startsWith(u8, v.string, ".")) continue;
             var parent = (try join(a, p.dir(file), v.string)) orelse continue;
-            if (!files.contains(parent)) parent = try std.fmt.allocPrint(a, "{s}.json", .{parent});
+            if (!files.contains(parent)) parent = try a.print("{s}.json", .{parent});
             if (!files.contains(parent)) continue;
             try parents.append(a, parent);
             if (!index.contains(parent)) {

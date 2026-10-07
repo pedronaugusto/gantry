@@ -173,7 +173,7 @@ const Reader = struct {
             r.newlines();
         }
         if (group.len == 0 or name.len == 0) return error.Computed;
-        try r.out.append(r.a, .{ .manifest = r.path, .name = try std.fmt.allocPrint(r.a, "{s}:{s}", .{ group, name }), .requirement = version, .group = configuration });
+        try r.out.append(r.a, .{ .manifest = r.path, .name = try r.a.print("{s}:{s}", .{ group, name }), .requirement = version, .group = configuration });
     }
     /// `group:name`, then the version and any classifier or `@extension`.
     fn coordinates(r: *Reader, configuration: []const u8, value: []const u8) !void {

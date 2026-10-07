@@ -14,7 +14,7 @@ pub fn file(language: t.Language, name: []const u8) bool {
         .javascript => blk: {
             var dirs = std.mem.splitScalar(u8, name, '/');
             while (dirs.next()) |dir| if (std.mem.eql(u8, dir, "__tests__")) break :blk true;
-            const stem = base[0 .. base.len - std.fs.path.extension(base).len];
+            const stem = base[0 .. base.len - std.Io.Dir.path.extension(base).len];
             break :blk std.mem.endsWith(u8, stem, ".test") or std.mem.endsWith(u8, stem, ".spec");
         },
         // Maven and Gradle source sets: `src/test`, `src/testFixtures`,

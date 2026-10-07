@@ -26,7 +26,7 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
             continue;
         }
         // Without an escape or a line break a literal is its own value.
-        const plain = std.mem.indexOfAny(u8, ts[i + 3].text, "\\\n") == null;
+        const plain = std.mem.findAny(u8, ts[i + 3].text, "\\\n") == null;
         const name = if (plain) ts[i + 3].text else try std.zig.string_literal.parseAlloc(a, source[ts[i + 3].offset..ts[i + 3].end]);
         try out.append(a, .{ .name = name, .offset = t.offset });
         try where.append(a, index);

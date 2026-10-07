@@ -135,7 +135,7 @@ pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
     const a = c.allocator;
     var name = spec.name;
     if (std.mem.startsWith(u8, name, "std/")) return &.{};
-    const suffix: []const u8 = if (std.fs.path.extension(p.base(name)).len == 0) ".nim" else "";
+    const suffix: []const u8 = if (std.Io.Dir.path.extension(p.base(name)).len == 0) ".nim" else "";
     const package = std.mem.startsWith(u8, name, "pkg/");
     if (package) name = name[4..];
     if (!package) {

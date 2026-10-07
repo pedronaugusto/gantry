@@ -220,7 +220,7 @@ fn boundedScratch(suffix: []const u8, config: bool) !void {
     var inputs: std.heap.ArenaAllocator = .init(a);
     defer inputs.deinit();
     var paths: [64][]const u8 = undefined;
-    for (&paths, 0..) |*path, i| path.* = try std.fmt.allocPrint(inputs.allocator(), "{d}/{s}", .{ i, suffix });
+    for (&paths, 0..) |*path, i| path.* = try inputs.allocator().print("{d}/{s}", .{ i, suffix });
     var accounting: std.testing.FailingAllocator = .init(a, .{});
     var reader: ScratchReader = .{ .accounting = &accounting, .config = config };
     {
@@ -245,7 +245,7 @@ test "returned graphs release construction-only resolution storage" {
     const padding = try a.alloc(u8, 1024 * 1024);
     defer a.free(padding);
     @memset(padding, 'x');
-    const config = try std.fmt.allocPrint(a, "{{\"ignored\":\"{s}\",\"extends\":\"./base.json\",\"compilerOptions\":{{\"baseUrl\":\"src\"}}}}", .{padding});
+    const config = try a.print("{{\"ignored\":\"{s}\",\"extends\":\"./base.json\",\"compilerOptions\":{{\"baseUrl\":\"src\"}}}}", .{padding});
     defer a.free(config);
     var accounting: std.testing.FailingAllocator = .init(a, .{});
     {
@@ -293,7 +293,7 @@ test "DirReader and walk use a temp directory and caller pruning" {
 }
 test "walk lists a colon in a name and skips what a scan would refuse" {
     // Windows file names hold neither byte.
-    if (std.fs.path.sep == '\\') return error.SkipZigTest;
+    if (std.Io.Dir.path.sep == '\\') return error.SkipZigTest;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const io = std.testing.io;
@@ -315,7 +315,7 @@ test "walk lists a colon in a name and skips what a scan would refuse" {
 
 test "language extensions are explicit and unsupported files stay unread" {
     var buffer: [32]u8 = undefined;
-    for ([_][]const u8{ ".zig", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts", ".py", ".go", ".rs", ".nim", ".java" }) |ext| try expect(g.languageOf(try std.fmt.bufPrint(&buffer, "file{s}", .{ext})) != null);
+    for ([_][]const u8{ ".zig", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts", ".py", ".go", ".rs", ".nim", ".java" }) |ext| try expect(g.languageOf(try std.mem.print(&buffer, "file{s}", .{ext})) != null);
     try expect(g.languageOf(".zig") == null);
     try expect(g.languageOf("a.ZIG") == null);
     try expect(g.languageOf("a.kt") == null);

@@ -72,14 +72,14 @@ fn cfg(a: std.mem.Allocator, text: []const u8) ![]const []const u8 {
     while (lines.next()) |raw| {
         const line = std.mem.trim(u8, raw, " \t\r");
         if (line.len == 0 or line[0] == '#' or line[0] == '@') continue;
-        const separator = std.mem.indexOfAny(u8, line, ":=") orelse continue;
+        const separator = std.mem.findAny(u8, line, ":=") orelse continue;
         if (!pathKey(std.mem.trim(u8, line[0..separator], " \t"))) continue;
         var value = std.mem.trim(u8, line[separator + 1 ..], " \t");
         if (value.len > 0 and value[0] == '"') {
             const close = std.mem.findScalarPos(u8, value, 1, '"') orelse continue;
             value = value[1..close];
         } else {
-            value = value[0 .. std.mem.indexOfAny(u8, value, " \t#") orelse value.len];
+            value = value[0 .. std.mem.findAny(u8, value, " \t#") orelse value.len];
         }
         try out.append(a, value);
     }

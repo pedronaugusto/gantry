@@ -198,7 +198,7 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
             try cargoValue(a, path, text, group, group[dep_at..], key, ts[start..equal], value, out);
         } else if ((std.mem.eql(u8, group, "project") and std.mem.eql(u8, key, "dependencies")) or std.mem.eql(u8, group, "project.optional-dependencies") or std.mem.eql(u8, group, "dependency-groups")) {
             if (!value[0].is("[")) return error.InvalidManifest;
-            const label = try std.fmt.allocPrint(a, "{s}.{s}", .{ group, key });
+            const label = try a.print("{s}.{s}", .{ group, key });
             var braces: usize = 0;
             for (value) |token| {
                 if (token.is("{")) braces += 1;
@@ -294,7 +294,7 @@ fn dependencyTable(group: []const u8) ?usize {
 }
 fn pythonDep(a: std.mem.Allocator, path: []const u8, group: []const u8, requirement: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
     const raw = std.mem.trim(u8, requirement, " \t");
-    const end = std.mem.indexOfAny(u8, raw, "<>=!~[; @(") orelse raw.len;
+    const end = std.mem.findAny(u8, raw, "<>=!~[; @(") orelse raw.len;
     if (end == 0) return error.InvalidManifest;
     const url = std.mem.find(u8, raw, " @ ");
     const source = if (url) |u| std.mem.trim(u8, raw[u + 3 .. std.mem.findScalarPos(u8, raw, u + 3, ';') orelse raw.len], " ") else "";

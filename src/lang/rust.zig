@@ -151,7 +151,7 @@ fn emit(a: std.mem.Allocator, raw: []const u8, names: *Names, scope: []const u8,
     if (!crateName(root)) return;
     if (!global) {
         const found = try names.get(a);
-        const key = try std.fmt.allocPrint(a, "{s}\x00{s}", .{ scope, root });
+        const key = try a.print("{s}\x00{s}", .{ scope, root });
         // A module this module declares is what a 2018 `use` path names
         // first, as rustc resolves it, unless an `extern crate` here takes
         // the same name: rustc refuses both (E0260), and so no edge.
@@ -211,7 +211,7 @@ const Names = struct {
                     try modules.put(a, name, {});
                     try all.put(a, name, {});
                     const inline_body = i + 2 < ts.len and ts[i + 2].is("{");
-                    try declared.put(a, try std.fmt.allocPrint(a, "{s}\x00{s}", .{ scope, name }), if (inline_body) .here else if (pathAttribute(ts, i)) .path_attribute else .file);
+                    try declared.put(a, try a.print("{s}\x00{s}", .{ scope, name }), if (inline_body) .here else if (pathAttribute(ts, i)) .path_attribute else .file);
                     if (i + 2 < ts.len and ts[i + 2].is("{")) pending = try std.mem.join(a, "/", if (scope.len == 0) &.{name} else &.{ scope, name });
                 } else if (ts[i].is("use")) {
                     while (i < ts.len and !ts[i].is(";")) : (i += 1) if (ts[i].kind == .word) try all.put(a, ts[i].text, {});
@@ -219,7 +219,7 @@ const Names = struct {
                     const alias = i + 4 < ts.len and ts[i + 3].is("as") and ts[i + 4].kind == .word;
                     const name = ts[i + (if (alias) @as(usize, 4) else 2)].text;
                     if (alias) try all.put(a, name, {});
-                    try externs.put(a, try std.fmt.allocPrint(a, "{s}\x00{s}", .{ scope, name }), {});
+                    try externs.put(a, try a.print("{s}\x00{s}", .{ scope, name }), {});
                 } else if (ts[i].is("{")) {
                     try scopes.append(a, scope);
                     scope = pending orelse scope;

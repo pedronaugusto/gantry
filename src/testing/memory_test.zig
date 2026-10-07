@@ -32,8 +32,8 @@ const Module = struct {
         var paths: std.ArrayList([]const u8) = .empty;
         try paths.append(s, "go.mod");
         if (self.big.len > 0) try paths.append(s, "big/big.go");
-        for (0..self.importers) |i| try paths.append(s, try std.fmt.allocPrint(s, "app/a{d}.go", .{i}));
-        for (0..self.members) |i| try paths.append(s, try std.fmt.allocPrint(s, "lib/l{d}.go", .{i}));
+        for (0..self.importers) |i| try paths.append(s, try s.print("app/a{d}.go", .{i}));
+        for (0..self.members) |i| try paths.append(s, try s.print("lib/l{d}.go", .{i}));
         var graph = try g.scan(self.counter.allocator(), paths.items, self, read, .{ .manifests = false });
         defer graph.deinit();
         return .{ graph.edges().len, self.counter.peak };

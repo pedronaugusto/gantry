@@ -456,12 +456,12 @@ test "the manifest names are the ones parse reads" {
     defer arena.deinit();
     for (g.manifests.names) |name| {
         try std.testing.expect(g.manifests.supported(name));
-        const nested = try std.fmt.allocPrint(arena.allocator(), "sub/{s}", .{name});
+        const nested = try arena.allocator().print("sub/{s}", .{name});
         try std.testing.expect(g.manifests.supported(nested));
         _ = g.manifests.parse(arena.allocator(), name, "") catch |err| try std.testing.expect(err != error.UnsupportedManifest);
     }
     for (g.manifests.extensions) |extension| {
-        const named = try std.fmt.allocPrint(arena.allocator(), "pkg/app{s}", .{extension});
+        const named = try arena.allocator().print("pkg/app{s}", .{extension});
         try std.testing.expect(g.manifests.supported(named));
         _ = g.manifests.parse(arena.allocator(), named, "") catch |err| try std.testing.expect(err != error.UnsupportedManifest);
         try std.testing.expect(!g.manifests.supported(extension));

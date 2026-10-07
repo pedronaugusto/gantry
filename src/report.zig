@@ -245,15 +245,15 @@ fn Out(comptime format: Format) type {
 
 /// Nodes and edges that findings name, by their place in the graph.
 const Marks = struct {
-    nodes: std.DynamicBitSetUnmanaged,
-    edges: std.DynamicBitSetUnmanaged,
+    nodes: std.bit_set.Dynamic,
+    edges: std.bit_set.Dynamic,
 
     fn init(gpa: std.mem.Allocator, graph: *const Graph, findings: []const engine.Violation) !Marks {
         const paths = graph.paths();
         const edges = graph.edges();
-        var nodes = try std.DynamicBitSetUnmanaged.initEmpty(gpa, paths.len);
+        var nodes = try std.bit_set.Dynamic.initEmpty(gpa, paths.len);
         errdefer nodes.deinit(gpa);
-        var marked = try std.DynamicBitSetUnmanaged.initEmpty(gpa, edges.len);
+        var marked = try std.bit_set.Dynamic.initEmpty(gpa, edges.len);
         errdefer marked.deinit(gpa);
         for (findings) |f| {
             var named: [5]?[]const u8 = .{ f.path, null, null, null, null };

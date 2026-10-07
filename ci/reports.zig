@@ -14,7 +14,7 @@ pub fn main(init: std.process.Init) !void {
     var it = dir.iterate();
     while (try it.next(io)) |entry| {
         if (entry.kind != .file) continue;
-        const path = try std.fs.path.join(a, &.{ "src/testing/golden", entry.name });
+        const path = try std.Io.Dir.path.join(a, &.{ "src/testing/golden", entry.name });
         if (std.mem.endsWith(u8, path, ".dot")) {
             try command(a, io, &.{ "dot", "-Tsvg", path, "-o", ".zig-cache/reports/dot.svg" });
         } else if (std.mem.endsWith(u8, path, ".mmd")) {

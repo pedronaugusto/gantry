@@ -70,7 +70,7 @@ pub fn links(a: std.mem.Allocator, text: []const u8) ![]const Spec {
                 continue;
             };
             const raw = text[i + 2 .. end];
-            const name = std.mem.trim(u8, raw[0 .. std.mem.indexOfAny(u8, raw, "|#") orelse raw.len], " \t");
+            const name = std.mem.trim(u8, raw[0 .. std.mem.findAny(u8, raw, "|#") orelse raw.len], " \t");
             if (name.len > 0) try out.append(a, .{ .name = name, .offset = i, .member = "wiki" });
             i = end + 2;
             continue;
@@ -185,7 +185,7 @@ fn pathByte(c: u8) bool {
     return std.ascii.isAlphanumeric(c) or c >= 128 or std.mem.findScalar(u8, "./_-@", c) != null;
 }
 pub fn assetText(path: []const u8) bool {
-    const ext = std.fs.path.extension(path);
+    const ext = std.Io.Dir.path.extension(path);
     for ([_][]const u8{ ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".zon", ".html", ".css", ".xml", ".svg", ".csv" }) |e| if (std.mem.eql(u8, e, ext)) return true;
     return false;
 }

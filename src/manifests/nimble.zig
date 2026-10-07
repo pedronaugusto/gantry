@@ -33,13 +33,13 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
         const parens = j < ts.len and ts[j].is("(");
         if (parens) j += 1;
         var group: []const u8 = "requires";
-        if (features.items.len > 0) group = try std.fmt.allocPrint(a, "feature.{s}", .{features.items[features.items.len - 1].name});
+        if (features.items.len > 0) group = try a.print("feature.{s}", .{features.items[features.items.len - 1].name});
         if (task) {
             if (j + 1 >= ts.len or ts[j].kind != .string or !ts[j + 1].is(",")) {
                 try unsupported.append(a, .{ .offset = token.offset, .expression = .nimble_requires });
                 continue;
             }
-            group = try std.fmt.allocPrint(a, "taskRequires.{s}", .{ts[j].text});
+            group = try a.print("taskRequires.{s}", .{ts[j].text});
             j += 2;
         }
         const before = out.items.len;
@@ -72,7 +72,7 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
 fn requirement(a: std.mem.Allocator, path: []const u8, group: []const u8, raw: []const u8, out: *std.ArrayList(t.Dependency)) !void {
     const value = std.mem.trim(u8, raw, " \t");
     const url = std.mem.find(u8, value, "://") != null or std.mem.startsWith(u8, value, "git@");
-    const end = if (url) std.mem.indexOfAny(u8, value, " \t") orelse value.len else std.mem.indexOfAny(u8, value, " \t<>=~^#@") orelse value.len;
+    const end = if (url) std.mem.findAny(u8, value, " \t") orelse value.len else std.mem.findAny(u8, value, " \t<>=~^#@") orelse value.len;
     if (end == 0) return error.InvalidManifest;
     const spelled = value[0..end];
     const name = if (url) spelled[0 .. std.mem.findScalar(u8, spelled, '#') orelse spelled.len] else spelled;

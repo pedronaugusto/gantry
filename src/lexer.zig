@@ -497,7 +497,7 @@ fn literal(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, start:
     }
     if (lang == .kotlin and c == '`') {
         // A backquoted Kotlin name is a word.
-        const close = std.mem.indexOfAnyPos(u8, text, i + 1, "`\n") orelse text.len;
+        const close = std.mem.findAnyPos(u8, text, i + 1, "`\n") orelse text.len;
         if (close < text.len and text[close] == '`') {
             try out.push(a, .{ .kind = .word, .text = text[i + 1 .. close], .offset = start, .end = close + 1 });
             i = close + 1;

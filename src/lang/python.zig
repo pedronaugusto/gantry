@@ -88,7 +88,7 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
                 if (ts[j].kind != .word) break;
                 const child = ts[j].text;
                 const separator = if (base.len == 0 or std.mem.endsWith(u8, base, ".")) "" else ".";
-                try out.append(a, .{ .name = try std.fmt.allocPrint(a, "{s}{s}{s}", .{ base, separator, child }), .offset = t.offset, .form = .python, .kind = kind });
+                try out.append(a, .{ .name = try a.print("{s}{s}{s}", .{ base, separator, child }), .offset = t.offset, .form = .python, .kind = kind });
                 j += 1;
                 if (j < ts.len and ts[j].is("as")) j = @min(j + 2, ts.len);
                 if (j < ts.len and !ts[j].is(",") and !ts[j].is(")") and !ts[j].is("\\") and ts[j].kind != .newline) break;
@@ -135,7 +135,7 @@ fn loaded(a: std.mem.Allocator, args: []const l.Token, importlib: bool) !?[]cons
     var anchor = base;
     for (1..dots) |_| anchor = anchor[0 .. std.mem.findScalarLast(u8, anchor, '.') orelse return null];
     if (anchor.len == 0) return null;
-    return if (dots == name.len) anchor else try std.fmt.allocPrint(a, "{s}.{s}", .{ anchor, name[dots..] });
+    return if (dots == name.len) anchor else try a.print("{s}.{s}", .{ anchor, name[dots..] });
 }
 
 /// Byte ranges of `if TYPE_CHECKING:` bodies, `typing.TYPE_CHECKING` or any

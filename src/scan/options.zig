@@ -37,7 +37,7 @@ pub const Options = struct {
 };
 
 pub fn languageOf(p: []const u8) ?Language {
-    const ext = std.fs.path.extension(p);
+    const ext = std.Io.Dir.path.extension(p);
     inline for (comptime std.meta.tags(Language)) |lang| {
         for (@field(languages, @tagName(lang)).extensions) |e| if (std.mem.eql(u8, ext, e)) return lang;
     }

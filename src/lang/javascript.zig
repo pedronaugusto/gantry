@@ -79,7 +79,7 @@ fn typeOnlyClause(clause: []const l.Token) bool {
 const p = @import("../path.zig");
 // TypeScript extension substitution precedes runtime extensions.
 fn file(c: anytype, root: []const u8, name: []const u8) !?[]const u8 {
-    const ext = std.fs.path.extension(name);
+    const ext = std.Io.Dir.path.extension(name);
     if (std.mem.eql(u8, ext, ".js") or std.mem.eql(u8, ext, ".jsx")) {
         return c.candidate(root, name[0 .. name.len - ext.len], &.{ ".ts", ".tsx", ".d.ts", ".js", ".jsx" });
     }

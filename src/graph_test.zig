@@ -94,7 +94,7 @@ test "deep graphs use heap stacks in SCC and layer analysis" {
     const alloc = arena.allocator();
     const n = 20_000;
     const paths = try alloc.alloc([]const u8, n);
-    for (paths, 0..) |*path, i| path.* = try std.fmt.allocPrint(alloc, "{d:0>5}", .{i});
+    for (paths, 0..) |*path, i| path.* = try alloc.print("{d:0>5}", .{i});
     const edges = try alloc.alloc(g.Edge, n - 1);
     for (edges, 0..) |*edge, i| edge.* = .{ .from = paths[i], .to = paths[i + 1] };
     var graph = try g.Graph.fromEdges(a, paths, edges);

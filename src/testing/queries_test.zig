@@ -189,7 +189,7 @@ test "affected and reach hold one mark and one queue entry per file on a 50,000-
     const n = 50_000;
     const paths = try s.alloc([]const u8, n);
     var list: std.ArrayList(g.Edge) = .empty;
-    for (paths, 0..) |*p, i| p.* = try std.fmt.allocPrint(s, "g{d}/f{d}.zig", .{ i / 10, i % 10 });
+    for (paths, 0..) |*p, i| p.* = try s.print("g{d}/f{d}.zig", .{ i / 10, i % 10 });
     // Groups of ten in a cycle, each group's first file importing the
     // previous group's sixth: every file depends on every earlier group.
     for (0..n) |i| {

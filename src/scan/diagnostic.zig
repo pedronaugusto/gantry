@@ -151,7 +151,7 @@ pub const Progress = struct {
     fn record(progress: *Progress, cause: FileError) error{OutOfMemory}!void {
         const a = progress.records.?;
         const path = progress.path.?;
-        const key = try std.fmt.allocPrint(a, "{s}\x00{s}\x00{?d}", .{ path, @errorName(cause), progress.offset });
+        const key = try a.print("{s}\x00{s}\x00{?d}", .{ path, @errorName(cause), progress.offset });
         if ((try progress.recorded.getOrPut(a, key)).found_existing) return;
         try progress.invalid.append(a, .{ .path = try a.dupe(u8, path), .phase = progress.phase, .offset = progress.offset, .cause = cause });
     }

@@ -150,7 +150,7 @@ fn raw(language: t.Language, source: []const u8, tokens: []const l.Token, i: usi
     const token = tokens[i];
     return switch (language) {
         .go => source[token.offset] == '`',
-        .python => i > 0 and tokens[i - 1].kind == .word and tokens[i - 1].end == token.offset and std.mem.indexOfAny(u8, tokens[i - 1].text, "rR") != null,
+        .python => i > 0 and tokens[i - 1].kind == .word and tokens[i - 1].end == token.offset and std.mem.findAny(u8, tokens[i - 1].text, "rR") != null,
         else => false,
     };
 }

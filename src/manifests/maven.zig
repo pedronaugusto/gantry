@@ -46,9 +46,9 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
             if (in.len == 2 and std.mem.eql(u8, in[0], "project") and std.mem.eql(u8, in[1], "properties")) {
                 try properties.put(a, name, try a.dupe(u8, value));
             } else if (in.len == 1 and std.mem.eql(u8, in[0], "project") and (std.mem.eql(u8, name, "version") or std.mem.eql(u8, name, "groupId") or std.mem.eql(u8, name, "artifactId"))) {
-                try properties.put(a, try std.fmt.allocPrint(a, "project.{s}", .{name}), try a.dupe(u8, value));
+                try properties.put(a, try a.print("project.{s}", .{name}), try a.dupe(u8, value));
             } else if (in.len == 2 and std.mem.eql(u8, in[0], "project") and std.mem.eql(u8, in[1], "parent") and (std.mem.eql(u8, name, "version") or std.mem.eql(u8, name, "groupId"))) {
-                try properties.put(a, try std.fmt.allocPrint(a, "project.parent.{s}", .{name}), try a.dupe(u8, value));
+                try properties.put(a, try a.print("project.parent.{s}", .{name}), try a.dupe(u8, value));
             } else if (in.len == 3 and dependency(in)) {
                 if (std.meta.stringToEnum(Field, name)) |field| declared.items[declared.items.len - 1].fields.set(field, try a.dupe(u8, value));
             }
@@ -63,7 +63,7 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
             if (end == text.len) return error.InvalidManifest;
             const closed = text[end - 1] == '/';
             const tag = text[i + 1 .. if (closed) end - 1 else end];
-            const name = tag[0 .. std.mem.indexOfAny(u8, tag, " \t\r\n") orelse tag.len];
+            const name = tag[0 .. std.mem.findAny(u8, tag, " \t\r\n") orelse tag.len];
             if (name.len == 0) return error.InvalidManifest;
             if (!closed) {
                 if (stack.items.len == 2 and std.mem.eql(u8, name, "dependency") and std.mem.eql(u8, stack.items[0], "project") and std.mem.eql(u8, stack.items[1], "dependencies")) try declared.append(a, .{ .offset = i });
@@ -76,8 +76,8 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
     if (stack.items.len != 0) return error.InvalidManifest;
     // Maven reads `${project.version}` from the parent when the project has none.
     for ([_][]const u8{ "version", "groupId" }) |field| {
-        const own = try std.fmt.allocPrint(a, "project.{s}", .{field});
-        if (properties.get(own) == null) if (properties.get(try std.fmt.allocPrint(a, "project.parent.{s}", .{field}))) |inherited| try properties.put(a, own, inherited);
+        const own = try a.print("project.{s}", .{field});
+        if (properties.get(own) == null) if (properties.get(try a.print("project.parent.{s}", .{field}))) |inherited| try properties.put(a, own, inherited);
     }
     for ([_][2][]const u8{ .{ "pom.version", "project.version" }, .{ "version", "project.version" }, .{ "pom.groupId", "project.groupId" }, .{ "groupId", "project.groupId" }, .{ "parent.version", "project.parent.version" } }) |alias| {
         if (properties.get(alias[0]) == null) if (properties.get(alias[1])) |value| try properties.put(a, alias[0], value);
@@ -103,10 +103,10 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
         const system = std.mem.eql(u8, scope, "system") and fields.get(.systemPath).len > 0;
         try out.append(a, .{
             .manifest = path,
-            .name = try std.fmt.allocPrint(a, "{s}:{s}", .{ fields.get(.groupId), fields.get(.artifactId) }),
+            .name = try a.print("{s}:{s}", .{ fields.get(.groupId), fields.get(.artifactId) }),
             .requirement = fields.get(.version),
             .source = if (system) fields.get(.systemPath) else "",
-            .group = if (optional) try std.fmt.allocPrint(a, "{s},optional", .{scope}) else scope,
+            .group = if (optional) try a.print("{s},optional", .{scope}) else scope,
             .origin = if (system) .local else .registry,
         });
     }
