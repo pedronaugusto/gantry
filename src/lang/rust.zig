@@ -119,7 +119,7 @@ fn tree(arena: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names,
         if (t.is(",") or t.is("}")) {
             try emit(arena, path.items, names, scope, offset, out);
             if (t.is("}") and prefixes.items.len > 0) _ = prefixes.pop();
-            path.shrinkRetainingCapacity(prefixes.getLastOrNull() orelse 0);
+            path.shrinkRetainingCapacity(prefixes.last() orelse 0);
             segment_allowed = true;
             continue;
         }

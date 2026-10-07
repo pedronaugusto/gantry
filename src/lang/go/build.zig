@@ -68,7 +68,7 @@ pub fn evaluate(gpa: std.mem.Allocator, expression: []const u8, target: Target) 
             try values.append(gpa, tag(target, expression[start..i]));
             operand = false;
         } else if (c == ')') {
-            while (ops.getLastOrNull()) |op| {
+            while (ops.last()) |op| {
                 if (op == .open) break;
                 _ = ops.pop();
                 try apply(&values, op);
@@ -77,7 +77,7 @@ pub fn evaluate(gpa: std.mem.Allocator, expression: []const u8, target: Target) 
             i += 1;
         } else {
             const op: Op = if (std.mem.startsWith(u8, expression[i..], "&&")) .both else if (std.mem.startsWith(u8, expression[i..], "||")) .either else return error.InvalidBuildConstraint;
-            while (ops.getLastOrNull()) |previous| {
+            while (ops.last()) |previous| {
                 if (previous == .open or @backingInt(previous) < @backingInt(op)) break;
                 _ = ops.pop();
                 try apply(&values, previous);
