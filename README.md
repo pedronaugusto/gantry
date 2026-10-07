@@ -14,14 +14,15 @@ settings.
 ## Usage
 
 [examples/usage.zig](examples/usage.zig) supplies `read` from an in-memory file store.
-Its reader callback is `read(scratch_allocator, context, path) !?[]const u8`.
+Its reader callback is `read(scratch, io, context, path) E!?[]const u8`; `gantry.DirReader`
+reads from an open directory.
 
 <!-- BEGIN GENERATED zig build docs -- usage -->
 ```zig
 const gantry = @import("gantry");
 
 const paths = &.{ "src/main.zig", "src/store.zig", "src/model.zig" };
-var graph = try gantry.scan(gpa, paths, {}, read, .{});
+var graph = try gantry.scan(gpa, io, paths, {}, read, .{});
 defer graph.deinit();
 
 for (graph.edges()) |edge| {
@@ -47,10 +48,34 @@ for (findings.items()) |finding| std.log.info("{s}: {s}", .{ finding.rule, @tagN
 ```
 <!-- END GENERATED -->
 
+A failed scan says where it failed through `Options.diagnostics`:
+
+<!-- BEGIN GENERATED zig build docs -- diagnostic -->
+```zig
+const gantry = @import("gantry");
+
+var diagnostic = gantry.Diagnostics.init(gpa);
+defer diagnostic.deinit();
+return gantry.scan(gpa, io, paths, {}, read, .{ .diagnostics = &diagnostic }) catch |cause| {
+    if (diagnostic.failure) |failure| {
+        std.log.info("{s}: {s}: {s}", .{
+            failure.path orelse "<scan>",
+            @tagName(failure.phase),
+            @errorName(failure.cause),
+        });
+    }
+    return cause;
+};
+```
+<!-- END GENERATED -->
+
 ## Design
 
-The library uses only `std`. Scan scratch storage is released between files; reader
-bytes need to survive processing until the next read. Graph, analysis, import and path
+The library uses only `std`. Every public function returns a named error set. A call
+that can block takes an `std.Io`: `scan` passes its `io` to the reader, and `walk` lists
+a directory with it; nothing gantry returns keeps one. Scan scratch storage is released
+between files; reader bytes need to survive processing until the next read. Graph,
+analysis, import and path
 results retain their allocator and own their storage. Move these handles and call
 `deinit` once; their slices last until release. Analysis and aggregation results are
 independent of the original graph. `check` returns an owned `Findings` whose `items()`
@@ -75,31 +100,14 @@ scan nothing from that phase: a Go file with a bad constraint is in no package, 
 config is as if absent, and the scan goes on. A caller that wants such a scan to fail
 checks that list. A scan fails, with no partial graph, only with a `ScanError` (a selected
 path normalization refuses, `strict_imports` and an unsupported construct, a count
-overflow, memory) or one of the reader's own errors. `scanWithDiagnostic` additionally
+overflow, memory) or one of the reader's own errors. `Options.diagnostics` additionally
 retains the failed path, phase, optional byte offset and original cause in a
-caller-owned `ScanDiagnostic`. Reporting preserves the cause even if copying the path
+caller-owned `Diagnostics`. Reporting preserves the cause even if copying the path
 fails. A leading UTF-8 byte order mark is no part of a file.
 
-<!-- BEGIN GENERATED zig build docs -- diagnostic -->
-```zig
-const gantry = @import("gantry");
+## API
 
-var diagnostic = gantry.ScanDiagnostic.init(gpa);
-defer diagnostic.deinit();
-return gantry.scanWithDiagnostic(gpa, paths, {}, read, .{}, &diagnostic) catch |cause| {
-    if (diagnostic.failure) |failure| {
-        std.log.info("{s}: {s}: {s}", .{
-            failure.path orelse "<scan>",
-            @tagName(failure.phase),
-            @errorName(failure.cause),
-        });
-    }
-    return cause;
-};
-```
-<!-- END GENERATED -->
-
-## Recovery
+### Recovery
 
 Import recovery uses byte lexers for Zig, C/C++, JavaScript/TypeScript, Python, Go,
 Rust, Nim and Java. Resolution stays within selected files. Zig named modules and C include roots are
@@ -146,8 +154,7 @@ require explicit kind selection. A TypeScript `import type`, `export type`, brac
 every name is marked `type`, and `typeof import("x")` or `import("x").T` in a type give
 `type_only` edges; any other `import("x")` call gives a `dynamic` edge. A Python import
 under `if TYPE_CHECKING:` (or `if name.TYPE_CHECKING:`), nested blocks included, is
-`type_only`, as import-linter's `exclude_type_checking_imports` reads it, except that the
-`else` branch runs and stays `import` (Grimp drops it too).
+`type_only`; the `else` branch runs and stays `import`.
 `importlib.import_module` and `__import__` with literal names give `dynamic` edges, a
 relative name resolving against `import_module`'s literal package; other arguments are
 unsupported. A test file's import is a `test` edge whatever its form. A test file is one
@@ -185,7 +192,8 @@ the key or form that named its `source` (a ZON `.path` is local however it is wr
 and `revision()` is a pin the remote source spells in its own text. The TOML and Go
 declaration readers do not validate their entire formats.
 
-## Graphs and rules
+
+### Graphs and rules
 
 Edges point from an importer to its dependency and count reference occurrences.
 Construction sorts and coalesces them; caller edges go through `Graph.fromEdges`.
@@ -205,8 +213,7 @@ To follow some edge kinds only, analyse a graph of those edges (`Analysis.init`)
 `coupling()` gives each node's distinct dependents (`fan_in`, Ca) and dependencies
 (`fan_out`, Ce), with `instability()` Ce / (Ca + Ce), 0 for a node with neither.
 `directoryCoupling()` does the same for every directory above a node: a dependency
-counts for each directory holding one end and not the other, as dependency-cruiser's
-folder metrics count it. Edges of several kinds between two files are one dependency.
+counts for each directory holding one end and not the other. Edges of several kinds between two files are one dependency.
 
 Rules restrict ordered layers, source/target patterns, raw references, required paths
 and cycles. Exceptions apply to a named restriction. Path patterns use `*` and `?`
@@ -214,14 +221,12 @@ within a component; `**` is a whole component that stands for zero or more of th
 `a/**` also matches `a`, and `**` inside a component (`a**`) is `*`. A pattern without
 `/` matches the base name. Every matching restriction reports in rule order. These rules operate on the recovered graph.
 
-A `transitive` forbidden rule restricts chains of any length, as import-linter's
-forbidden contracts and dependency-cruiser's `reachable` rules do: each file matching
+A `transitive` forbidden rule restricts chains of any length: each file matching
 `from` from which edges lead, through any files, to a file matching `to` reports the
 shortest such chain in `chain`, from that file to the first target it meets, choosing
 the first path at each position among chains of that length. An allowance for the rule
 takes its edges out of the chains, so `.{ .rule = "ui to db", .kind = .type_only }` lets
-type-only chains through. Transitive ordered layers work as import-linter's layers
-contract: a file no layer names has no layer, chains pass through it, and each layered
+type-only chains through. In transitive ordered layers a file no layer names has no layer, chains pass through it, and each layered
 file reports the shortest chain through unlayered files to each higher layer it reaches.
 
 A dependency rule joins each import to the manifests that govern its file:
@@ -246,8 +251,7 @@ package goes by another name, such as Python's `yaml` from `PyYAML` or Java's
 The graph must be scanned with manifests (`error.UnscannedManifests` otherwise).
 
 A reachable rule names entry files by pattern and reports every file matching `files`
-that no chain from an entry reaches (`unreached`), as madge's orphans and
-dependency-cruiser's `no-orphans` and `reachable: false` rules do; a file with no edges
+that no chain from an entry reaches (`unreached`); a file with no edges
 at all is unreached unless it is an entry. `kind` restricts the edges chains follow.
 
 A token rule names identifiers, or string literals' values after their escapes, that
@@ -260,7 +264,8 @@ streams it lexes for imports (`graph.tokens()`, with path, line and byte column)
 did not record. Comments, character literals, numbers, raw strings and multi-line strings
 never match.
 
-## Reports
+
+### Reports
 
 `gantry.report` writes text for the tools that lay out, draw and annotate, to a
 `*std.Io.Writer`. Output is the same for the same graph, options and findings.
@@ -270,8 +275,7 @@ never match.
 | `report.dot(gpa, w, graph, options)` | A Graphviz digraph |
 | `report.mermaid(gpa, w, graph, options)` | A Mermaid flowchart with the same nodes, edges and clusters |
 | `report.json(w, graph, findings)` | Nodes, edges and findings as one JSON object |
-| `report.sarif(gpa, w, findings, options)` | A SARIF 2.1.0 log for GitHub code scanning and other SARIF readers |
-| `report.sarifWithSource(gpa, w, findings, context, read, options)` | The same, with lines and columns read from the sources |
+| `report.sarif(gpa, io, w, findings, context, read, options)` | A SARIF 2.1.0 log for GitHub code scanning and other SARIF readers |
 
 Drawings list nodes in path order, then edges in the graph's order. `cluster` is
 `.none`, `.directory` (nested boxes, nodes labelled with their last component) or
@@ -289,9 +293,9 @@ JSON is `{"format": "gantry", "version": 1, "nodes", "edges", "findings"}`: each
 field changes meaning or goes away.
 
 SARIF lists each rule name once as a rule id and each finding as an `error` result at the
-file it is about, under `uri_prefix`. A token finding has its line; `sarifWithSource`
-reads each file a reference or token finding names once, through the same reader `scan`
-takes, for a line and a column in code points. Edge findings are about the importing file:
+file it is about, under `uri_prefix`. A token finding has its line. Given a reader
+(`read` is `scan`'s; pass `{}, null` for none), `sarif` reads each file a reference or token
+finding names once, for a line and a column in code points. Edge findings are about the importing file:
 an edge keeps no offset.
 
 DOT quotes escape `"` and `\`, write a newline as `\n` and other control bytes and bytes
@@ -327,16 +331,30 @@ separately; `zig build check` compiles the tests only. CI also runs `zig build l
 Reports are compared with golden files in `src/testing/golden`, which CI reads with Graphviz's
 `dot`, Mermaid's CLI and the SARIF 2.1.0 schema.
 
-[CI](.github/workflows/ci.yml) runs tests and the example in Debug and ReleaseSafe on
-`ubuntu-latest`, `macos-latest` and `windows-latest`, plus ReleaseFast on Ubuntu.
-ReleaseSmall compiles the tests, example and library without running them on Ubuntu.
-Source checks run formatting and cast checks on Ubuntu, and `zig build check-consumer`
-builds a project that depends on gantry with nothing fetched. There is no ThreadSanitizer job.
+[CI](.github/workflows/ci.yml) runs the source checks and the tests and example in Debug
+on `ubuntu-latest` for every change it is asked to check, and compiles them for macOS,
+Windows and the cross targets below. A candidate for main also runs them in Debug on
+`macos-latest` and `windows-latest`, and checks the report goldens with their downstream
+tools. Before a release, the tests and example run in Debug and ReleaseSafe on all three
+hosts and in ReleaseFast on Ubuntu; ReleaseSmall compiles them and the library. `zig build
+check-consumer` builds a project that depends on gantry with nothing fetched. There is no
+ThreadSanitizer job.
 
 Compile-only jobs use the default `zig build` for `x86_64-linux-gnu`,
 `aarch64-linux-gnu`, `x86_64-linux-musl`, `x86_64-windows-gnu`, `x86_64-windows-msvc`,
 `aarch64-windows-gnu`, `x86_64-macos`, `aarch64-macos`, `x86_64-freebsd` and
 `x86_64-netbsd`.
+
+`zig build bench` installs the benchmarks from `bench/` in ReleaseFast under
+`zig-out/bench`: `fixtures synthetic <dir>` writes a six-language tree, `scan <dir>`
+times its walk, scans from disk and from memory, analysis and aggregation, and `ops`
+times each public operation in process (`ops --list` names them; `fixtures operations
+<dir>` writes the files they read). CI compiles them and runs none.
+
+## Built with
+
+[preflight](https://github.com/pedronaugusto/preflight), one local and one hosted gate for
+Zig packages, and **tycho**, every coding agent in one folder (in development).
 
 ## Licence
 
