@@ -6,21 +6,21 @@ const p = @import("path.zig");
 const Spec = types_module.Spec;
 const Context = resolve_module.Context;
 pub const Names = std.StringHashMapUnmanaged(?[]const u8);
-pub fn names(a: std.mem.Allocator, paths: []const []const u8) !Names {
+pub fn names(arena: std.mem.Allocator, paths: []const []const u8) std.mem.Allocator.Error!Names {
     var map: Names = .empty;
     for (paths) |path| {
         const base = p.base(path);
         const key = if (std.mem.endsWith(u8, base, ".md")) base[0 .. base.len - 3] else base;
-        const e = try map.getOrPut(a, key);
+        const e = try map.getOrPut(arena, key);
         e.value_ptr.* = if (e.found_existing) null else path;
     }
     return map;
 }
 /// Every search for a closer is bounded or remembered, so the time is linear
 /// in the text however many openers lack a closer.
-pub fn links(a: std.mem.Allocator, text: []const u8) ![]const Spec {
+pub fn links(arena: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error![]const Spec {
     var out: std.ArrayList(Spec) = .empty;
-    var spans = try CodeSpans.init(a, text);
+    var spans = try CodeSpans.init(arena, text);
     var i: usize = 0;
     var fence: u8 = 0;
     var fence_len: usize = 0;
@@ -71,7 +71,7 @@ pub fn links(a: std.mem.Allocator, text: []const u8) ![]const Spec {
             };
             const raw = text[i + 2 .. end];
             const name = std.mem.trim(u8, raw[0 .. std.mem.findAny(u8, raw, "|#") orelse raw.len], " \t");
-            if (name.len > 0) try out.append(a, .{ .name = name, .offset = i, .member = "wiki" });
+            if (name.len > 0) try out.append(arena, .{ .name = name, .offset = i, .member = "wiki" });
             i = end + 2;
             continue;
         }
@@ -101,13 +101,13 @@ pub fn links(a: std.mem.Allocator, text: []const u8) ![]const Spec {
             }
             const raw = text[start..end];
             const name = raw[0 .. std.mem.findScalar(u8, raw, '#') orelse raw.len];
-            if (name.len > 0 and std.mem.findScalar(u8, name, ':') == null and name[0] != '/') try out.append(a, .{ .name = try unescape(a, name), .offset = i });
+            if (name.len > 0 and std.mem.findScalar(u8, name, ':') == null and name[0] != '/') try out.append(arena, .{ .name = try unescape(arena, name), .offset = i });
             i = end;
             continue;
         }
         i += 1;
     }
-    return out.toOwnedSlice(a);
+    return out.toOwnedSlice(arena);
 }
 /// Backtick runs by length, so a code span finds the next run of its own
 /// length (CommonMark's closer) without searching the text again.
@@ -115,15 +115,15 @@ const CodeSpans = struct {
     /// Run starts by run length, ascending, with the next unread one.
     runs: std.AutoHashMapUnmanaged(usize, struct { starts: std.ArrayList(usize) = .empty, next: usize = 0 }) = .empty,
 
-    fn init(a: std.mem.Allocator, text: []const u8) !CodeSpans {
+    fn init(arena: std.mem.Allocator, text: []const u8) !CodeSpans {
         var spans: CodeSpans = .{};
         var i: usize = 0;
         while (std.mem.findScalarPos(u8, text, i, '`')) |start| {
             var end = start;
             while (end < text.len and text[end] == '`') : (end += 1) {}
-            const entry = try spans.runs.getOrPut(a, end - start);
+            const entry = try spans.runs.getOrPut(arena, end - start);
             if (!entry.found_existing) entry.value_ptr.* = .{};
-            try entry.value_ptr.starts.append(a, start);
+            try entry.value_ptr.starts.append(arena, start);
             i = end;
         }
         return spans;
@@ -139,26 +139,26 @@ const CodeSpans = struct {
 };
 /// A destination's backslash escapes, then its `%XX` bytes, as GitHub and
 /// editors write a space (`my%20file.md`). Any other `%` stays as written.
-fn unescape(a: std.mem.Allocator, name: []const u8) ![]const u8 {
+fn unescape(arena: std.mem.Allocator, name: []const u8) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
     while (i < name.len) : (i += 1) {
         if (name[i] == '\\' and i + 1 < name.len) {
             i += 1;
         } else if (name[i] == '%' and i + 2 < name.len and std.ascii.isHex(name[i + 1]) and std.ascii.isHex(name[i + 2])) {
-            try out.append(a, hexDigit(name[i + 1]) << 4 | hexDigit(name[i + 2]));
+            try out.append(arena, hexDigit(name[i + 1]) << 4 | hexDigit(name[i + 2]));
             i += 2;
             continue;
         }
-        try out.append(a, name[i]);
+        try out.append(arena, name[i]);
     }
-    return out.toOwnedSlice(a);
+    return out.toOwnedSlice(arena);
 }
 fn hexDigit(c: u8) u8 {
     std.debug.assert(std.ascii.isHex(c));
     return if (c <= '9') c - '0' else (c | 0x20) - 'a' + 10;
 }
-pub fn linkTarget(ctx: Context, index: *const Names, from: []const u8, spec: Spec) !?[]const u8 {
+pub fn linkTarget(ctx: Context, index: *const Names, from: []const u8, spec: Spec) std.mem.Allocator.Error!?[]const u8 {
     if (try ctx.candidate(p.dir(from), spec.name, &.{ "", ".md" })) |path| return path;
     if (spec.member != null) {
         if (try ctx.candidate("", spec.name, &.{ "", ".md" })) |path| return path;
@@ -166,7 +166,7 @@ pub fn linkTarget(ctx: Context, index: *const Names, from: []const u8, spec: Spe
     }
     return null;
 }
-pub fn assets(a: std.mem.Allocator, text: []const u8) ![]const Spec {
+pub fn assets(arena: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error![]const Spec {
     var out: std.ArrayList(Spec) = .empty;
     var i: usize = 0;
     while (i < text.len) {
@@ -177,9 +177,9 @@ pub fn assets(a: std.mem.Allocator, text: []const u8) ![]const Spec {
         const start = i;
         while (i < text.len and pathByte(text[i])) : (i += 1) {}
         const name = text[start..i];
-        if (name.len >= 3) try out.append(a, .{ .name = name, .offset = start });
+        if (name.len >= 3) try out.append(arena, .{ .name = name, .offset = start });
     }
-    return out.toOwnedSlice(a);
+    return out.toOwnedSlice(arena);
 }
 fn pathByte(c: u8) bool {
     return std.ascii.isAlphanumeric(c) or c >= 128 or std.mem.findScalar(u8, "./_-@", c) != null;

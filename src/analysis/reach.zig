@@ -14,21 +14,21 @@ pub const Adjacency = struct {
 
     /// A stable counting sort of `from`/`to` pairs by `from`. With
     /// `labeled`, each neighbour carries its pair's index.
-    pub fn init(a: std.mem.Allocator, n: usize, from: []const u32, to: []const u32, labeled: bool) !Adjacency {
+    pub fn init(gpa: std.mem.Allocator, n: usize, from: []const u32, to: []const u32, labeled: bool) std.mem.Allocator.Error!Adjacency {
         std.debug.assert(from.len == to.len);
         for (from, to) |v, w| {
             std.debug.assert(v < n);
             std.debug.assert(w < n);
         }
         if (n >= std.math.maxInt(u32) or from.len >= std.math.maxInt(u32)) return error.OutOfMemory;
-        const offsets = try a.alloc(u32, n + 1);
+        const offsets = try gpa.alloc(u32, n + 1);
         @memset(offsets, 0);
         for (from) |v| offsets[v + 1] += 1;
         for (1..n + 1) |i| offsets[i] += offsets[i - 1];
-        const cursor = try a.dupe(u32, offsets[0..n]);
-        defer a.free(cursor);
-        const targets = try a.alloc(u32, to.len);
-        const labels: []u32 = if (labeled) try a.alloc(u32, to.len) else &.{};
+        const cursor = try gpa.dupe(u32, offsets[0..n]);
+        defer gpa.free(cursor);
+        const targets = try gpa.alloc(u32, to.len);
+        const labels: []u32 = if (labeled) try gpa.alloc(u32, to.len) else &.{};
         for (from, to, 0..) |v, w, i| {
             targets[cursor[v]] = w;
             if (labeled) labels[cursor[v]] = @intCast(i);
@@ -55,20 +55,20 @@ pub const Adjacency = struct {
 
 /// Marks every node a walk of one edge or more reaches from `starts`.
 /// `marks` holds one entry per node, all false on entry.
-pub fn closure(a: std.mem.Allocator, adjacency: Adjacency, starts: []const u32, marks: []bool) !void {
+pub fn closure(gpa: std.mem.Allocator, adjacency: Adjacency, starts: []const u32, marks: []bool) std.mem.Allocator.Error!void {
     std.debug.assert(adjacency.offsets.len == marks.len + 1);
     for (marks) |marked| std.debug.assert(!marked);
     var queue: std.ArrayList(u32) = .empty;
-    defer queue.deinit(a);
+    defer queue.deinit(gpa);
     for (starts) |v| for (adjacency.children(v)) |w| if (!marks[w]) {
         marks[w] = true;
-        try queue.append(a, w);
+        try queue.append(gpa, w);
     };
     var head: usize = 0;
     while (head < queue.items.len) : (head += 1) {
         for (adjacency.children(queue.items[head])) |w| if (!marks[w]) {
             marks[w] = true;
-            try queue.append(a, w);
+            try queue.append(gpa, w);
         };
     }
 }
@@ -93,16 +93,16 @@ pub const Filter = struct {
 /// Distances to the nearest target, walking `backward` (each node's
 /// predecessors, labelled like `forward`) from every target at once.
 /// Only targets and passable nodes get a distance.
-pub fn distances(a: std.mem.Allocator, backward: Adjacency, targets: []const bool, filter: Filter, dist: []u32) !void {
+pub fn distances(gpa: std.mem.Allocator, backward: Adjacency, targets: []const bool, filter: Filter, dist: []u32) std.mem.Allocator.Error!void {
     std.debug.assert(backward.offsets.len == dist.len + 1);
     std.debug.assert(targets.len == dist.len);
     if (filter.passable) |passable| std.debug.assert(passable.len == dist.len);
     @memset(dist, unreached);
     var queue: std.ArrayList(u32) = .empty;
-    defer queue.deinit(a);
+    defer queue.deinit(gpa);
     for (targets, 0..) |target, v| if (target) {
         dist[v] = 0;
-        try queue.append(a, @intCast(v));
+        try queue.append(gpa, @intCast(v));
     };
     var head: usize = 0;
     while (head < queue.items.len) : (head += 1) {
@@ -111,7 +111,7 @@ pub fn distances(a: std.mem.Allocator, backward: Adjacency, targets: []const boo
             const p = backward.targets[k];
             if (dist[p] != unreached or !filter.edge(backward.label(k)) or !filter.through(p)) continue;
             dist[p] = dist[v] + 1;
-            try queue.append(a, p);
+            try queue.append(gpa, p);
         }
     }
 }
@@ -141,14 +141,14 @@ pub fn step(forward: Adjacency, dist: []const u32, filter: Filter, v: u32, bound
 /// to `out`; the lowest node at each position among the shortest. It has
 /// one edge or more even when `start` is itself a target. Returns the
 /// first edge's label, or null when no target is reached.
-pub fn chain(a: std.mem.Allocator, forward: Adjacency, dist: []const u32, filter: Filter, start: u32, out: *std.ArrayList(u32)) !?u32 {
+pub fn chain(arena: std.mem.Allocator, forward: Adjacency, dist: []const u32, filter: Filter, start: u32, out: *std.ArrayList(u32)) std.mem.Allocator.Error!?u32 {
     const first = step(forward, dist, filter, start, unreached) orelse return null;
-    try out.append(a, start);
+    try out.append(arena, start);
     var v = first.node;
-    try out.append(a, v);
+    try out.append(arena, v);
     while (dist[v] != 0) {
         v = (step(forward, dist, filter, v, dist[v]) orelse unreachable).node; // a node at distance d has a neighbour at d - 1
-        try out.append(a, v);
+        try out.append(arena, v);
     }
     return first.label;
 }

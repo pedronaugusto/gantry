@@ -76,7 +76,7 @@ test "json and sarif write the graph and findings as their goldens" {
     try report.json(&out.writer, &graph, findings);
     try golden("graph.json", out.written());
     out.clearRetainingCapacity();
-    try report.sarif(a, &out.writer, findings, .{ .uri_prefix = "lib/" });
+    try report.sarif(a, std.testing.io, &out.writer, findings, {}, null, .{ .uri_prefix = "lib/" });
     try golden("graph.sarif", out.written());
 }
 
@@ -97,11 +97,11 @@ test "sarif with source places reference and token findings at a line and code p
     try eq(2, findings.len);
     var out: std.Io.Writer.Allocating = .init(a);
     defer out.deinit();
-    try report.sarifWithSource(a, &out.writer, findings, fixture, f.Fixture.read, .{});
+    try report.sarif(a, std.testing.io, &out.writer, findings, fixture, f.Fixture.read, .{});
     try golden("source.sarif", out.written());
     // Without source, a token keeps its line and a reference is about its file.
     out.clearRetainingCapacity();
-    try report.sarif(a, &out.writer, findings, .{});
+    try report.sarif(a, std.testing.io, &out.writer, findings, {}, null, .{});
     try expect(std.mem.find(u8, out.written(), "\"region\": {\"startLine\": 4}") != null);
     try eq(1, std.mem.count(u8, out.written(), "\"region\""));
 }
@@ -119,14 +119,14 @@ test "sarif with source keeps a finding whose file reads null or is shorter than
     };
     var out: std.Io.Writer.Allocating = .init(a);
     defer out.deinit();
-    try report.sarifWithSource(a, &out.writer, &findings, {}, struct {
-        fn read(_: std.mem.Allocator, _: void, p: []const u8) !?[]const u8 {
+    try report.sarif(a, std.testing.io, &out.writer, &findings, {}, struct {
+        fn read(_: std.mem.Allocator, _: std.Io, _: void, p: []const u8) !?[]const u8 {
             return if (std.mem.eql(u8, p, "a.zig")) "ab" else null;
         }
     }.read, .{});
     try eq(0, std.mem.count(u8, out.written(), "\"region\""));
-    try std.testing.expectError(error.Unreadable, report.sarifWithSource(a, &out.writer, &findings, {}, struct {
-        fn read(_: std.mem.Allocator, _: void, _: []const u8) !?[]const u8 {
+    try std.testing.expectError(error.Unreadable, report.sarif(a, std.testing.io, &out.writer, &findings, {}, struct {
+        fn read(_: std.mem.Allocator, _: std.Io, _: void, _: []const u8) !?[]const u8 {
             return error.Unreadable;
         }
     }.read, .{}));
@@ -162,7 +162,7 @@ test "hostile paths and rule names are escaped in every report as their goldens"
     try report.json(&out.writer, &graph, findings);
     try golden("hostile.json", out.written());
     out.clearRetainingCapacity();
-    try report.sarif(a, &out.writer, findings, .{});
+    try report.sarif(a, std.testing.io, &out.writer, findings, {}, null, .{});
     try golden("hostile.sarif", out.written());
 }
 
@@ -219,7 +219,7 @@ test "hostile paths: mermaid labels hold no quote and json and sarif read back a
     defer a.free(violations);
     for (hostile, violations) |p, *v| v.* = .{ .rule = "r", .reason = .unreached, .path = p };
     out.clearRetainingCapacity();
-    try report.sarif(a, &out.writer, violations, .{});
+    try report.sarif(a, std.testing.io, &out.writer, violations, {}, null, .{});
     const log = try std.json.parseFromSlice(std.json.Value, a, out.written(), .{});
     defer log.deinit();
     const results = log.value.object.get("runs").?.array.items[0].object.get("results").?.array.items;
@@ -269,7 +269,7 @@ test "empty graph and no findings give well-formed reports" {
     const parsed = try std.json.parseFromSlice(std.json.Value, a, out.written(), .{});
     parsed.deinit();
     out.clearRetainingCapacity();
-    try report.sarif(a, &out.writer, &.{}, .{});
+    try report.sarif(a, std.testing.io, &out.writer, &.{}, {}, null, .{});
     const log = try std.json.parseFromSlice(std.json.Value, a, out.written(), .{});
     log.deinit();
 }
@@ -288,7 +288,7 @@ test "reports release everything when an allocation fails" {
             w = .fixed(&buffer);
             try report.mermaid(gpa, &w, graph_, .{ .cluster = .directory, .findings = findings_ });
             w = .fixed(&buffer);
-            try report.sarif(gpa, &w, findings_, .{});
+            try report.sarif(gpa, std.testing.io, &w, findings_, {}, null, .{});
         }
     }.run, .{ &graph, findings });
 }

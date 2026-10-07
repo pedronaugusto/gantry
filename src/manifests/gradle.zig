@@ -13,8 +13,8 @@ const Token = l.Token;
 /// Anything computed (a variable, an interpolated string, a version catalog
 /// `libs.x`, `kotlin("x")`, `files(…)`, control flow) is unsupported and
 /// declares nothing. `constraints { }` holds no declarations.
-pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) error{ InvalidManifest, InvalidEscape, OutOfMemory }!void {
-    const ts = if (std.mem.endsWith(u8, path, ".kts")) try l.lex(.kotlin, a, text) else try l.lex(.groovy, a, text);
+pub fn parse(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency), unsupported: *std.ArrayList(t.UnsupportedReference)) error{ InvalidManifest, InvalidEscape, OutOfMemory }!void {
+    const ts = if (std.mem.endsWith(u8, path, ".kts")) try l.lex(.kotlin, arena, text) else try l.lex(.groovy, arena, text);
     var blocks: std.ArrayList(bool) = .empty;
     var i: usize = 0;
     while (i < ts.len) {
@@ -26,7 +26,7 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
         }
         if (token.is("{")) {
             const opens = i > 0 and ts[i - 1].is("dependencies") and (i < 2 or !ts[i - 2].is("."));
-            try blocks.append(a, opens);
+            try blocks.append(arena, opens);
             i += 1;
             continue;
         }
@@ -36,14 +36,14 @@ pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std
             continue;
         }
         const before = out.items.len;
-        var reader: Reader = .{ .a = a, .path = path, .ts = ts, .i = i, .out = out };
+        var reader: Reader = .{ .arena = arena, .path = path, .ts = ts, .i = i, .out = out };
         const literal = reader.statement() catch |err| switch (err) {
             error.Computed => false,
             else => |e| return e,
         };
         if (!literal) {
             out.shrinkRetainingCapacity(before);
-            try unsupported.append(a, .{ .offset = token.offset, .expression = .gradle_dependency });
+            try unsupported.append(arena, .{ .offset = token.offset, .expression = .gradle_dependency });
             // A stray closing bracket is its own statement; always move on.
             reader.i = @max(skip(ts, i), i + 1);
         }
@@ -79,7 +79,7 @@ fn skip(ts: []const Token, from: usize) usize {
     return i;
 }
 const Reader = struct {
-    a: std.mem.Allocator,
+    arena: std.mem.Allocator,
     path: []const u8,
     ts: []const Token,
     i: usize,
@@ -154,7 +154,7 @@ const Reader = struct {
         try r.expect(")");
         if (!project) return r.coordinates(configuration, value);
         // Another project of the same build.
-        try r.out.append(r.a, .{ .manifest = r.path, .name = value, .group = configuration, .origin = .workspace });
+        try r.out.append(r.arena, .{ .manifest = r.path, .name = value, .group = configuration, .origin = .workspace });
     }
     fn map(r: *Reader, configuration: []const u8) !void {
         var group: []const u8 = "";
@@ -173,14 +173,14 @@ const Reader = struct {
             r.newlines();
         }
         if (group.len == 0 or name.len == 0) return error.Computed;
-        try r.out.append(r.a, .{ .manifest = r.path, .name = try r.a.print("{s}:{s}", .{ group, name }), .requirement = version, .group = configuration });
+        try r.out.append(r.arena, .{ .manifest = r.path, .name = try r.arena.print("{s}:{s}", .{ group, name }), .requirement = version, .group = configuration });
     }
     /// `group:name`, then the version and any classifier or `@extension`.
     fn coordinates(r: *Reader, configuration: []const u8, value: []const u8) !void {
         const first = std.mem.findScalar(u8, value, ':') orelse return error.Computed;
         const second = std.mem.findScalarPos(u8, value, first + 1, ':') orelse value.len;
         if (first == 0 or second == first + 1) return error.Computed;
-        try r.out.append(r.a, .{
+        try r.out.append(r.arena, .{
             .manifest = r.path,
             .name = value[0..second],
             .requirement = if (second < value.len) value[second + 1 ..] else "",

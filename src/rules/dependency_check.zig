@@ -196,11 +196,11 @@ const Manifests = struct { first: usize, end: usize };
 
 /// Undeclared imports in reference order, then unused declarations in
 /// declaration order. Findings borrow the graph and the rule.
-pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out: *engine.Collector) !void {
+pub fn check(arena: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out: *engine.Collector) std.mem.Allocator.Error!void {
     const paths = g.paths();
     const deps = g.dependencies();
     var unread: std.StringHashMapUnmanaged(void) = .empty;
-    for (g.unread()) |path| try unread.put(a, path, {});
+    for (g.unread()) |path| try unread.put(arena, path, {});
     // Manifests by ecosystem and directory, each with its declarations:
     // `deps` is sorted by manifest, so a manifest's are one run.
     var governing: std.HashMapUnmanaged(Key, std.ArrayList([]const u8), struct {
@@ -215,19 +215,19 @@ pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out:
     for (paths) |path| {
         if (unread.contains(path)) continue;
         for (std.enums.values(Ecosystem)) |e| if (e.manifest(p.base(path))) {
-            const entry = try governing.getOrPut(a, .{ e, p.dir(path) });
+            const entry = try governing.getOrPut(arena, .{ e, p.dir(path) });
             if (!entry.found_existing) entry.value_ptr.* = .empty;
-            try entry.value_ptr.append(a, path);
+            try entry.value_ptr.append(arena, path);
         };
     }
     if (governing.count() == 0) return;
     var runs: std.StringHashMapUnmanaged(struct { usize, usize }) = .empty;
     var start: usize = 0;
     for (deps, 0..) |dep, i| if (i + 1 == deps.len or !std.mem.eql(u8, dep.manifest, deps[i + 1].manifest)) {
-        try runs.put(a, dep.manifest, .{ start, i + 1 });
+        try runs.put(arena, dep.manifest, .{ start, i + 1 });
         start = i + 1;
     };
-    const used = try a.alloc(bool, deps.len);
+    const used = try arena.alloc(bool, deps.len);
     @memset(used, false);
     // Manifests that govern a source file of theirs the rule covers.
     var active: std.StringHashMapUnmanaged(void) = .empty;
@@ -245,7 +245,7 @@ pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out:
     for (paths) |path| if (engine.matches(rule.from, path)) {
         const language = languageOf(path) orelse continue;
         const e = Ecosystem.of(language) orelse continue;
-        for (Lookup.find(governing, e, path) orelse continue) |manifest| try active.put(a, manifest, {});
+        for (Lookup.find(governing, e, path) orelse continue) |manifest| try active.put(arena, manifest, {});
     };
     for (g.references()) |*ref| {
         // A resolved import still uses its declaration: a Go `replace` or
@@ -272,9 +272,9 @@ pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out:
         }
         if (found or ref.resolved or !rule.undeclared or ignored(rule, package) or (alias != null and ignored(rule, alias.?))) continue;
         // Once per file and package: a `from` import spells several names.
-        const key = try a.print("{s}\x00{s}", .{ ref.from, package });
-        if ((try reported.getOrPut(a, key)).found_existing) continue;
-        try out.items.append(out.a, .{ .rule = rule.name, .reason = .undeclared, .reference = ref, .package = package, .path = manifests[0] });
+        const key = try arena.print("{s}\x00{s}", .{ ref.from, package });
+        if ((try reported.getOrPut(arena, key)).found_existing) continue;
+        try out.items.append(out.gpa, .{ .rule = rule.name, .reason = .undeclared, .reference = ref, .package = package, .path = manifests[0] });
     }
     for (deps, used) |*dep, is_used| {
         if (is_used or !active.contains(dep.manifest)) continue;
@@ -283,7 +283,7 @@ pub fn check(a: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, out:
             if (wanted == scope) break;
         } else continue;
         if (ignored(rule, dep.name) or ignored(rule, dep.shortName()) or quiet(dep.*)) continue;
-        try out.items.append(out.a, .{ .rule = rule.name, .reason = .unused, .dependency = dep, .path = dep.manifest });
+        try out.items.append(out.gpa, .{ .rule = rule.name, .reason = .unused, .dependency = dep, .path = dep.manifest });
     }
 }
 /// Declarations no import can name: a Go module only other modules

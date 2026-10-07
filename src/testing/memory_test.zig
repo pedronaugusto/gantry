@@ -13,7 +13,7 @@ const Module = struct {
     counter: f.Peak = .{ .child = a },
     before_big: usize = 0,
     after_big: usize = 0,
-    fn read(s: std.mem.Allocator, self: *Module, path: []const u8) !?[]const u8 {
+    fn read(s: std.mem.Allocator, _: std.Io, self: *Module, path: []const u8) !?[]const u8 {
         if (std.mem.eql(u8, path, "go.mod")) return "module example.org/m";
         if (std.mem.eql(u8, path, "big/big.go")) {
             self.before_big = self.counter.live;
@@ -34,7 +34,7 @@ const Module = struct {
         if (self.big.len > 0) try paths.append(s, "big/big.go");
         for (0..self.importers) |i| try paths.append(s, try s.print("app/a{d}.go", .{i}));
         for (0..self.members) |i| try paths.append(s, try s.print("lib/l{d}.go", .{i}));
-        var graph = try g.scan(self.counter.allocator(), paths.items, self, read, .{ .manifests = false });
+        var graph = try g.scan(self.counter.allocator(), std.testing.io, paths.items, self, read, .{ .manifests = false });
         defer graph.deinit();
         return .{ graph.edges().len, self.counter.peak };
     }

@@ -21,6 +21,9 @@ pub const Kind = enum {
     /// `importlib.import_module("x")` and `__import__("x")`.
     dynamic,
 };
+/// What resolving one reference to selected files fails with: a spelling
+/// that is no path, two workspace replacements that disagree, or memory.
+pub const ResolveError = error{ InvalidPath, ConflictingReplacement, OutOfMemory };
 pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: usize = 1 };
 pub const Form = enum {
     literal,
@@ -105,14 +108,14 @@ pub const Recovery = struct {
 
     /// Records and scopes belong to the workspace. Names and members belong to
     /// returned references, so copy them directly into graph storage once.
-    pub fn clone(self: Recovery, a: std.mem.Allocator, strings: std.mem.Allocator) !Recovery {
-        const specs = try a.dupe(Spec, self.specs);
+    pub fn clone(self: Recovery, arena: std.mem.Allocator, strings: std.mem.Allocator) std.mem.Allocator.Error!Recovery {
+        const specs = try arena.dupe(Spec, self.specs);
         for (specs) |*spec| {
             spec.name = try strings.dupe(u8, spec.name);
             if (spec.member) |member| spec.member = try strings.dupe(u8, member);
-            spec.scope = try a.dupe(u8, spec.scope);
+            spec.scope = try arena.dupe(u8, spec.scope);
         }
-        return .{ .specs = specs, .unsupported = try a.dupe(UnsupportedReference, self.unsupported), .package = try a.dupe(u8, self.package) };
+        return .{ .specs = specs, .unsupported = try arena.dupe(UnsupportedReference, self.unsupported), .package = try arena.dupe(u8, self.package) };
     }
 };
 /// One declared dependency, as its manifest spells it.

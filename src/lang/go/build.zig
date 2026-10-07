@@ -38,11 +38,11 @@ fn apply(values: *std.ArrayList(bool), op: Op) !void {
         else => return error.InvalidBuildConstraint,
     });
 }
-pub fn evaluate(a: std.mem.Allocator, expression: []const u8, target: Target) !bool {
+pub fn evaluate(gpa: std.mem.Allocator, expression: []const u8, target: Target) error{ InvalidBuildConstraint, OutOfMemory }!bool {
     var values: std.ArrayList(bool) = .empty;
-    defer values.deinit(a);
+    defer values.deinit(gpa);
     var ops: std.ArrayList(Op) = .empty;
-    defer ops.deinit(a);
+    defer ops.deinit(gpa);
     var operand = true;
     var i: usize = 0;
     while (i < expression.len) {
@@ -53,19 +53,19 @@ pub fn evaluate(a: std.mem.Allocator, expression: []const u8, target: Target) !b
         }
         if (operand) {
             if (c == '!') {
-                try ops.append(a, .negate);
+                try ops.append(gpa, .negate);
                 i += 1;
                 continue;
             }
             if (c == '(') {
-                try ops.append(a, .open);
+                try ops.append(gpa, .open);
                 i += 1;
                 continue;
             }
             const start = i;
             while (i < expression.len and (std.ascii.isAlphanumeric(expression[i]) or expression[i] == '_' or expression[i] == '.')) : (i += 1) {}
             if (i == start) return error.InvalidBuildConstraint;
-            try values.append(a, tag(target, expression[start..i]));
+            try values.append(gpa, tag(target, expression[start..i]));
             operand = false;
         } else if (c == ')') {
             while (ops.getLastOrNull()) |op| {
@@ -82,7 +82,7 @@ pub fn evaluate(a: std.mem.Allocator, expression: []const u8, target: Target) !b
                 _ = ops.pop();
                 try apply(&values, previous);
             }
-            try ops.append(a, op);
+            try ops.append(gpa, op);
             operand = true;
             i += 2;
         }
@@ -92,13 +92,13 @@ pub fn evaluate(a: std.mem.Allocator, expression: []const u8, target: Target) !b
     if (values.items.len != 1) return error.InvalidBuildConstraint;
     return values.items[0];
 }
-pub fn parse(a: std.mem.Allocator, file: []const u8, text: []const u8, target: ?Target) !File {
-    return parseTokens(a, file, text, target, try l.lexCompact(.go, a, text, null));
+pub fn parse(arena: std.mem.Allocator, file: []const u8, text: []const u8, target: ?Target) error{ InvalidBuildConstraint, OutOfMemory }!File {
+    return parseTokens(arena, file, text, target, try l.lexCompact(.go, arena, text, null));
 }
-pub fn parseTokens(a: std.mem.Allocator, file: []const u8, text: []const u8, target: ?Target, ts: []const l.Token) !File {
+pub fn parseTokens(arena: std.mem.Allocator, file: []const u8, text: []const u8, target: ?Target, ts: []const l.Token) error{ InvalidBuildConstraint, OutOfMemory }!File {
     var result: File = .{ .path = file };
     for (ts, 0..) |token, i| if (token.is("package") and i + 1 < ts.len) {
-        result.package = try a.dupe(u8, ts[i + 1].text);
+        result.package = try arena.dupe(u8, ts[i + 1].text);
         break;
     };
     // Only leading line comments can be directives; text inside block comments
@@ -122,7 +122,7 @@ pub fn parseTokens(a: std.mem.Allocator, file: []const u8, text: []const u8, tar
         const prefix = "//go:build";
         if (std.mem.startsWith(u8, line, prefix) and (line.len == prefix.len or std.ascii.isWhitespace(line[prefix.len]))) {
             if (result.constraint != null) return error.InvalidBuildConstraint;
-            result.constraint = try a.dupe(u8, std.mem.trim(u8, line[prefix.len..], " \t\r"));
+            result.constraint = try arena.dupe(u8, std.mem.trim(u8, line[prefix.len..], " \t\r"));
         }
     }
     const base = p.base(file);
@@ -142,7 +142,7 @@ pub fn parseTokens(a: std.mem.Allocator, file: []const u8, text: []const u8, tar
     if (target) |selected| {
         if (result.os) |os| result.selected = result.selected and tag(selected, os);
         if (result.arch) |arch| result.selected = result.selected and std.mem.eql(u8, selected.arch, arch);
-        if (result.constraint) |expression| result.selected = (try evaluate(a, expression, selected)) and result.selected;
+        if (result.constraint) |expression| result.selected = (try evaluate(arena, expression, selected)) and result.selected;
         if (std.mem.startsWith(u8, base, "_") or std.mem.startsWith(u8, base, ".")) result.selected = false;
     }
     return result;

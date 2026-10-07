@@ -12,7 +12,7 @@ pub const Packages = std.StringHashMapUnmanaged(std.ArrayList([]const u8));
 /// file without a declaration is in the unnamed package, which no import
 /// can name, and `package-info.java` and `module-info.java` declare no type.
 /// Recoveries are kept in `cached` for the import pass.
-pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, cached: []?t.Recovery, progress: *diagnostic_module.Progress, recorder: *tokens_module.Recorder) !Packages {
+pub fn index(arena: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, cached: []?t.Recovery, progress: *diagnostic_module.Progress, recorder: *tokens_module.Recorder) (diagnostic_module.ReadError(read) || error{OutOfMemory})!Packages {
     progress.at(.java_packages, null);
     var out: Packages = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
@@ -32,11 +32,11 @@ pub fn index(a: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.Allo
             cached[file_index] = .{};
             continue;
         };
-        cached[file_index] = try recovery.clone(a, strings);
+        cached[file_index] = try recovery.clone(arena, strings);
         if (recovery.package.len == 0 or descriptor) continue;
-        const entry = try out.getOrPut(a, cached[file_index].?.package);
+        const entry = try out.getOrPut(arena, cached[file_index].?.package);
         if (!entry.found_existing) entry.value_ptr.* = .empty;
-        try entry.value_ptr.append(a, file);
+        try entry.value_ptr.append(arena, file);
     }
     progress.at(.java_packages, null);
     return out;

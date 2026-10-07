@@ -4,18 +4,18 @@ pub const Error = error{ InvalidPath, OutOfMemory };
 /// Always returns an owned slash-separated relative path. Refuses traversal
 /// above the root, absolute paths, a drive (`C:` starting the path), a
 /// backslash and NUL. A colon anywhere else is an ordinary byte.
-pub fn normalize(a: std.mem.Allocator, raw: []const u8) Error![]const u8 {
+pub fn normalize(gpa: std.mem.Allocator, raw: []const u8) Error![]const u8 {
     if (!valid(raw)) return error.InvalidPath;
     var parts: std.ArrayList([]const u8) = .empty;
-    defer parts.deinit(a);
+    defer parts.deinit(gpa);
     var it = std.mem.splitScalar(u8, raw, '/');
     while (it.next()) |part| {
         if (part.len == 0 or std.mem.eql(u8, part, ".")) continue;
         if (std.mem.eql(u8, part, "..")) {
             if (parts.pop() == null) return error.InvalidPath;
-        } else try parts.append(a, part);
+        } else try parts.append(gpa, part);
     }
-    return std.mem.join(a, "/", parts.items);
+    return std.mem.join(gpa, "/", parts.items);
 }
 /// Whether `normalize` takes these bytes, before traversal is resolved.
 pub fn valid(raw: []const u8) bool {

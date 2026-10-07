@@ -17,7 +17,7 @@ pub fn name(file: []const u8) bool {
 }
 
 /// Configs ordered from the root down, so a nearer one comes later.
-pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, progress: *diagnostic_module.Progress) ![]const Config {
+pub fn load(arena: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, context: anytype, comptime read: anytype, progress: *diagnostic_module.Progress) (diagnostic_module.ReadError(read) || error{OutOfMemory})![]const Config {
     var out: std.ArrayList(Config) = .empty;
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
@@ -34,13 +34,13 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         var joined: std.ArrayList([]const u8) = .empty;
         for (values) |value| {
             if (value.len == 0 or std.mem.findScalar(u8, value, '$') != null) continue;
-            const full = path_module.join(a, p.dir(file), value, "") catch |err| switch (err) {
+            const full = path_module.join(arena, p.dir(file), value, "") catch |err| switch (err) {
                 error.InvalidPath => continue,
                 else => |e| return e,
             };
-            try joined.append(a, full);
+            try joined.append(arena, full);
         }
-        try out.append(a, .{ .dir = try a.dupe(u8, p.dir(file)), .paths = try joined.toOwnedSlice(a) });
+        try out.append(arena, .{ .dir = try arena.dupe(u8, p.dir(file)), .paths = try joined.toOwnedSlice(arena) });
     };
     progress.at(.configs, null);
     std.mem.sort(Config, out.items, {}, struct {
@@ -48,7 +48,7 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
             return x.dir.len < y.dir.len or (x.dir.len == y.dir.len and std.mem.order(u8, x.dir, y.dir) == .lt);
         }
     }.less);
-    return out.toOwnedSlice(a);
+    return out.toOwnedSlice(arena);
 }
 /// Nim option names ignore case and underscores after the first letter.
 fn pathKey(key: []const u8) bool {
@@ -66,7 +66,7 @@ fn pathKey(key: []const u8) bool {
     return std.mem.eql(u8, trimmed, "path");
 }
 /// `nim.cfg` lines: `--path:"x"`, `-p:x`, `path = "x"`, `path: "x"`.
-fn cfg(a: std.mem.Allocator, text: []const u8) ![]const []const u8 {
+fn cfg(arena: std.mem.Allocator, text: []const u8) ![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     var lines = std.mem.splitScalar(u8, text, '\n');
     while (lines.next()) |raw| {
@@ -81,22 +81,22 @@ fn cfg(a: std.mem.Allocator, text: []const u8) ![]const []const u8 {
         } else {
             value = value[0 .. std.mem.findAny(u8, value, " \t#") orelse value.len];
         }
-        try out.append(a, value);
+        try out.append(arena, value);
     }
-    return out.toOwnedSlice(a);
+    return out.toOwnedSlice(arena);
 }
 /// NimScript: `switch("path", "x")` and `--path:"x"`.
-fn script(a: std.mem.Allocator, text: []const u8) ![]const []const u8 {
+fn script(arena: std.mem.Allocator, text: []const u8) ![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
-    const ts = try l.lexCompact(.nim, a, text, null);
+    const ts = try l.lexCompact(.nim, arena, text, null);
     for (ts, 0..) |t, i| {
         if (t.is("switch") and i + 5 < ts.len and ts[i + 1].is("(") and ts[i + 2].kind == .string and ts[i + 3].is(",") and ts[i + 4].kind == .string and ts[i + 5].is(")")) {
-            if (pathKey(ts[i + 2].text)) try out.append(a, ts[i + 4].text);
+            if (pathKey(ts[i + 2].text)) try out.append(arena, ts[i + 4].text);
         }
         // `--path:"x"` is the `--` template applied to `path: "x"`.
         if (t.is("-") and i + 4 < ts.len and ts[i + 1].is("-") and ts[i + 1].offset == t.end and ts[i + 2].kind == .word and ts[i + 3].is(":") and pathKey(ts[i + 2].text)) {
-            if (ts[i + 4].kind == .string and (i + 5 == ts.len or !ts[i + 5].is("&"))) try out.append(a, ts[i + 4].text);
+            if (ts[i + 4].kind == .string and (i + 5 == ts.len or !ts[i + 5].is("&"))) try out.append(arena, ts[i + 4].text);
         }
     }
-    return out.toOwnedSlice(a);
+    return out.toOwnedSlice(arena);
 }

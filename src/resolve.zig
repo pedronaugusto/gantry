@@ -23,7 +23,7 @@ pub const Context = struct {
     ts_configs: []const tsconfig_module.Config = &.{},
     nim_configs: []const config_module_.Config = &.{},
     java_packages: *const std.StringHashMapUnmanaged(std.ArrayList([]const u8)) = &.empty,
-    pub fn candidate(c: Context, root: []const u8, name: []const u8, suffixes: []const []const u8) !?[]const u8 {
+    pub fn candidate(c: Context, root: []const u8, name: []const u8, suffixes: []const []const u8) std.mem.Allocator.Error!?[]const u8 {
         for (suffixes) |suffix| {
             const norm = path_module.join(c.allocator, root, name, suffix) catch |err| switch (err) {
                 error.InvalidPath => continue,
@@ -33,12 +33,12 @@ pub const Context = struct {
         }
         return null;
     }
-    pub fn targets(c: Context, from: []const u8, language: t.Language, spec: t.Spec) ![]const []const u8 {
+    pub fn targets(c: Context, from: []const u8, language: t.Language, spec: t.Spec) t.ResolveError![]const []const u8 {
         return switch (language) {
             inline else => |lang| @field(languages_module, @tagName(lang)).resolve(c, from, spec),
         };
     }
-    pub fn python(c: Context, out: *std.ArrayList([]const u8), root: []const u8, rel: []const u8) !void {
+    pub fn python(c: Context, out: *std.ArrayList([]const u8), root: []const u8, rel: []const u8) std.mem.Allocator.Error!void {
         // Only follow ancestors after the full module resolves: importing an
         // attribute from a package must not invent a module for that attribute.
         const target = try c.candidate(root, rel, if (rel.len == 0) &.{"__init__.py"} else &.{ ".py", "/__init__.py" });

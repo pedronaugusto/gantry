@@ -4,13 +4,13 @@ const l = @import("../lexer.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
 /// The token stream recovery reads; `seen` observes it as it grows.
-pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
-    return l.lexCompact(.javascript, a, source, seen);
+pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) std.mem.Allocator.Error![]const l.Token {
+    return l.lexCompact(.javascript, arena, source, seen);
 }
-pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    return recoverTokens(a, source, try lex(a, source, null));
+pub fn recover(arena: std.mem.Allocator, source: []const u8) error{ InvalidEscape, OutOfMemory }!types.Recovery {
+    return recoverTokens(arena, source, try lex(arena, source, null));
 }
-pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !types.Recovery {
+pub fn recoverTokens(arena: std.mem.Allocator, _: []const u8, ts: []const l.Token) error{ InvalidEscape, OutOfMemory }!types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     for (ts, 0..) |t, i| {
@@ -18,29 +18,29 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         if (t.is("require") or t.is("import")) {
             if (i + 3 < ts.len and ts[i + 1].is("(") and ts[i + 2].kind == .string and (ts[i + 3].is(")") or ts[i + 3].is(","))) {
                 const kind: types.Kind = if (t.is("require")) (if (typeOnlyRequire(ts, i)) .type_only else .import) else callKind(ts, i);
-                try out.append(a, .{ .name = try l.decodeJs(a, ts[i + 2].text), .offset = t.offset, .kind = kind });
+                try out.append(arena, .{ .name = try l.decodeJs(arena, ts[i + 2].text), .offset = t.offset, .kind = kind });
                 continue;
             }
             if (i + 1 < ts.len and ts[i + 1].is("(")) {
-                try unsupported.append(a, .{ .offset = t.offset, .expression = if (t.is("require")) .javascript_require else .javascript_import });
+                try unsupported.append(arena, .{ .offset = t.offset, .expression = if (t.is("require")) .javascript_require else .javascript_import });
                 continue;
             }
             if (t.is("require")) continue;
             if (i + 1 < ts.len and ts[i + 1].kind == .string) {
-                try out.append(a, .{ .name = try l.decodeJs(a, ts[i + 1].text), .offset = t.offset });
+                try out.append(arena, .{ .name = try l.decodeJs(arena, ts[i + 1].text), .offset = t.offset });
                 continue;
             }
         } else if (!t.is("export")) continue;
         var j = i + 1;
         while (j < ts.len and !ts[j].is(";") and !ts[j].is("=")) : (j += 1) {
             if (ts[j].is("from") and j + 1 < ts.len and ts[j + 1].kind == .string) {
-                try out.append(a, .{ .name = try l.decodeJs(a, ts[j + 1].text), .offset = t.offset, .kind = if (typeOnlyClause(ts[i + 1 .. j])) .type_only else .import });
+                try out.append(arena, .{ .name = try l.decodeJs(arena, ts[j + 1].text), .offset = t.offset, .kind = if (typeOnlyClause(ts[i + 1 .. j])) .type_only else .import });
                 break;
             }
             if (ts[j].is("import") or ts[j].is("export")) break;
         }
     }
-    return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
+    return .{ .specs = try out.toOwnedSlice(arena), .unsupported = try unsupported.toOwnedSlice(arena) };
 }
 /// `import("x")` loads a module when it runs, unless it stands in a type:
 /// after `typeof`, or before a member that is not a promise's own.
@@ -87,7 +87,7 @@ fn file(c: anytype, root: []const u8, name: []const u8) !?[]const u8 {
     if (std.mem.eql(u8, ext, ".cjs")) return c.candidate(root, name[0 .. name.len - 4], &.{ ".cts", ".d.cts", ".cjs" });
     return c.candidate(root, name, &.{ "", ".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mts", ".d.mts", ".mjs", ".cts", ".d.cts", ".cjs", "/index.ts", "/index.tsx", "/index.d.ts", "/index.js", "/index.jsx" });
 }
-pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
+pub fn resolve(c: anytype, from: []const u8, spec: Spec) types.ResolveError![]const []const u8 {
     const name = spec.name;
     var target: ?[]const u8 = null;
     if (std.mem.startsWith(u8, name, "./") or std.mem.startsWith(u8, name, "../")) {

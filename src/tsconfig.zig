@@ -37,8 +37,8 @@ fn validate(value: Value) error{InvalidConfig}!void {
         }
     }
 }
-fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
-    return path_module.join(a, root, name, "") catch |err| switch (err) {
+fn join(arena: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
+    return path_module.join(arena, root, name, "") catch |err| switch (err) {
         error.InvalidPath => null,
         else => |e| return e,
     };
@@ -46,7 +46,7 @@ fn join(a: std.mem.Allocator, root: []const u8, name: []const u8) !?[]const u8 {
 fn configName(name: []const u8) bool {
     return std.mem.eql(u8, name, "tsconfig.json") or std.mem.eql(u8, name, "jsconfig.json");
 }
-pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype, progress: *diagnostic_module.Progress) ![]const Config {
+pub fn load(arena: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const u8, files: anytype, context: anytype, comptime read: anytype, progress: *diagnostic_module.Progress) (diagnostic_module.ReadError(read) || error{OutOfMemory})![]const Config {
     progress.at(.configs, null);
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
@@ -54,8 +54,8 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
     var index: std.StringHashMapUnmanaged(usize) = .empty;
     for (paths) |file| if (configName(p.base(file))) {
         progress.at(.configs, file);
-        try index.put(a, file, entries.items.len);
-        try entries.append(a, .{ .config = .{ .path = file } });
+        try index.put(arena, file, entries.items.len);
+        try entries.append(arena, .{ .config = .{ .path = file } });
     };
     var i: usize = 0;
     while (i < entries.items.len) : (i += 1) {
@@ -64,7 +64,7 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
         defer _ = scratch.reset(.retain_capacity);
         const text = (try read(s, context, file)) orelse continue;
         progress.at(.configs, file);
-        const value = jsonc_module.parse(a, s, text) catch |err| {
+        const value = jsonc_module.parse(arena, s, text) catch |err| {
             try invalidate(&entries.items[i], progress, err);
             continue;
         };
@@ -80,16 +80,16 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
             if (v != .string) continue;
             // Package-based extends would require an installed environment.
             if (!std.mem.startsWith(u8, v.string, ".")) continue;
-            var parent = (try join(a, p.dir(file), v.string)) orelse continue;
-            if (!files.contains(parent)) parent = try a.print("{s}.json", .{parent});
+            var parent = (try join(arena, p.dir(file), v.string)) orelse continue;
+            if (!files.contains(parent)) parent = try arena.print("{s}.json", .{parent});
             if (!files.contains(parent)) continue;
-            try parents.append(a, parent);
+            try parents.append(arena, parent);
             if (!index.contains(parent)) {
-                try index.put(a, parent, entries.items.len);
-                try entries.append(a, .{ .config = .{ .path = parent } });
+                try index.put(arena, parent, entries.items.len);
+                try entries.append(arena, .{ .config = .{ .path = parent } });
             }
         }
-        entries.items[i].parents = try parents.toOwnedSlice(a);
+        entries.items[i].parents = try parents.toOwnedSlice(arena);
     }
     var remaining = entries.items.len;
     for (entries.items) |entry| if (entry.done) {
@@ -118,12 +118,12 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
             }
             const opts = field(entry.value, "compilerOptions");
             const base = field(opts, "baseUrl");
-            if (base == .string) cfg.base_url = try join(a, p.dir(cfg.path), base.string);
+            if (base == .string) cfg.base_url = try join(arena, p.dir(cfg.path), base.string);
             remaining -= 1;
             made_progress = true;
             const paths_value = field(opts, "paths");
             if (paths_value == .object) {
-                cfg.mappings = mappings(a, paths_value) catch |err| {
+                cfg.mappings = mappings(arena, paths_value) catch |err| {
                     try invalidate(entry, progress, err);
                     continue;
                 };
@@ -154,9 +154,9 @@ pub fn load(a: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []const
     progress.at(.configs, null);
     var out: std.ArrayList(Config) = .empty;
     for (entries.items) |entry| if (!entry.invalid and configName(p.base(entry.config.path))) {
-        try out.append(a, entry.config);
+        try out.append(arena, entry.config);
     };
-    return out.toOwnedSlice(a);
+    return out.toOwnedSlice(arena);
 }
 
 fn invalidate(entry: *Entry, progress: *diagnostic_module.Progress, err: anytype) !void {
@@ -164,7 +164,7 @@ fn invalidate(entry: *Entry, progress: *diagnostic_module.Progress, err: anytype
     entry.invalid = true;
     entry.done = true;
 }
-fn mappings(a: std.mem.Allocator, paths: Value) ![]const Mapping {
+fn mappings(arena: std.mem.Allocator, paths: Value) ![]const Mapping {
     var out: std.ArrayList(Mapping) = .empty;
     var it = paths.object.iterator();
     while (it.next()) |pair| {
@@ -174,11 +174,11 @@ fn mappings(a: std.mem.Allocator, paths: Value) ![]const Mapping {
         var targets: std.ArrayList([]const u8) = .empty;
         for (pair.value_ptr.array.items) |target| {
             if (target != .string or std.mem.count(u8, target.string, "*") > 1) return error.InvalidConfig;
-            try targets.append(a, target.string);
+            try targets.append(arena, target.string);
         }
-        try out.append(a, .{ .pattern = pattern, .targets = try targets.toOwnedSlice(a) });
+        try out.append(arena, .{ .pattern = pattern, .targets = try targets.toOwnedSlice(arena) });
     }
-    return out.toOwnedSlice(a);
+    return out.toOwnedSlice(arena);
 }
 pub fn nearest(configs: []const Config, from: []const u8) ?Config {
     var best: ?Config = null;

@@ -2,7 +2,7 @@
 const std = @import("std");
 
 /// A leading byte order mark is skipped, as `tsc` and npm skip it.
-pub fn parse(a: std.mem.Allocator, scratch: std.mem.Allocator, text: []const u8) !std.json.Value {
+pub fn parse(arena: std.mem.Allocator, scratch: std.mem.Allocator, text: []const u8) error{ SyntaxError, OutOfMemory }!std.json.Value {
     const clean = try scratch.dupe(u8, if (std.mem.startsWith(u8, text, bom)) text[bom.len..] else text);
     defer scratch.free(clean);
     var i: usize = 0;
@@ -37,7 +37,7 @@ pub fn parse(a: std.mem.Allocator, scratch: std.mem.Allocator, text: []const u8)
         i += 1;
     }
     // Every way the bytes fail to be JSON is one syntax error.
-    return std.json.parseFromSliceLeaky(std.json.Value, a, clean, .{ .allocate = .alloc_always }) catch |err| switch (err) {
+    return std.json.parseFromSliceLeaky(std.json.Value, arena, clean, .{ .allocate = .alloc_always }) catch |err| switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         else => error.SyntaxError,
     };

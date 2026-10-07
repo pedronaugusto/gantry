@@ -41,14 +41,14 @@ test "Python reexports and imports share one source read" {
     const Reader = struct {
         const Self = @This();
         calls: usize = 0,
-        fn read(scratch: std.mem.Allocator, self: *Self, name: []const u8) !?[]const u8 {
+        fn read(scratch: std.mem.Allocator, _: std.Io, self: *Self, name: []const u8) !?[]const u8 {
             self.calls += 1;
             const value = try scratch.dupe(u8, if (std.mem.eql(u8, name, "pkg/__init__.py")) "from .api import *" else if (std.mem.eql(u8, name, "pkg/api.py")) "from .impl import Public as Exposed\n__all__ = ['Exposed']" else "");
             return value;
         }
     };
     var reader: Reader = .{};
-    var graph = try g.scan(a, &.{ "pkg/__init__.py", "pkg/api.py", "pkg/impl.py" }, &reader, Reader.read, .{ .python_initializers = .explicit });
+    var graph = try g.scan(a, std.testing.io, &.{ "pkg/__init__.py", "pkg/api.py", "pkg/impl.py" }, &reader, Reader.read, .{ .python_initializers = .explicit });
     defer graph.deinit();
     try f.edge(&graph, "pkg/__init__.py", "pkg/impl.py", .import, 1);
     try std.testing.expectEqual(3, reader.calls);

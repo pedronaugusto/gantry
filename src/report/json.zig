@@ -153,25 +153,27 @@ pub const SarifOptions = struct {
 /// Findings as a SARIF 2.1.0 log of one run, for GitHub code scanning and
 /// other SARIF readers. Each rule name is a rule id, listed once in name
 /// order; each finding is an `error` result at the file it is about, in
-/// the order given. Only a token finding has a line here; `sarifWithSource`
-/// gives reference and undeclared findings theirs, and columns. Edge,
-/// path and declaration findings are about a whole file.
-pub fn sarif(gpa: std.mem.Allocator, w: *Writer, findings: []const Violation, options: SarifOptions) Error!void {
+/// the order given. Edge, path and declaration findings are about a whole
+/// file. Without a reader (`read` null, `context` `{}`) only a token
+/// finding has a line. With `read(scratch, io, context, path)` as `scan`
+/// takes it, each file a reference or token finding names is read once to
+/// place those findings at a line and column (in Unicode code points). A
+/// null read, or an offset past the bytes, leaves the finding where it
+/// would be without a reader; a read error is returned.
+pub fn sarif(gpa: std.mem.Allocator, io: std.Io, w: *Writer, findings: []const Violation, context: anytype, comptime read: anytype, options: SarifOptions) (Error || SourceError(read))!void {
     const positions = try gpa.alloc(?Position, findings.len);
     defer gpa.free(positions);
     for (findings, positions) |f, *p| p.* = if (f.token) |k| .{ .line = k.line } else null;
+    if (@TypeOf(read) != @TypeOf(null)) try locate(gpa, io, findings, context, read, positions);
     try writeSarif(gpa, w, findings, positions, options);
 }
 
-/// `sarif`, reading each file a reference or token finding names once,
-/// with `read(scratch_allocator, context, path) !?[]const u8` as `scan`
-/// takes it, to place those findings at a line and column (in Unicode
-/// code points). A null read, or an offset past the bytes, leaves the
-/// finding where `sarif` puts it; a read error is returned.
-pub fn sarifWithSource(gpa: std.mem.Allocator, w: *Writer, findings: []const Violation, context: anytype, comptime read: anytype, options: SarifOptions) (Error || diagnostic_module.ReadError(read))!void {
-    const positions = try gpa.alloc(?Position, findings.len);
-    defer gpa.free(positions);
-    for (findings, positions) |f, *p| p.* = if (f.token) |k| .{ .line = k.line } else null;
+/// The errors `sarif` adds for its reader: none without one.
+pub fn SourceError(comptime read: anytype) type {
+    return if (@TypeOf(read) == @TypeOf(null)) error{} else diagnostic_module.ReadError(read);
+}
+
+fn locate(gpa: std.mem.Allocator, io: std.Io, findings: []const Violation, context: anytype, comptime read: anytype, positions: []?Position) (error{OutOfMemory} || diagnostic_module.ReadError(read))!void {
     const Spot = struct {
         const Self = @This();
         path: []const u8,
@@ -197,7 +199,7 @@ pub fn sarifWithSource(gpa: std.mem.Allocator, w: *Writer, findings: []const Vio
         while (end < spots.items.len and std.mem.eql(u8, spots.items[end].path, file)) end += 1;
         defer s = end;
         _ = scratch.reset(.retain_capacity);
-        const bytes = (try read(scratch.allocator(), context, file)) orelse continue;
+        const bytes = (try read(scratch.allocator(), io, context, file)) orelse continue;
         var line: usize = 1;
         var start: usize = 0;
         var at: usize = 0;
@@ -212,7 +214,6 @@ pub fn sarifWithSource(gpa: std.mem.Allocator, w: *Writer, findings: []const Vio
             positions[spot.finding] = .{ .line = line, .column = column };
         }
     }
-    try writeSarif(gpa, w, findings, positions, options);
 }
 
 const Position = struct { line: usize, column: ?usize = null };

@@ -18,7 +18,7 @@ pub const Recorder = struct {
     /// The file being lexed, which `observer` points the lexer at.
     current: File = undefined,
 
-    pub fn init(w: std.mem.Allocator, strings: std.mem.Allocator, rules: []const TokenRule, files: usize) !Recorder {
+    pub fn init(w: std.mem.Allocator, strings: std.mem.Allocator, rules: []const TokenRule, files: usize) std.mem.Allocator.Error!Recorder {
         if (rules.len == 0) return .{};
         const done = try w.alloc(bool, files);
         @memset(done, false);
@@ -37,7 +37,7 @@ pub const Recorder = struct {
     /// emits them when this file still wants them. `scratch` holds decoded
     /// strings until the file's scratch is released; matches are copied
     /// into graph storage.
-    pub fn lex(r: *Recorder, comptime module: type, scratch: std.mem.Allocator, index: usize, path: []const u8, language: t.Language, source: []const u8) ![]const l.Token {
+    pub fn lex(r: *Recorder, comptime module: type, scratch: std.mem.Allocator, index: usize, path: []const u8, language: t.Language, source: []const u8) std.mem.Allocator.Error![]const l.Token {
         return module.lex(scratch, source, r.observer(scratch, index, path, language, source));
     }
     /// The observer that records file `index` while it is lexed, or null
@@ -50,7 +50,7 @@ pub const Recorder = struct {
         return .{ .context = &r.current, .token = File.token };
     }
     /// Occurrences by path and offset, in graph storage.
-    pub fn finish(r: *Recorder) ![]const t.Token {
+    pub fn finish(r: *Recorder) std.mem.Allocator.Error![]const t.Token {
         if (!r.active()) return &.{};
         std.mem.sort(t.Token, r.found.items, {}, struct {
             fn less(_: void, x: t.Token, y: t.Token) bool {
@@ -158,9 +158,9 @@ fn raw(language: t.Language, source: []const u8, tokens: []const l.Token, i: usi
 /// A string literal's value: the escapes its language defines, with an
 /// unknown escape kept as written. Code points are UTF-8; `\x` is a byte
 /// in Zig, C, Go, Rust and Nim and a code point in Python and JavaScript.
-pub fn value(a: std.mem.Allocator, language: t.Language, text: []const u8, keep: bool) ![]const u8 {
+pub fn value(arena: std.mem.Allocator, language: t.Language, text: []const u8, keep: bool) std.mem.Allocator.Error![]const u8 {
     if (keep or std.mem.findScalar(u8, text, '\\') == null) return text;
-    var out: std.ArrayList(u8) = try .initCapacity(a, text.len);
+    var out: std.ArrayList(u8) = try .initCapacity(arena, text.len);
     var i: usize = 0;
     while (i < text.len) {
         if (text[i] != '\\' or i + 1 == text.len) {
@@ -185,26 +185,26 @@ pub fn value(a: std.mem.Allocator, language: t.Language, text: []const u8, keep:
             else => null,
         };
         if (simple) |byte| {
-            try out.append(a, byte);
+            try out.append(arena, byte);
             i += 2;
             continue;
         }
         if (escape(language, text, i)) |decoded| {
             if (decoded.byte) {
-                try out.append(a, @intCast(decoded.code));
+                try out.append(arena, @intCast(decoded.code));
             } else {
                 var buf: [4]u8 = undefined;
                 const len = std.unicode.utf8Encode(decoded.code, &buf) catch {
-                    try out.appendSlice(a, text[i..decoded.end]);
+                    try out.appendSlice(arena, text[i..decoded.end]);
                     i = decoded.end;
                     continue;
                 };
-                try out.appendSlice(a, buf[0..len]);
+                try out.appendSlice(arena, buf[0..len]);
             }
             i = decoded.end;
             continue;
         }
-        try out.appendSlice(a, text[i .. i + 2]);
+        try out.appendSlice(arena, text[i .. i + 2]);
         i += 2;
     }
     return out.items;

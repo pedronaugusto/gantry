@@ -29,46 +29,46 @@ pub const Declarations = struct {
 pub const ReadError = error{ InvalidManifest, InvalidEscape, OutOfMemory };
 /// `ReadError`, or `UnsupportedManifest` for a path `supported` refuses.
 pub const Error = error{ InvalidManifest, InvalidEscape, UnsupportedManifest, OutOfMemory };
-/// a must be an arena: parser workspaces and strings share its lifetime.
+/// `arena` must be an arena: parser workspaces and strings share its lifetime.
 /// Returned declarations borrow text or that arena; parse does not own either.
 /// ZON validates the whole document and reads only the root struct dependencies.
 /// Invalid ZON or dependency shapes return InvalidManifest, with no partial result.
-pub fn parse(a: std.mem.Allocator, path: []const u8, text: []const u8) Error![]const t.Dependency {
-    return (try read(a, path, text)).dependencies;
+pub fn parse(arena: std.mem.Allocator, path: []const u8, text: []const u8) Error![]const t.Dependency {
+    return (try read(arena, path, text)).dependencies;
 }
 /// `parse`, keeping the declarations it cannot read (records without a path).
-pub fn read(a: std.mem.Allocator, path: []const u8, text: []const u8) Error!Declarations {
+pub fn read(arena: std.mem.Allocator, path: []const u8, text: []const u8) Error!Declarations {
     if (!supported(path)) return error.UnsupportedManifest;
-    return readSupported(a, path, text);
+    return readSupported(arena, path, text);
 }
 /// `read` for a path `supported` takes.
-pub fn readSupported(a: std.mem.Allocator, path: []const u8, text: []const u8) ReadError!Declarations {
+pub fn readSupported(arena: std.mem.Allocator, path: []const u8, text: []const u8) ReadError!Declarations {
     std.debug.assert(supported(path));
     var out: std.ArrayList(t.Dependency) = .empty;
     var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     const name = p.base(path);
     if (std.mem.eql(u8, name, "package.json")) {
-        try json(a, path, text, &out);
+        try json(arena, path, text, &out);
     } else if (std.mem.eql(u8, name, "build.zig.zon")) {
-        try zon(a, path, text, &out);
+        try zon(arena, path, text, &out);
     } else if (std.mem.eql(u8, name, "go.mod")) {
-        try goMod(a, path, text, &out);
+        try goMod(arena, path, text, &out);
     } else if (std.mem.eql(u8, name, "Cargo.toml") or std.mem.eql(u8, name, "pyproject.toml")) {
-        try toml(a, path, text, &out);
+        try toml(arena, path, text, &out);
     } else if (std.mem.endsWith(u8, name, ".nimble")) {
-        try nimble_module.parse(a, path, text, &out, &unsupported);
+        try nimble_module.parse(arena, path, text, &out, &unsupported);
     } else if (std.mem.eql(u8, name, "pom.xml")) {
-        try maven_module.parse(a, path, text, &out, &unsupported);
+        try maven_module.parse(arena, path, text, &out, &unsupported);
     } else {
         std.debug.assert(std.mem.eql(u8, name, "build.gradle") or std.mem.eql(u8, name, "build.gradle.kts"));
-        try gradle_module.parse(a, path, text, &out, &unsupported);
+        try gradle_module.parse(arena, path, text, &out, &unsupported);
     }
-    return .{ .dependencies = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
+    return .{ .dependencies = try out.toOwnedSlice(arena), .unsupported = try unsupported.toOwnedSlice(arena) };
 }
-fn json(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+fn json(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
     // npm skips a leading byte order mark.
     const body = if (std.mem.startsWith(u8, text, l.bom)) text[l.bom.len..] else text;
-    const value = std.json.parseFromSliceLeaky(std.json.Value, a, body, .{}) catch |err| switch (err) {
+    const value = std.json.parseFromSliceLeaky(std.json.Value, arena, body, .{}) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.InvalidManifest,
     };
@@ -80,7 +80,7 @@ fn json(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
         while (it.next()) |entry| {
             if (entry.value_ptr.* != .string) return error.InvalidManifest;
             const requirement = entry.value_ptr.string;
-            try out.append(a, .{ .manifest = path, .name = entry.key_ptr.*, .requirement = requirement, .source = if (place(requirement)) requirement else "", .group = group, .origin = npmOrigin(requirement) });
+            try out.append(arena, .{ .manifest = path, .name = entry.key_ptr.*, .requirement = requirement, .source = if (place(requirement)) requirement else "", .group = group, .origin = npmOrigin(requirement) });
         }
     }
 }
@@ -98,13 +98,13 @@ fn npmOrigin(s: []const u8) t.Dependency.Origin {
 fn place(s: []const u8) bool {
     return std.mem.findScalar(u8, s, '/') != null or std.mem.startsWith(u8, s, "git") or std.mem.startsWith(u8, s, "file:") or std.mem.startsWith(u8, s, "github:") or std.mem.startsWith(u8, s, "workspace:");
 }
-fn zon(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
-    const source = try a.dupeSentinel(u8, text, 0);
-    defer a.free(source);
-    var ast = try std.zig.Ast.parse(a, source, .{ .mode = .zon });
-    defer ast.deinit(a);
-    var zoir = try std.zig.ZonGen.generate(a, ast, .{});
-    defer zoir.deinit(a);
+fn zon(gpa: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+    const source = try gpa.dupeSentinel(u8, text, 0);
+    defer gpa.free(source);
+    var ast = try std.zig.Ast.parse(gpa, source, .{ .mode = .zon });
+    defer ast.deinit(gpa);
+    var zoir = try std.zig.ZonGen.generate(gpa, ast, .{});
+    defer zoir.deinit(gpa);
     if (zoir.hasCompileErrors()) return error.InvalidManifest;
 
     const root = std.zig.Zoir.Node.Index.root.get(&zoir);
@@ -120,11 +120,11 @@ fn zon(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Array
         if (try zonField(&zoir, value, "lazy")) |lazy| {
             if (lazy != .true and lazy != .false) return error.InvalidManifest;
         }
-        try out.append(a, .{
+        try out.append(gpa, .{
             .manifest = path,
-            .name = try a.dupe(u8, name.get(&zoir)),
-            .source = try a.dupe(u8, url orelse local orelse ""),
-            .requirement = try a.dupe(u8, hash orelse ""),
+            .name = try gpa.dupe(u8, name.get(&zoir)),
+            .source = try gpa.dupe(u8, url orelse local orelse ""),
+            .requirement = try gpa.dupe(u8, hash orelse ""),
             .origin = if (url != null) .remote else if (local != null) .local else .registry,
         });
     }
@@ -142,12 +142,12 @@ fn zonString(zoir: *const std.zig.Zoir, node: std.zig.Zoir.Node, name: []const u
     if (value != .string_literal) return error.InvalidManifest;
     return value.string_literal;
 }
-fn goMod(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
-    const parsed = try go_config.parse(a, p.dir(path), text);
-    for (parsed.requires) |req| try out.append(a, .{ .manifest = path, .name = req.name, .source = req.name, .requirement = req.version, .group = if (req.indirect) "indirect" else "require", .origin = .remote });
+fn goMod(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+    const parsed = try go_config.parse(arena, p.dir(path), text);
+    for (parsed.requires) |req| try out.append(arena, .{ .manifest = path, .name = req.name, .source = req.name, .requirement = req.version, .group = if (req.indirect) "indirect" else "require", .origin = .remote });
 }
-fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
-    const ts = try l.lex(.python, a, text);
+fn toml(arena: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+    const ts = try l.lex(.python, arena, text);
     const cargo = std.mem.eql(u8, p.base(path), "Cargo.toml");
     var group: []const u8 = "";
     // `[[name]]` starts one element of an array of tables (Cargo `[[bin]]`,
@@ -165,14 +165,14 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
             i += if (array_table) 2 else 1;
             while (i < ts.len and !ts[i].is("]")) : (i += 1) {
                 if (ts[i].kind == .newline) return error.InvalidManifest;
-                try header.appendSlice(a, ts[i].text);
+                try header.appendSlice(arena, ts[i].text);
             }
             if (i == ts.len) return error.InvalidManifest;
             if (array_table) {
                 if (i + 1 == ts.len or !ts[i + 1].is("]") or ts[i + 1].offset != ts[i].end) return error.InvalidManifest;
                 i += 1;
             }
-            group = try header.toOwnedSlice(a);
+            group = try header.toOwnedSlice(arena);
             i += 1;
             continue;
         }
@@ -195,21 +195,21 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
         const value = ts[equal + 1 .. i];
         if (cargo) {
             const dep_at = dependencyTable(group) orelse continue;
-            try cargoValue(a, path, text, group, group[dep_at..], key, ts[start..equal], value, out);
+            try cargoValue(arena, path, text, group, group[dep_at..], key, ts[start..equal], value, out);
         } else if ((std.mem.eql(u8, group, "project") and std.mem.eql(u8, key, "dependencies")) or std.mem.eql(u8, group, "project.optional-dependencies") or std.mem.eql(u8, group, "dependency-groups")) {
             if (!value[0].is("[")) return error.InvalidManifest;
-            const label = try a.print("{s}.{s}", .{ group, key });
+            const label = try arena.print("{s}.{s}", .{ group, key });
             var braces: usize = 0;
             for (value) |token| {
                 if (token.is("{")) braces += 1;
                 if (token.is("}")) braces -= 1;
-                if (braces == 0 and token.kind == .string) try pythonDep(a, path, label, try string(a, text, token), out);
+                if (braces == 0 and token.kind == .string) try pythonDep(arena, path, label, try string(arena, text, token), out);
             }
         } else if (std.mem.startsWith(u8, group, "tool.poetry.") and std.mem.endsWith(u8, group, "dependencies") and !std.mem.eql(u8, key, "python")) {
             var dep: t.Dependency = .{ .manifest = path, .name = key, .group = group };
-            if (value[0].kind == .string) dep.requirement = try string(a, text, value[0]) else for (value, 0..) |token, j| {
+            if (value[0].kind == .string) dep.requirement = try string(arena, text, value[0]) else for (value, 0..) |token, j| {
                 if (j + 2 < value.len and value[j + 1].is("=") and value[j + 2].kind == .string) {
-                    const v = try string(a, text, value[j + 2]);
+                    const v = try string(arena, text, value[j + 2]);
                     if (token.is("version")) dep.requirement = v;
                     if (token.is("git") or token.is("path") or token.is("url")) {
                         dep.source = v;
@@ -217,18 +217,18 @@ fn toml(a: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.Arra
                     }
                 }
             }
-            try out.append(a, dep);
+            try out.append(arena, dep);
         }
     }
 }
 /// One key under a Cargo dependency table; `tail` is `group` from its
 /// `dependencies` part on.
-fn cargoValue(a: std.mem.Allocator, path: []const u8, text: []const u8, group: []const u8, tail: []const u8, key: []const u8, key_tokens: []const l.Token, value: []const l.Token, out: *std.ArrayList(t.Dependency)) ReadError!void {
+fn cargoValue(arena: std.mem.Allocator, path: []const u8, text: []const u8, group: []const u8, tail: []const u8, key: []const u8, key_tokens: []const l.Token, value: []const l.Token, out: *std.ArrayList(t.Dependency)) ReadError!void {
     // `[dependencies.name]` names the dependency in its header and
     // `name.field = value` under `[dependencies]` in the key.
     var dep_name: ?[]const u8 = if (std.mem.findScalar(u8, tail, '.')) |dot| tail[dot + 1 ..] else null;
     var field = key;
-    if (dep_name == null) if (try dottedKey(a, text, key_tokens)) |dotted| {
+    if (dep_name == null) if (try dottedKey(arena, text, key_tokens)) |dotted| {
         dep_name = dotted.name;
         field = dotted.field;
     };
@@ -239,13 +239,13 @@ fn cargoValue(a: std.mem.Allocator, path: []const u8, text: []const u8, group: [
             break;
         };
         if (entry == null) {
-            try out.append(a, .{ .manifest = path, .name = name, .group = group });
+            try out.append(arena, .{ .manifest = path, .name = name, .group = group });
             entry = &out.items[out.items.len - 1];
         }
         if (value[0].kind == .string) {
-            if (std.mem.eql(u8, field, "version")) entry.?.requirement = try string(a, text, value[0]);
+            if (std.mem.eql(u8, field, "version")) entry.?.requirement = try string(arena, text, value[0]);
             if (std.mem.eql(u8, field, "path") or std.mem.eql(u8, field, "git")) {
-                entry.?.source = try string(a, text, value[0]);
+                entry.?.source = try string(arena, text, value[0]);
                 entry.?.origin = if (std.mem.eql(u8, field, "path")) .local else .remote;
             }
         } else if (std.mem.eql(u8, field, "workspace") and value[0].is("true")) {
@@ -254,11 +254,11 @@ fn cargoValue(a: std.mem.Allocator, path: []const u8, text: []const u8, group: [
         }
     } else {
         var dep: t.Dependency = .{ .manifest = path, .name = key, .group = group };
-        if (value[0].kind == .string) dep.requirement = try string(a, text, value[0]) else if (value[0].is("{")) {
+        if (value[0].kind == .string) dep.requirement = try string(arena, text, value[0]) else if (value[0].is("{")) {
             for (value, 0..) |token, j| {
                 if (j + 2 >= value.len or !value[j + 1].is("=")) continue;
                 if (value[j + 2].kind == .string) {
-                    const v = try string(a, text, value[j + 2]);
+                    const v = try string(arena, text, value[j + 2]);
                     if (token.is("version")) dep.requirement = v;
                     if (token.is("path") or token.is("git")) {
                         dep.source = v;
@@ -270,15 +270,15 @@ fn cargoValue(a: std.mem.Allocator, path: []const u8, text: []const u8, group: [
                 }
             }
         } else return error.InvalidManifest;
-        try out.append(a, dep);
+        try out.append(arena, dep);
     }
 }
 /// A dotted key's first part and the rest, or null for a key without a dot.
-fn dottedKey(a: std.mem.Allocator, text: []const u8, key: []const l.Token) ReadError!?struct { name: []const u8, field: []const u8 } {
+fn dottedKey(arena: std.mem.Allocator, text: []const u8, key: []const l.Token) ReadError!?struct { name: []const u8, field: []const u8 } {
     for (key, 0..) |token, d| {
         if (!token.is(".")) continue;
         if (d == 0 or d + 1 == key.len) return error.InvalidManifest;
-        const name = if (d == 1 and key[0].kind == .string) try string(a, text, key[0]) else std.mem.trim(u8, text[key[0].offset..token.offset], " \t");
+        const name = if (d == 1 and key[0].kind == .string) try string(arena, text, key[0]) else std.mem.trim(u8, text[key[0].offset..token.offset], " \t");
         return .{ .name = name, .field = std.mem.trim(u8, text[token.end..key[key.len - 1].end], " \t") };
     }
     return null;
@@ -292,16 +292,16 @@ fn dependencyTable(group: []const u8) ?usize {
     }
     return null;
 }
-fn pythonDep(a: std.mem.Allocator, path: []const u8, group: []const u8, requirement: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
+fn pythonDep(arena: std.mem.Allocator, path: []const u8, group: []const u8, requirement: []const u8, out: *std.ArrayList(t.Dependency)) ReadError!void {
     const raw = std.mem.trim(u8, requirement, " \t");
     const end = std.mem.findAny(u8, raw, "<>=!~[; @(") orelse raw.len;
     if (end == 0) return error.InvalidManifest;
     const url = std.mem.find(u8, raw, " @ ");
     const source = if (url) |u| std.mem.trim(u8, raw[u + 3 .. std.mem.findScalarPos(u8, raw, u + 3, ';') orelse raw.len], " ") else "";
     const origin: t.Dependency.Origin = if (source.len == 0) .registry else if (std.mem.startsWith(u8, source, "file:")) .local else .remote;
-    try out.append(a, .{ .manifest = path, .name = raw[0..end], .requirement = raw, .source = source, .group = group, .origin = origin });
+    try out.append(arena, .{ .manifest = path, .name = raw[0..end], .requirement = raw, .source = source, .group = group, .origin = origin });
 }
 
-fn string(a: std.mem.Allocator, text: []const u8, token: l.Token) ReadError![]const u8 {
-    return if (text[token.offset] == '\'') token.text else try l.decode(a, token.text);
+fn string(arena: std.mem.Allocator, text: []const u8, token: l.Token) ReadError![]const u8 {
+    return if (text[token.offset] == '\'') token.text else try l.decode(arena, token.text);
 }

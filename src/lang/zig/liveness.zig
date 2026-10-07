@@ -25,28 +25,28 @@ pub const Shape = struct {
     /// `builtin` is any container-level `const` bound to `@import("builtin")`.
     tests: []const Range,
 
-    pub fn read(a: std.mem.Allocator, ts: []const Token) !Shape {
-        const partner = try a.alloc(u32, ts.len);
+    pub fn read(arena: std.mem.Allocator, ts: []const Token) std.mem.Allocator.Error!Shape {
+        const partner = try arena.alloc(u32, ts.len);
         var open: std.ArrayList(u32) = .empty;
         var imports: std.ArrayList(u32) = .empty;
         var marks: std.ArrayList(u32) = .empty;
         var builtins: std.ArrayList([]const u8) = .empty;
         for (ts, 0..) |t, i| switch (t.kind) {
             .punctuation => switch (t.text[0]) {
-                '(', '[', '{' => try open.append(a, @intCast(i)),
+                '(', '[', '{' => try open.append(arena, @intCast(i)),
                 ')', ']', '}' => {
                     const o = open.pop() orelse @as(u32, @intCast(i));
                     partner[o] = @intCast(i);
                     partner[i] = o;
                 },
                 '@' => if (i + 1 < ts.len and ts[i + 1].is("import")) {
-                    try imports.append(a, @intCast(i));
+                    try imports.append(arena, @intCast(i));
                     if (open.items.len == 0 and i >= 3 and ts[i - 3].is("const") and ts[i - 2].kind == .word and ts[i - 1].is("=") and builtinImport(ts, i))
-                        try builtins.append(a, ts[i - 2].text);
+                        try builtins.append(arena, ts[i - 2].text);
                 },
                 else => {},
             },
-            .word => if (t.text.len == 4 or t.text.len == 7) if (t.is("test") or t.is("is_test")) try marks.append(a, @intCast(i)),
+            .word => if (t.text.len == 4 or t.text.len == 7) if (t.is("test") or t.is("is_test")) try marks.append(arena, @intCast(i)),
             else => {},
         };
         for (open.items) |o| partner[o] = @intCast(ts.len - 1);
@@ -63,7 +63,7 @@ pub const Shape = struct {
             if (tests.items.len > 0 and range.first <= tests.items[tests.items.len - 1].last) {
                 const top = &tests.items[tests.items.len - 1];
                 top.last = @max(top.last, range.last);
-            } else try tests.append(a, range);
+            } else try tests.append(arena, range);
         }
         return .{ .imports = imports.items, .partner = partner, .tests = tests.items };
     }
@@ -125,12 +125,12 @@ fn expressionEnd(ts: []const Token, partner: []const u32, first: usize) ?usize {
 const Member = struct { first: u32, last: u32, name: ?[]const u8 = null, root: bool = false, is_test: bool = false, this: bool = false };
 
 /// The file's container-level members in order, tiling the stream.
-fn rootMembers(a: std.mem.Allocator, ts: []const Token, partner: []const u32) ![]const Member {
+fn rootMembers(arena: std.mem.Allocator, ts: []const Token, partner: []const u32) ![]const Member {
     var out: std.ArrayList(Member) = .empty;
     var i: usize = 0;
     while (i < ts.len) {
         const m = memberFrom(ts, partner, i);
-        try out.append(a, m);
+        try out.append(arena, m);
         i = m.last + 1;
     }
     return out.items;
@@ -225,13 +225,13 @@ const Names = struct {
     slots: *[1 << 12]u32,
     next: []u32,
 
-    fn init(a: std.mem.Allocator, members: []const Member) !Names {
-        const slots = try a.create([1 << 12]u32);
+    fn init(arena: std.mem.Allocator, members: []const Member) std.mem.Allocator.Error!Names {
+        const slots = try arena.create([1 << 12]u32);
         @memset(slots, none);
         var this: std.ArrayList([]const u8) = .empty;
-        var names: Names = .{ .members = members, .this = &.{}, .slots = slots, .next = try a.alloc(u32, members.len) };
+        var names: Names = .{ .members = members, .this = &.{}, .slots = slots, .next = try arena.alloc(u32, members.len) };
         for (members, 0..) |m, i| if (m.name) |name| {
-            if (m.this) try this.append(a, name);
+            if (m.this) try this.append(arena, name);
             if (m.root) continue;
             names.lengths |= length(name);
             const slot = &slots[sketch(name)];
@@ -266,7 +266,7 @@ const Names = struct {
 /// case is a reference, so it errs towards live.
 pub const Words = struct {
     const Ref = struct { from: u32, to: u32 };
-    a: std.mem.Allocator,
+    arena: std.mem.Allocator,
     ts: []const Token,
     tests: []const Range,
     members: []const Member,
@@ -281,33 +281,33 @@ pub const Words = struct {
     at: usize = 0,
     in: usize = 0,
 
-    pub fn init(a: std.mem.Allocator, ts: []const Token, shape: Shape) !Words {
-        const members = try rootMembers(a, ts, shape.partner);
-        const named_by = try a.alloc(u32, members.len);
+    pub fn init(arena: std.mem.Allocator, ts: []const Token, shape: Shape) std.mem.Allocator.Error!Words {
+        const members = try rootMembers(arena, ts, shape.partner);
+        const named_by = try arena.alloc(u32, members.len);
         @memset(named_by, Names.none);
-        const seeded = try a.alloc(bool, members.len);
+        const seeded = try arena.alloc(bool, members.len);
         @memset(seeded, false);
-        return .{ .a = a, .ts = ts, .tests = shape.tests, .members = members, .names = try .init(a, members), .named_by = named_by, .seeded = seeded };
+        return .{ .arena = arena, .ts = ts, .tests = shape.tests, .members = members, .names = try .init(arena, members), .named_by = named_by, .seeded = seeded };
     }
     /// Each word and string of the stream, in order.
-    pub fn see(self: *Words, i: usize) !void {
+    pub fn see(self: *Words, i: usize) std.mem.Allocator.Error!void {
         const target = self.names.find(self.ts[i].text) orelse return;
         if (!reference(self.ts, i, self.names)) return;
         while (self.members[self.at].last < i) self.at += 1;
         while (self.in < self.tests.len and self.tests[self.in].last < i) self.in += 1;
         if (self.in < self.tests.len and self.tests[self.in].first <= i) {
-            if (!self.seeded[target]) try self.seeds.append(self.a, target);
+            if (!self.seeded[target]) try self.seeds.append(self.arena, target);
             self.seeded[target] = true;
         } else if (self.at != target and self.named_by[target] != self.at) {
             self.named_by[target] = @intCast(self.at);
-            try self.refs.append(self.a, .{ .from = @intCast(self.at), .to = target });
+            try self.refs.append(self.arena, .{ .from = @intCast(self.at), .to = target });
         }
     }
     /// After every word: marks `test` each spec whose token only a test
     /// build analyses, and `dead` each one no build analyses. A dead import
     /// keeps its kind, since dead code is no evidence of a test. `where`
     /// holds the index in the stream of each spec's token.
-    pub fn classify(self: *Words, specs: []types.Spec, where: []const u32) !void {
+    pub fn classify(self: *Words, specs: []types.Spec, where: []const u32) std.mem.Allocator.Error!void {
         std.debug.assert(specs.len == where.len);
         const reach = try self.reachable();
         for (specs, where) |*spec, at| {
@@ -317,29 +317,29 @@ pub const Words = struct {
         }
     }
     fn reachable(self: *Words) ![]const Reach {
-        const a = self.a;
+        const arena = self.arena;
         const n = self.members.len;
         // Edges grouped by source for the walk.
-        const starts = try a.alloc(u32, n + 1);
+        const starts = try arena.alloc(u32, n + 1);
         @memset(starts, 0);
         for (self.refs.items) |r| starts[r.from + 1] += 1;
         for (1..starts.len) |i| starts[i] += starts[i - 1];
-        const targets = try a.alloc(u32, self.refs.items.len);
-        const fill = try a.dupe(u32, starts[0..n]);
+        const targets = try arena.alloc(u32, self.refs.items.len);
+        const fill = try arena.dupe(u32, starts[0..n]);
         for (self.refs.items) |r| {
             targets[fill[r.from]] = r.to;
             fill[r.from] += 1;
         }
-        const out = try a.alloc(Reach, n);
+        const out = try arena.alloc(Reach, n);
         @memset(out, .dead);
         var stack: std.ArrayList(u32) = .empty;
         for ([_]Reach{ .live, .test_only }) |mark| {
-            for (self.members, 0..) |m, i| if (if (mark == .live) m.root else m.is_test) try stack.append(a, @intCast(i));
-            if (mark == .test_only) try stack.appendSlice(a, self.seeds.items);
+            for (self.members, 0..) |m, i| if (if (mark == .live) m.root else m.is_test) try stack.append(arena, @intCast(i));
+            if (mark == .test_only) try stack.appendSlice(arena, self.seeds.items);
             while (stack.pop()) |i| {
                 if (out[i] != .dead) continue;
                 out[i] = mark;
-                for (targets[starts[i]..starts[i + 1]]) |j| if (out[j] == .dead) try stack.append(a, j);
+                for (targets[starts[i]..starts[i + 1]]) |j| if (out[j] == .dead) try stack.append(arena, j);
             }
         }
         return out;

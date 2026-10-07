@@ -3,13 +3,13 @@ const l = @import("../lexer.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
 /// The token stream recovery reads; `seen` observes it as it grows.
-pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
-    return l.lexSeen(.c, a, source, seen);
+pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) std.mem.Allocator.Error![]const l.Token {
+    return l.lexSeen(.c, arena, source, seen);
 }
-pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    return recoverTokens(a, source, try lex(a, source, null));
+pub fn recover(arena: std.mem.Allocator, source: []const u8) std.mem.Allocator.Error!types.Recovery {
+    return recoverTokens(arena, source, try lex(arena, source, null));
 }
-pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !types.Recovery {
+pub fn recoverTokens(arena: std.mem.Allocator, source: []const u8, ts: []const l.Token) std.mem.Allocator.Error!types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     for (ts, 0..) |token, i| {
@@ -29,14 +29,14 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
             }
         }
         if (name != null and (end == ts.len or ts[end].kind == .newline)) {
-            try out.append(a, .{ .name = name.?, .offset = token.offset });
-        } else try unsupported.append(a, .{ .offset = token.offset, .expression = .c_include });
+            try out.append(arena, .{ .name = name.?, .offset = token.offset });
+        } else try unsupported.append(arena, .{ .offset = token.offset, .expression = .c_include });
     }
-    return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
+    return .{ .specs = try out.toOwnedSlice(arena), .unsupported = try unsupported.toOwnedSlice(arena) };
 }
 
 const p = @import("../path.zig");
-pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
+pub fn resolve(c: anytype, from: []const u8, spec: Spec) types.ResolveError![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     const a = c.allocator;
     const dir = p.dir(from);

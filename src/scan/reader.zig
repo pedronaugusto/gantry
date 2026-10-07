@@ -7,6 +7,8 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
     return struct {
         const Self = @This();
         context: Context,
+        /// Passed to every read; this reader lives for one scan call.
+        io: std.Io,
         allocator: std.mem.Allocator,
         unread: std.StringHashMapUnmanaged(void) = .empty,
         progress: *diagnostic_module.Progress,
@@ -15,15 +17,15 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
             self.unread.deinit(self.allocator);
             self.* = undefined;
         }
-        pub fn readFile(scratch: std.mem.Allocator, self: *Self, path: []const u8) !?[]const u8 {
+        pub fn readFile(scratch: std.mem.Allocator, self: *Self, path: []const u8) (diagnostic_module.ReadError(read) || error{OutOfMemory})!?[]const u8 {
             self.progress.at(.read, path);
-            const bytes = try read(scratch, self.context, path);
+            const bytes = try read(scratch, self.io, self.context, path);
             if (bytes == null) try self.unread.put(self.allocator, path, {});
             return bytes;
         }
         /// Use graph-owned keys; config paths can belong to scan workspaces.
-        pub fn unreadPaths(self: *const Self, a: std.mem.Allocator, files: *const std.StringHashMapUnmanaged(void)) ![]const []const u8 {
-            const paths = try a.alloc([]const u8, self.unread.count());
+        pub fn unreadPaths(self: *const Self, arena: std.mem.Allocator, files: *const std.StringHashMapUnmanaged(void)) std.mem.Allocator.Error![]const []const u8 {
+            const paths = try arena.alloc([]const u8, self.unread.count());
             var keys = self.unread.keyIterator();
             var i: usize = 0;
             while (keys.next()) |key| : (i += 1) paths[i] = files.getKey(key.*).?;

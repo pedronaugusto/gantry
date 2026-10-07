@@ -10,47 +10,73 @@ const diagnostic_module = @import("scan/diagnostic.zig");
 const std = @import("std");
 const t = @import("types.zig");
 const resolver = @import("resolve.zig");
+/// A scan's or `fromEdges`'s owned graph: files, edges, references and records.
 pub const Graph = graph_module.Graph;
+/// Layers, components, cycle witnesses, coupling and queries over a graph.
 pub const Analysis = analysis_module.Analysis;
+/// The source languages import recovery reads.
 pub const Language = t.Language;
+/// What an edge or reference is: `import`, `type_only`, `dynamic`, `test`, `link` or `asset`.
 pub const Kind = t.Kind;
+/// A dependency between two files, with its kind and reference count.
 pub const Edge = t.Edge;
+/// One recovered import spelling, its offset, kind and resolution status.
 pub const Reference = t.Reference;
+/// An identifier or string literal that a token rule names.
 pub const Token = t.Token;
+/// An import or manifest construct that recovery detects but cannot read.
 pub const UnsupportedReference = t.UnsupportedReference;
+/// The construct an `UnsupportedReference` is.
 pub const ImportExpression = t.ImportExpression;
+/// One dependency a manifest declares.
 pub const Dependency = t.Dependency;
+/// A file and its depth in an analysis.
 pub const Layer = t.Layer;
+/// A node's or directory's dependents and dependencies.
 pub const Coupling = t.Coupling;
+/// A strongly connected component and one closed witness path through it.
 pub const Cycle = t.Cycle;
+/// A raw recovered reference from `imports`.
 pub const Spec = t.Spec;
+/// Which Python package initializers an import reaches.
 pub const PythonInitializers = resolver.PythonInitializers;
+/// The Go operating system, architecture and tags that select build constraints.
 pub const GoTarget = build_module.Target;
+/// A Go file's package, constraint and whether `Options.go_target` selects it.
 pub const GoFile = build_module.File;
+/// A Zig module name that resolves to a selected file.
 pub const NamedModule = resolver.NamedModule;
+/// Rule data and checking over a graph.
 pub const rules = @import("rules.zig");
+/// Dependency declarations read from manifests.
 pub const manifests = @import("manifests.zig");
+/// The slash-separated relative paths every graph uses.
 pub const path = @import("path.zig");
 /// DOT, Mermaid, JSON and SARIF text for a graph and its findings.
 pub const report = @import("report.zig");
+/// What `scan` records, resolves and checks, and where it reports a failure.
 pub const Options = options_module.Options;
+/// The language a path is read as, by its extension.
 pub const languageOf = options_module.languageOf;
 /// The reference kinds a scan reads from a path, by its name alone.
 pub const kindsOf = scan_module.kindsOf;
 /// Raw lexical recovery, owning source bytes and every slice until deinit.
 pub const Imports = scan_module.Imports;
+/// Lexical recovery from one anonymous source buffer.
 pub const imports = scan_module.imports;
-/// read(scratch_allocator, context, path) returns !?[]const u8. Bytes need
+/// What `imports` fails with.
+pub const ImportsError = scan_module.ImportsError;
+/// read(scratch, io, context, path) returns `E!?[]const u8`. Bytes need
 /// only survive processing until the next read. Null records an unread path;
 /// a reader error aborts without a partial graph, as a `ScanError` does. A
 /// file whose bytes are not valid for its format is a record in
 /// `Graph.invalid`, not an error. Scratch is released per file.
-/// The returned graph borrows neither input paths and options nor file bytes.
+/// `Options.diagnostics` keeps the failed file, phase, optional byte offset
+/// and cause. The returned graph borrows neither input paths and options
+/// nor file bytes.
 pub const scan = scan_module.scan;
-/// The same atomic scan, with a caller-owned file, phase, optional byte offset
-/// and cause on failure.
-pub const scanWithDiagnostic = scan_module.scanWithDiagnostic;
-pub const ScanDiagnostic = diagnostic_module.ScanDiagnostic;
+/// Caller-owned output for a failed scan, through `Options.diagnostics`.
+pub const Diagnostics = diagnostic_module.Diagnostics;
 /// What `scan` fails with besides the reader's errors.
 pub const ScanError = diagnostic_module.ScanError;
 /// The errors a reader function returns; `scan` returns these and `ScanError`.
@@ -62,11 +88,11 @@ pub const FileError = diagnostic_module.FileError;
 /// Reader over an already-open directory; directory ownership stays with caller.
 /// The byte limit is caller policy. A missing selected file is an I/O error.
 pub const DirReader = struct {
-    io: std.Io,
     dir: std.Io.Dir,
     limit: std.Io.Limit = .unlimited,
-    pub fn read(a: std.mem.Allocator, self: DirReader, p: []const u8) std.Io.Dir.ReadFileAllocError!?[]const u8 {
-        const value = try self.dir.readFileAlloc(self.io, p, a, self.limit);
+    pub const ReadError = std.Io.Dir.ReadFileAllocError;
+    pub fn read(scratch: std.mem.Allocator, io: std.Io, self: DirReader, p: []const u8) DirReader.ReadError!?[]const u8 {
+        const value = try self.dir.readFileAlloc(io, p, scratch, self.limit);
         return value;
     }
 };
@@ -75,4 +101,7 @@ pub const DirReader = struct {
 /// (a backslash, a `C:` drive spelling at the root) is skipped, so every
 /// listed path can be scanned. Paths own their allocator.
 pub const Paths = scan_module.Paths;
+/// Lists the files under a directory, sorted, as `Paths`.
 pub const walk = scan_module.walk;
+/// What `walk` fails with.
+pub const WalkError = scan_module.WalkError;

@@ -13,11 +13,20 @@ const store = @import("graph/Storage.zig");
 pub const Graph = enum(usize) {
     _,
 
-    pub fn init(gpa: std.mem.Allocator, node_paths: []const []const u8) !Graph {
+    /// What `init` fails with: a path `path.normalize` refuses, or memory.
+    pub const InitError = store.InitError;
+    /// What `fromEdges` fails with: `InitError`, an endpoint not among the
+    /// paths (`UnknownPath`), a zero count (`InvalidCount`), or counts that
+    /// merge past `usize` (`CountOverflow`).
+    pub const FromEdgesError = store.FromEdgesError;
+    /// What `aggregate` fails with.
+    pub const AggregateError = store.AggregateError;
+
+    pub fn init(gpa: std.mem.Allocator, node_paths: []const []const u8) InitError!Graph {
         return store.owner(Graph, try store.init(gpa, node_paths));
     }
     /// Copies, validates, sorts and coalesces caller edges. Endpoints must be among paths.
-    pub fn fromEdges(gpa: std.mem.Allocator, node_paths: []const []const u8, input_edges: []const t.Edge) !Graph {
+    pub fn fromEdges(gpa: std.mem.Allocator, node_paths: []const []const u8, input_edges: []const t.Edge) FromEdgesError!Graph {
         return store.owner(Graph, try store.fromEdges(gpa, node_paths, input_edges));
     }
     pub fn deinit(g: *Graph) void {
@@ -71,11 +80,11 @@ pub const Graph = enum(usize) {
     /// The result is independent of this graph, with no manifest references.
     /// Unsupported imports retain their original source paths and byte offsets.
     /// Directory self edges are retained as coupling within a directory.
-    pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) !Graph {
+    pub fn aggregate(g: *const Graph, gpa: std.mem.Allocator, depth: usize) AggregateError!Graph {
         return store.owner(Graph, try store.get(g.*).aggregate(gpa, depth));
     }
     /// Analysis owns its results independently of the graph.
-    pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) !analysis_module.Analysis {
+    pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!analysis_module.Analysis {
         return @fromBackingInt(@intCast(@intFromPtr(try analyze_module.analyze(store.get(g.*), gpa)))); // safe: the owning handle retains the newly allocated analysis state until deinit.
     }
     /// Findings borrow graph storage, rule names and required-path strings.

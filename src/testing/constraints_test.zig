@@ -46,14 +46,14 @@ test "Go constraints and imports share one source read" {
     const Reader = struct {
         const Self = @This();
         calls: usize = 0,
-        fn read(scratch: std.mem.Allocator, self: *Self, name: []const u8) !?[]const u8 {
+        fn read(scratch: std.mem.Allocator, _: std.Io, self: *Self, name: []const u8) !?[]const u8 {
             self.calls += 1;
             const value = try scratch.dupe(u8, if (std.mem.eql(u8, name, "go.mod")) "module example.org/app" else if (std.mem.eql(u8, name, "main.go")) "//go:build linux\n\npackage app\nimport \"example.org/app/lib\"" else "package lib");
             return value;
         }
     };
     var reader: Reader = .{};
-    var graph = try g.scan(a, &.{ "go.mod", "main.go", "lib/a.go" }, &reader, Reader.read, .{ .manifests = false, .go_target = .{ .os = "linux", .arch = "amd64" } });
+    var graph = try g.scan(a, std.testing.io, &.{ "go.mod", "main.go", "lib/a.go" }, &reader, Reader.read, .{ .manifests = false, .go_target = .{ .os = "linux", .arch = "amd64" } });
     defer graph.deinit();
     try f.edge(&graph, "main.go", "lib/a.go", .import, 1);
     try std.testing.expectEqualStrings("app", graph.goFiles()[1].package);

@@ -45,7 +45,7 @@ pub fn targetDecides(language: t.Language, form: t.Form) bool {
     };
 }
 /// File-module declarations propagate cfg(test) through their descendants.
-pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?t.Recovery, progress: *diagnostic_module.Progress, recorder: *tokens_module.Recorder) !std.StringHashMapUnmanaged(void) {
+pub fn rustFiles(arena: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.Allocator, paths: []const []const u8, ctx: anytype, context: anytype, comptime read: anytype, cached: []?t.Recovery, progress: *diagnostic_module.Progress, recorder: *tokens_module.Recorder) (diagnostic_module.ReadError(read) || t.ResolveError)!std.StringHashMapUnmanaged(void) {
     progress.at(.rust_tests, null);
     var marked: std.StringHashMapUnmanaged(void) = .empty;
     var declarations: std.ArrayList(t.Edge) = .empty;
@@ -58,18 +58,18 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.
         const text = (try read(s, context, from)) orelse continue;
         progress.at(.rust_tests, from);
         const tokens = try recorder.lex(rust, s, index, from, .rust, text);
-        if (rust.testFileTokens(tokens)) try marked.put(a, from, {});
+        if (rust.testFileTokens(tokens)) try marked.put(arena, from, {});
         const recovery = rust.recoverTokens(s, text, tokens) catch |err| {
             try progress.tolerate(err);
             if (cached.len > 0) cached[index] = .{};
             continue;
         };
-        if (cached.len > 0) cached[index] = try recovery.clone(a, strings);
+        if (cached.len > 0) cached[index] = try recovery.clone(arena, strings);
         var resolver = ctx;
         resolver.allocator = s;
         for (recovery.specs) |spec| {
             if (spec.form != .rust_mod) continue;
-            for (try resolver.targets(from, .rust, spec)) |to| try declarations.append(a, .{ .from = from, .to = ctx.files.getKey(to).?, .kind = spec.kind });
+            for (try resolver.targets(from, .rust, spec)) |to| try declarations.append(arena, .{ .from = from, .to = ctx.files.getKey(to).?, .kind = spec.kind });
         }
     }
     progress.at(.rust_tests, null);
@@ -77,7 +77,7 @@ pub fn rustFiles(a: std.mem.Allocator, gpa: std.mem.Allocator, strings: std.mem.
     while (changed) {
         changed = false;
         for (declarations.items) |edge| if (edge.kind == .@"test" or marked.contains(edge.from)) {
-            const entry = try marked.getOrPut(a, edge.to);
+            const entry = try marked.getOrPut(arena, edge.to);
             if (!entry.found_existing) changed = true;
         };
     }

@@ -25,10 +25,17 @@ invalid: []const diagnostic_module.InvalidFile = &.{},
 go_files: []const build_module.File = &.{},
 files: std.StringHashMapUnmanaged(void) = .empty,
 
-pub fn init(gpa: std.mem.Allocator, paths: []const []const u8) !*Storage {
+/// What building a graph from paths fails with: a path `path.normalize` refuses, or memory.
+pub const InitError = error{ InvalidPath, OutOfMemory };
+/// `InitError`, an endpoint that is not among the paths, a zero count, or
+/// counts that merge past `usize`.
+pub const FromEdgesError = error{ InvalidPath, UnknownPath, InvalidCount, CountOverflow, OutOfMemory };
+/// What aggregating a graph into directories fails with.
+pub const AggregateError = error{ InvalidPath, CountOverflow, OutOfMemory };
+pub fn init(gpa: std.mem.Allocator, paths: []const []const u8) InitError!*Storage {
     return initTracked(gpa, paths, null);
 }
-pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: ?*diagnostic_module.Progress) !*Storage {
+pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: ?*diagnostic_module.Progress) InitError!*Storage {
     const g = try gpa.create(Storage);
     g.* = .{ .allocator = gpa, .arena = .init(gpa) };
     errdefer g.deinit();
@@ -64,7 +71,7 @@ pub fn deinit(g: *Storage) void {
     g.* = undefined;
 }
 /// Build a graph from caller edges. Endpoints must be among paths.
-pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) !*Storage {
+pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) FromEdgesError!*Storage {
     const g = try init(gpa, paths);
     errdefer g.deinit();
     const a = g.arena.allocator();
@@ -88,7 +95,7 @@ pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []con
 /// The returned graph is independent of this one, with no manifest references.
 /// Unsupported imports retain their original source paths and byte offsets.
 /// Directory self edges are retained: they describe coupling within a directory.
-pub fn aggregate(g: *const Storage, gpa: std.mem.Allocator, depth: usize) !*Storage {
+pub fn aggregate(g: *const Storage, gpa: std.mem.Allocator, depth: usize) AggregateError!*Storage {
     var scratch: std.heap.ArenaAllocator = .init(gpa);
     defer scratch.deinit();
     const a = scratch.allocator();
@@ -124,7 +131,7 @@ pub fn aggregate(g: *const Storage, gpa: std.mem.Allocator, depth: usize) !*Stor
     return result;
 }
 /// Analysis owns its results independently of the graph.
-pub fn coalesce(edges: []t.Edge) ![]const t.Edge {
+pub fn coalesce(edges: []t.Edge) error{CountOverflow}![]const t.Edge {
     std.mem.sort(t.Edge, edges, {}, t.edgesLess);
     var n: usize = 0;
     for (edges) |edge| {
@@ -142,10 +149,10 @@ pub fn coalesce(edges: []t.Edge) ![]const t.Edge {
 pub const Pending = struct { from: u32, to: u32, kind: t.Kind };
 /// Each path's position, for `Pending` edges. Paths are sorted, so position
 /// order is the path order `edgesLess` sorts by.
-pub fn positions(a: std.mem.Allocator, paths: []const []const u8) !std.StringHashMapUnmanaged(u32) {
+pub fn positions(arena: std.mem.Allocator, paths: []const []const u8) std.mem.Allocator.Error!std.StringHashMapUnmanaged(u32) {
     if (paths.len > std.math.maxInt(u32)) return error.OutOfMemory;
     var result: std.StringHashMapUnmanaged(u32) = .empty;
-    try result.ensureTotalCapacity(a, @intCast(paths.len));
+    try result.ensureTotalCapacity(arena, @intCast(paths.len));
     for (paths, 0..) |path, i| {
         if (i > 0) std.debug.assert(t.stringsLess({}, paths[i - 1], path));
         result.putAssumeCapacity(path, @intCast(i));
@@ -154,7 +161,7 @@ pub fn positions(a: std.mem.Allocator, paths: []const []const u8) !std.StringHas
     return result;
 }
 /// `coalesce` for pending edges, into exactly the storage the result needs.
-pub fn coalescePending(a: std.mem.Allocator, paths: []const []const u8, pending: []Pending) ![]const t.Edge {
+pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pending: []Pending) std.mem.Allocator.Error![]const t.Edge {
     for (pending) |edge| {
         std.debug.assert(edge.from < paths.len);
         std.debug.assert(edge.to < paths.len);
@@ -170,7 +177,7 @@ pub fn coalescePending(a: std.mem.Allocator, paths: []const []const u8, pending:
     for (pending, 0..) |edge, i| {
         if (i == 0 or !std.meta.eql(edge, pending[i - 1])) n += 1;
     }
-    const edges = try a.alloc(t.Edge, n);
+    const edges = try arena.alloc(t.Edge, n);
     n = 0;
     for (pending, 0..) |edge, i| {
         if (i > 0 and std.meta.eql(edge, pending[i - 1])) {

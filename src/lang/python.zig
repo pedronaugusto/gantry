@@ -1,27 +1,27 @@
 const std = @import("std");
 const l = @import("../lexer.zig");
-fn module(a: std.mem.Allocator, ts: []const l.Token, pos: *usize) ![]const u8 {
+fn module(arena: std.mem.Allocator, ts: []const l.Token, pos: *usize) ![]const u8 {
     var name: std.ArrayList(u8) = .empty;
     while (pos.* < ts.len and (ts[pos.*].kind == .word or ts[pos.*].is("."))) : (pos.* += 1) {
         if (ts[pos.*].is("import") or ts[pos.*].is("as")) break;
-        try name.appendSlice(a, ts[pos.*].text);
+        try name.appendSlice(arena, ts[pos.*].text);
     }
-    return name.toOwnedSlice(a);
+    return name.toOwnedSlice(arena);
 }
 const types = @import("../types.zig");
 const Spec = types.Spec;
 /// The token stream recovery reads; `seen` observes it as it grows.
-pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
-    return l.lexSeen(.python, a, source, seen);
+pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) std.mem.Allocator.Error![]const l.Token {
+    return l.lexSeen(.python, arena, source, seen);
 }
-pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    return recoverTokens(a, source, try lex(a, source, null));
+pub fn recover(arena: std.mem.Allocator, source: []const u8) std.mem.Allocator.Error!types.Recovery {
+    return recoverTokens(arena, source, try lex(arena, source, null));
 }
-pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !types.Recovery {
+pub fn recoverTokens(arena: std.mem.Allocator, source: []const u8, ts: []const l.Token) std.mem.Allocator.Error!types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     // Most files never spell it: their blocks are not looked for.
-    const checking = if (std.mem.find(u8, source, "TYPE_CHECKING") != null) try typeChecking(a, source, ts) else &.{};
+    const checking = if (std.mem.find(u8, source, "TYPE_CHECKING") != null) try typeChecking(arena, source, ts) else &.{};
     // Loader calls are read across line breaks, as if the stream had none.
     var previous: ?l.Token = null;
     for (ts, 0..) |token, i| {
@@ -45,9 +45,9 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
             ahead[1..n]
         else
             continue;
-        if (try loaded(a, call, importlib)) |name| {
-            try out.append(a, .{ .name = name, .offset = token.offset, .form = .python, .kind = if (inside(checking, token.offset)) .type_only else .dynamic });
-        } else try unsupported.append(a, .{ .offset = token.offset, .expression = if (importlib) .python_importlib else .python_import });
+        if (try loaded(arena, call, importlib)) |name| {
+            try out.append(arena, .{ .name = name, .offset = token.offset, .form = .python, .kind = if (inside(checking, token.offset)) .type_only else .dynamic });
+        } else try unsupported.append(arena, .{ .offset = token.offset, .expression = if (importlib) .python_importlib else .python_import });
     }
     var i: usize = 0;
     while (i < ts.len) : (i += 1) {
@@ -57,11 +57,11 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
         if (i > 0 and ts[i - 1].is(".")) continue;
         var j = i + 1;
         if (t.is("from")) {
-            const base = try module(a, ts, &j);
+            const base = try module(arena, ts, &j);
             if (j >= ts.len or !ts[j].is("import")) continue;
             const base_index = out.items.len;
             const kind: types.Kind = if (inside(checking, t.offset)) .type_only else .import;
-            if (base.len > 0) try out.append(a, .{ .name = base, .offset = t.offset, .form = .python, .python_base = true, .kind = kind });
+            if (base.len > 0) try out.append(arena, .{ .name = base, .offset = t.offset, .form = .python, .python_base = true, .kind = kind });
             j += 1;
             if (j < ts.len and ts[j].is("*") and base.len > 0) out.items[base_index].star = true;
             var parens: usize = 0;
@@ -88,16 +88,16 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
                 if (ts[j].kind != .word) break;
                 const child = ts[j].text;
                 const separator = if (base.len == 0 or std.mem.endsWith(u8, base, ".")) "" else ".";
-                try out.append(a, .{ .name = try a.print("{s}{s}{s}", .{ base, separator, child }), .offset = t.offset, .form = .python, .kind = kind });
+                try out.append(arena, .{ .name = try arena.print("{s}{s}{s}", .{ base, separator, child }), .offset = t.offset, .form = .python, .kind = kind });
                 j += 1;
                 if (j < ts.len and ts[j].is("as")) j = @min(j + 2, ts.len);
                 if (j < ts.len and !ts[j].is(",") and !ts[j].is(")") and !ts[j].is("\\") and ts[j].kind != .newline) break;
             }
         } else {
             while (j < ts.len) {
-                const name = try module(a, ts, &j);
+                const name = try module(arena, ts, &j);
                 if (name.len == 0) break;
-                try out.append(a, .{ .name = name, .offset = t.offset, .form = .python, .kind = if (inside(checking, t.offset)) .type_only else .import });
+                try out.append(arena, .{ .name = name, .offset = t.offset, .form = .python, .kind = if (inside(checking, t.offset)) .type_only else .import });
                 if (j < ts.len and ts[j].is("as")) j = @min(j + 2, ts.len);
                 if (j >= ts.len or !ts[j].is(",")) break;
                 j += 1;
@@ -105,16 +105,16 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
         }
         i = j -| 1;
     }
-    return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
+    return .{ .specs = try out.toOwnedSlice(arena), .unsupported = try unsupported.toOwnedSlice(arena) };
 }
 
 /// The module a loader call with literal arguments imports:
 /// `import_module("a.b")`, `import_module(".b", "a")` or with `package="a"`,
 /// and `__import__("a.b")`. A relative name resolves against its package
 /// as `importlib` does. Null for any other argument.
-fn loaded(a: std.mem.Allocator, args: []const l.Token, importlib: bool) !?[]const u8 {
+fn loaded(arena: std.mem.Allocator, args: []const l.Token, importlib: bool) !?[]const u8 {
     if (args.len < 2 or args[0].kind != .string) return null;
-    const name = l.decode(a, args[0].text) catch return null;
+    const name = l.decode(arena, args[0].text) catch return null;
     if (name.len == 0) return null;
     if (!args[1].is(")") and !args[1].is(",")) return null;
     // `__import__` imports its first argument whatever follows; its
@@ -125,7 +125,7 @@ fn loaded(a: std.mem.Allocator, args: []const l.Token, importlib: bool) !?[]cons
         var k: usize = 2;
         if (k + 1 < args.len and args[k].is("package") and args[k + 1].is("=")) k += 2;
         if (k + 1 >= args.len or args[k].kind != .string or !args[k + 1].is(")")) return null;
-        package = l.decode(a, args[k].text) catch return null;
+        package = l.decode(arena, args[k].text) catch return null;
     }
     if (name[0] != '.') return name;
     // A relative name needs its package, as `importlib` does.
@@ -135,7 +135,7 @@ fn loaded(a: std.mem.Allocator, args: []const l.Token, importlib: bool) !?[]cons
     var anchor = base;
     for (1..dots) |_| anchor = anchor[0 .. std.mem.findScalarLast(u8, anchor, '.') orelse return null];
     if (anchor.len == 0) return null;
-    return if (dots == name.len) anchor else try a.print("{s}.{s}", .{ anchor, name[dots..] });
+    return if (dots == name.len) anchor else try arena.print("{s}.{s}", .{ anchor, name[dots..] });
 }
 
 /// Byte ranges of `if TYPE_CHECKING:` bodies, `typing.TYPE_CHECKING` or any
@@ -144,7 +144,7 @@ fn loaded(a: std.mem.Allocator, args: []const l.Token, importlib: bool) !?[]cons
 /// later line indented no deeper, which ends it (an `else` or `elif` too).
 /// Nested blocks stay inside.
 const Range = struct { start: usize, end: usize };
-fn typeChecking(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) ![]const Range {
+fn typeChecking(arena: std.mem.Allocator, source: []const u8, ts: []const l.Token) ![]const Range {
     var ranges: std.ArrayList(Range) = .empty;
     var open: ?struct { start: usize, indent: usize } = null;
     var depth: usize = 0;
@@ -160,7 +160,7 @@ fn typeChecking(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !
             const begin = if (std.mem.findScalarLast(u8, source[0..t.offset], '\n')) |nl| nl + 1 else 0;
             const indent = t.offset - begin;
             if (open) |block| if (indent <= block.indent) {
-                try ranges.append(a, .{ .start = block.start, .end = t.offset });
+                try ranges.append(arena, .{ .start = block.start, .end = t.offset });
                 open = null;
             };
             if (open == null and t.is("if") and checkingTest(ts[i + 1 ..])) open = .{ .start = t.offset, .indent = indent };
@@ -168,8 +168,8 @@ fn typeChecking(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !
         if (t.is("(") or t.is("[") or t.is("{")) depth += 1;
         if ((t.is(")") or t.is("]") or t.is("}")) and depth > 0) depth -= 1;
     }
-    if (open) |block| try ranges.append(a, .{ .start = block.start, .end = source.len });
-    return ranges.toOwnedSlice(a);
+    if (open) |block| try ranges.append(arena, .{ .start = block.start, .end = source.len });
+    return ranges.toOwnedSlice(arena);
 }
 /// `TYPE_CHECKING:` or `name.TYPE_CHECKING:` after `if`.
 fn checkingTest(rest: []const l.Token) bool {
@@ -182,7 +182,7 @@ fn inside(ranges: []const Range, offset: usize) bool {
 }
 
 const p = @import("../path.zig");
-pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
+pub fn resolve(c: anytype, from: []const u8, spec: Spec) types.ResolveError![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     const a = c.allocator;
     const dir = p.dir(from);

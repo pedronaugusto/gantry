@@ -3,13 +3,13 @@ const l = @import("../lexer.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
 /// The token stream recovery reads; `seen` observes it as it grows.
-pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
-    return l.lexCompact(.rust, a, source, seen);
+pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) std.mem.Allocator.Error![]const l.Token {
+    return l.lexCompact(.rust, arena, source, seen);
 }
-pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    return recoverTokens(a, source, try lex(a, source, null));
+pub fn recover(arena: std.mem.Allocator, source: []const u8) std.mem.Allocator.Error!types.Recovery {
+    return recoverTokens(arena, source, try lex(arena, source, null));
 }
-pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !types.Recovery {
+pub fn recoverTokens(arena: std.mem.Allocator, _: []const u8, ts: []const l.Token) std.mem.Allocator.Error!types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     const Frame = struct { test_item: bool, scope: []const u8 };
@@ -34,27 +34,27 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
             const seen = if (testing) &test_crates else &crates;
             const like: Spec = .{ .name = "", .offset = 0, .kind = if (testing) .@"test" else .import, .scope = current.scope };
             if (ts[i + 1].kind == .punctuation) {
-                if (crateRoot(ts, i) and !(try names.get(a)).all.contains(t.text)) try noteCrate(a, t, seen, like, &out);
+                if (crateRoot(ts, i) and !(try names.get(arena)).all.contains(t.text)) try noteCrate(arena, t, seen, like, &out);
             } else if (t.is("extern") and ts[i + 1].is("crate") and ts[i + 2].kind == .word and !ts[i + 2].is("self")) {
                 var spec = like;
                 spec.name = ts[i + 2].text;
                 spec.offset = t.offset;
                 spec.form = .rust_crate;
-                try out.append(a, spec);
-                try seen.put(a, ts[i + 2].text, {});
+                try out.append(arena, spec);
+                try seen.put(arena, ts[i + 2].text, {});
             }
         }
         if (t.is("include") and i + 2 < ts.len and ts[i + 1].is("!") and (ts[i + 2].is("(") or ts[i + 2].is("{") or ts[i + 2].is("[")))
-            try unsupported.append(a, .{ .offset = t.offset, .expression = .rust_include });
+            try unsupported.append(arena, .{ .offset = t.offset, .expression = .rust_include });
         if (t.is("#") and i + 1 < ts.len and (ts[i + 1].is("[") or ts[i + 1].is("!"))) {
             const inner = ts[i + 1].is("!");
             var j = i + 1;
             while (j < ts.len and !ts[j].is("]")) : (j += 1) {}
             const begin = i + (if (inner) @as(usize, 3) else 2);
             // `#[tokio::main]`, `#[derive(serde::Serialize)]`.
-            for (i + 1..j) |k| if (crateRoot(ts, k) and !(try names.get(a)).all.contains(ts[k].text)) try noteCrate(a, ts[k], if (current.test_item) &test_crates else &crates, .{ .name = "", .offset = 0, .kind = if (current.test_item) .@"test" else .import, .scope = current.scope }, &out);
+            for (i + 1..j) |k| if (crateRoot(ts, k) and !(try names.get(arena)).all.contains(ts[k].text)) try noteCrate(arena, ts[k], if (current.test_item) &test_crates else &crates, .{ .name = "", .offset = 0, .kind = if (current.test_item) .@"test" else .import, .scope = current.scope }, &out);
             if (begin < j and ts[begin].is("path")) {
-                try unsupported.append(a, .{ .offset = t.offset, .expression = .rust_path });
+                try unsupported.append(arena, .{ .offset = t.offset, .expression = .rust_path });
                 pending_path = true;
             }
             // Only an explicit cfg(test) is proof; cfg(not(test)) and cfg_attr
@@ -67,12 +67,12 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
         }
         if (t.is("mod") and i + 2 < ts.len and ts[i + 1].kind == .word) {
             if (ts[i + 1].is("tests")) pending_test = true;
-            if (ts[i + 2].is(";") and !pending_path) try out.append(a, .{ .name = ts[i + 1].text, .offset = t.offset, .form = .rust_mod, .kind = if (current.test_item or pending_test) .@"test" else .import, .scope = current.scope });
-            if (ts[i + 2].is("{")) pending_scope = try std.mem.join(a, "/", if (current.scope.len == 0) &.{ts[i + 1].text} else &.{ current.scope, ts[i + 1].text });
+            if (ts[i + 2].is(";") and !pending_path) try out.append(arena, .{ .name = ts[i + 1].text, .offset = t.offset, .form = .rust_mod, .kind = if (current.test_item or pending_test) .@"test" else .import, .scope = current.scope });
+            if (ts[i + 2].is("{")) pending_scope = try std.mem.join(arena, "/", if (current.scope.len == 0) &.{ts[i + 1].text} else &.{ current.scope, ts[i + 1].text });
         } else if (t.is("use") and i + 1 < ts.len and i >= tree_end) {
             var j = i + 1;
             const start = out.items.len;
-            try tree(a, ts, &j, &names, current.scope, t.offset, &out);
+            try tree(arena, ts, &j, &names, current.scope, t.offset, &out);
             // A `use` the tree read is part of it, not a declaration of its own.
             tree_end = j;
             for (out.items[start..]) |*spec| {
@@ -81,7 +81,7 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
             }
         }
         if (t.is("{")) {
-            try frames.append(a, current);
+            try frames.append(arena, current);
             current = .{ .test_item = current.test_item or pending_test, .scope = pending_scope orelse current.scope };
             pending_test = false;
             pending_path = false;
@@ -97,14 +97,14 @@ pub fn recoverTokens(a: std.mem.Allocator, _: []const u8, ts: []const l.Token) !
             pending_scope = null;
         }
     }
-    return .{ .specs = try out.toOwnedSlice(a), .unsupported = try unsupported.toOwnedSlice(a) };
+    return .{ .specs = try out.toOwnedSlice(arena), .unsupported = try unsupported.toOwnedSlice(arena) };
 }
 // Nested use trees are walked on an explicit stack: source nesting never
 // consumes the machine's call stack.
 /// Each brace's prefix is a length of the one path buffer, so nesting never
 /// copies the path, and a segment must follow `::`, `{` or `,`, so the path
 /// only grows by the tree's own spelling.
-fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, scope: []const u8, offset: usize, out: *std.ArrayList(Spec)) !void {
+fn tree(arena: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, scope: []const u8, offset: usize, out: *std.ArrayList(Spec)) !void {
     var prefixes: std.ArrayList(usize) = .empty;
     var path: std.ArrayList(u8) = .empty;
     var segment_allowed = true;
@@ -113,11 +113,11 @@ fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, sco
         if (t.is(";")) break;
         if (t.is("{")) {
             if (!segment_allowed) break;
-            try prefixes.append(a, path.items.len);
+            try prefixes.append(arena, path.items.len);
             continue;
         }
         if (t.is(",") or t.is("}")) {
-            try emit(a, path.items, names, scope, offset, out);
+            try emit(arena, path.items, names, scope, offset, out);
             if (t.is("}") and prefixes.items.len > 0) _ = prefixes.pop();
             path.shrinkRetainingCapacity(prefixes.getLastOrNull() orelse 0);
             segment_allowed = true;
@@ -129,19 +129,19 @@ fn tree(a: std.mem.Allocator, ts: []const l.Token, j: *usize, names: *Names, sco
             continue;
         }
         if (t.is(":")) {
-            try path.appendSlice(a, t.text);
+            try path.appendSlice(arena, t.text);
             segment_allowed = std.mem.endsWith(u8, path.items, "::");
         } else if ((t.kind == .word or t.is("*")) and segment_allowed) {
-            try path.appendSlice(a, t.text);
+            try path.appendSlice(arena, t.text);
             segment_allowed = false;
         } else break;
     }
-    try emit(a, path.items, names, scope, offset, out);
+    try emit(arena, path.items, names, scope, offset, out);
 }
-fn emit(a: std.mem.Allocator, raw: []const u8, names: *Names, scope: []const u8, offset: usize, out: *std.ArrayList(Spec)) !void {
+fn emit(arena: std.mem.Allocator, raw: []const u8, names: *Names, scope: []const u8, offset: usize, out: *std.ArrayList(Spec)) !void {
     if (raw.len == 0 or std.mem.endsWith(u8, raw, "::")) return;
     if (std.mem.startsWith(u8, raw, "crate::") or std.mem.startsWith(u8, raw, "super::") or std.mem.startsWith(u8, raw, "self::")) {
-        try out.append(a, .{ .name = try a.dupe(u8, raw), .offset = offset, .form = .rust_use });
+        try out.append(arena, .{ .name = try arena.dupe(u8, raw), .offset = offset, .form = .rust_use });
         return;
     }
     // `::serde::X` names a crate whatever this module declares.
@@ -150,8 +150,8 @@ fn emit(a: std.mem.Allocator, raw: []const u8, names: *Names, scope: []const u8,
     const root = name[0 .. std.mem.find(u8, name, "::") orelse name.len];
     if (!crateName(root)) return;
     if (!global) {
-        const found = try names.get(a);
-        const key = try a.print("{s}\x00{s}", .{ scope, root });
+        const found = try names.get(arena);
+        const key = try arena.print("{s}\x00{s}", .{ scope, root });
         // A module this module declares is what a 2018 `use` path names
         // first, as rustc resolves it, unless an `extern crate` here takes
         // the same name: rustc refuses both (E0260), and so no edge.
@@ -159,25 +159,25 @@ fn emit(a: std.mem.Allocator, raw: []const u8, names: *Names, scope: []const u8,
             // An inline module is this file; a `#[path]` one is not read.
             if (place != .file) return;
             if (!found.externs.contains(key)) {
-                try out.append(a, .{ .name = try a.dupe(u8, name), .offset = offset, .form = .rust_use });
+                try out.append(arena, .{ .name = try arena.dupe(u8, name), .offset = offset, .form = .rust_use });
                 return;
             }
         }
         // A module declared in another module is not in scope here: the
         // name is an extern crate's, as rustc reads it.
     }
-    try out.append(a, .{ .name = try a.dupe(u8, name), .offset = offset, .form = .rust_crate });
+    try out.append(arena, .{ .name = try arena.dupe(u8, name), .offset = offset, .form = .rust_crate });
 }
 /// A crate a path names, once per file and kind: `like` gives its kind
 /// and scope.
-fn noteCrate(a: std.mem.Allocator, t: l.Token, seen: *std.StringHashMapUnmanaged(void), like: Spec, out: *std.ArrayList(Spec)) !void {
-    const entry = try seen.getOrPut(a, t.text);
+fn noteCrate(arena: std.mem.Allocator, t: l.Token, seen: *std.StringHashMapUnmanaged(void), like: Spec, out: *std.ArrayList(Spec)) !void {
+    const entry = try seen.getOrPut(arena, t.text);
     if (entry.found_existing) return;
     var spec = like;
     spec.name = t.text;
     spec.offset = t.offset;
     spec.form = .rust_crate;
-    try out.append(a, spec);
+    try out.append(arena, spec);
 }
 /// The names a file brings into scope: its modules, every word of its
 /// `use` trees, and `extern crate` aliases. A path rooted at one is local.
@@ -193,7 +193,7 @@ const Names = struct {
         /// `extern crate` names, or their aliases, by `scope\x00name`.
         externs: std.StringHashMapUnmanaged(void),
     };
-    fn get(self: *Names, a: std.mem.Allocator) !*const Found {
+    fn get(self: *Names, arena: std.mem.Allocator) !*const Found {
         if (self.found == null) {
             const ts = self.ts;
             var all: std.StringHashMapUnmanaged(void) = .empty;
@@ -208,20 +208,20 @@ const Names = struct {
             while (i < ts.len) : (i += 1) {
                 if (ts[i].is("mod") and i + 1 < ts.len and ts[i + 1].kind == .word) {
                     const name = ts[i + 1].text;
-                    try modules.put(a, name, {});
-                    try all.put(a, name, {});
+                    try modules.put(arena, name, {});
+                    try all.put(arena, name, {});
                     const inline_body = i + 2 < ts.len and ts[i + 2].is("{");
-                    try declared.put(a, try a.print("{s}\x00{s}", .{ scope, name }), if (inline_body) .here else if (pathAttribute(ts, i)) .path_attribute else .file);
-                    if (i + 2 < ts.len and ts[i + 2].is("{")) pending = try std.mem.join(a, "/", if (scope.len == 0) &.{name} else &.{ scope, name });
+                    try declared.put(arena, try arena.print("{s}\x00{s}", .{ scope, name }), if (inline_body) .here else if (pathAttribute(ts, i)) .path_attribute else .file);
+                    if (i + 2 < ts.len and ts[i + 2].is("{")) pending = try std.mem.join(arena, "/", if (scope.len == 0) &.{name} else &.{ scope, name });
                 } else if (ts[i].is("use")) {
-                    while (i < ts.len and !ts[i].is(";")) : (i += 1) if (ts[i].kind == .word) try all.put(a, ts[i].text, {});
+                    while (i < ts.len and !ts[i].is(";")) : (i += 1) if (ts[i].kind == .word) try all.put(arena, ts[i].text, {});
                 } else if (ts[i].is("extern") and i + 2 < ts.len and ts[i + 1].is("crate") and ts[i + 2].kind == .word) {
                     const alias = i + 4 < ts.len and ts[i + 3].is("as") and ts[i + 4].kind == .word;
                     const name = ts[i + (if (alias) @as(usize, 4) else 2)].text;
-                    if (alias) try all.put(a, name, {});
-                    try externs.put(a, try a.print("{s}\x00{s}", .{ scope, name }), {});
+                    if (alias) try all.put(arena, name, {});
+                    try externs.put(arena, try arena.print("{s}\x00{s}", .{ scope, name }), {});
                 } else if (ts[i].is("{")) {
-                    try scopes.append(a, scope);
+                    try scopes.append(arena, scope);
                     scope = pending orelse scope;
                     pending = null;
                 } else if (ts[i].is("}")) {
@@ -263,7 +263,7 @@ fn crateName(word: []const u8) bool {
 }
 
 const p = @import("../path.zig");
-pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
+pub fn resolve(c: anytype, from: []const u8, spec: Spec) types.ResolveError![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     const a = c.allocator;
     const dir = p.dir(from);

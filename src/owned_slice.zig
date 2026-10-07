@@ -26,7 +26,7 @@ pub fn Store(comptime T: type) type {
                 self.* = undefined;
             }
         };
-        pub fn create(gpa: std.mem.Allocator) !*State {
+        pub fn create(gpa: std.mem.Allocator) std.mem.Allocator.Error!*State {
             const state = try gpa.create(State);
             state.* = .{ .arena = .init(gpa) };
             return state;

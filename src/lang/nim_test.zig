@@ -24,7 +24,7 @@ test "fixture: a Nim project resolves sources, groups, includes, its tests' sear
         path.* = item.path;
         try tmp.dir.writeFile(io, .{ .sub_path = item.path, .data = item.text.? });
     }
-    var graph = try g.scan(a, &paths, g.DirReader{ .io = io, .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try g.scan(a, io, &paths, g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
     defer graph.deinit();
     try f.edge(&graph, "src/app.nim", "src/app/util.nim", .import, 1);
     try f.edge(&graph, "src/app.nim", "src/app/net.nim", .import, 1);

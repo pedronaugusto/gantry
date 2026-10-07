@@ -148,7 +148,7 @@ test "a token rule the scan did not record is refused" {
     defer graph.deinit();
     try eq(0, graph.tokens().len);
     try std.testing.expectError(error.UnscannedToken, graph.check(a, .{ .tokens = &.{.{ .name = "kill", .tokens = &.{"kill"} }} }));
-    try std.testing.expectError(error.UnscannedToken, g.rules.check(a, &graph, .{ .tokens = &.{.{ .name = "kill", .tokens = &.{"kill"} }} }));
+    try std.testing.expectError(error.UnscannedToken, graph.check(a, .{ .tokens = &.{.{ .name = "kill", .tokens = &.{"kill"} }} }));
 }
 
 test "token patterns: star spans any bytes and question mark one" {

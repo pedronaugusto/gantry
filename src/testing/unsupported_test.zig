@@ -169,14 +169,14 @@ test "unsupported Go imports do not invent computed syntax for valid declaration
     try std.testing.expectEqual(0, unsupportedCount(&result));
 }
 
-fn strictOptions() g.Options {
-    var options: g.Options = .{ .manifests = false };
+fn strictOptions(diagnostics: ?*g.Diagnostics) g.Options {
+    var options: g.Options = .{ .manifests = false, .diagnostics = diagnostics };
     options.strict_imports = true;
     return options;
 }
 
-fn refuse(fixture: f.Fixture, paths: []const []const u8, diagnostic: ?*g.ScanDiagnostic) !void {
-    if (g.scanWithDiagnostic(a, paths, fixture, f.Fixture.read, strictOptions(), diagnostic)) |value| {
+fn refuse(fixture: f.Fixture, paths: []const []const u8, diagnostic: ?*g.Diagnostics) !void {
+    if (g.scan(a, std.testing.io, paths, fixture, f.Fixture.read, strictOptions(diagnostic))) |value| {
         var graph = value;
         defer graph.deinit();
         return error.TestExpectedUnsupportedImport;
@@ -189,12 +189,12 @@ test "unsupported strict scans refuse omitted imports before returning a graph" 
         .{ .path = "b.zig" },
     } };
     try refuse(fixture, &.{ "b.zig", "a.zig" }, null);
-    var diagnostic = g.ScanDiagnostic.init(a);
+    var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
     try refuse(fixture, &.{ "b.zig", "a.zig" }, &diagnostic);
     const failure = diagnostic.failure orelse return error.TestExpectedDiagnostic;
     try std.testing.expectEqualStrings("a.zig", failure.path.?);
-    try std.testing.expectEqual(g.ScanDiagnostic.Phase.imports, failure.phase);
+    try std.testing.expectEqual(g.Diagnostics.Phase.imports, failure.phase);
     try std.testing.expectEqual(error.UnsupportedImport, failure.cause);
     try std.testing.expectEqual(@as(?usize, 38), failure.offset);
 }
@@ -250,7 +250,7 @@ test "unsupported path attributes never invent default Rust module edges" {
 }
 
 test "unsupported strict diagnostics cover every detecting language and survive cleanup" {
-    var diagnostic = g.ScanDiagnostic.init(a);
+    var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
     for ([_]struct { path: []const u8, source: []const u8, offset: usize }{
         .{ .path = "src/a.zig", .source = "\n@import(name)", .offset = 1 },
@@ -273,16 +273,16 @@ test "unsupported strict diagnostics cover every detecting language and survive 
         inputs.deinit();
         try std.testing.expectEqualStrings(case.path, diagnostic.failure.?.path.?);
         try std.testing.expectEqual(@as(?usize, case.offset), diagnostic.failure.?.offset);
-        try std.testing.expectEqual(g.ScanDiagnostic.Phase.imports, diagnostic.failure.?.phase);
+        try std.testing.expectEqual(g.Diagnostics.Phase.imports, diagnostic.failure.?.phase);
     }
-    var empty = try g.scanWithDiagnostic(a, &.{}, f.Fixture{ .items = &.{} }, f.Fixture.read, strictOptions(), &diagnostic);
+    var empty = try g.scan(a, std.testing.io, &.{}, f.Fixture{ .items = &.{} }, f.Fixture.read, strictOptions(&diagnostic));
     defer empty.deinit();
     try std.testing.expectEqual(null, diagnostic.failure);
 }
 
 test "unsupported strict scans inspect code even when edge kinds are disabled" {
     const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.zig", .text = "@import(name)" }} };
-    var options = strictOptions();
+    var options = strictOptions(null);
     options.kinds = &.{};
     if (fixture.scan(a, options)) |value| {
         var graph = value;
@@ -294,7 +294,7 @@ test "unsupported strict scans inspect code even when edge kinds are disabled" {
 test "unsupported diagnostic offsets survive failure to allocate a path" {
     var storage: [0]u8 = .{};
     var fixed: std.heap.FixedBufferAllocator = .init(&storage);
-    var diagnostic = g.ScanDiagnostic.init(fixed.allocator());
+    var diagnostic = g.Diagnostics.init(fixed.allocator());
     defer diagnostic.deinit();
     const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.zig", .text = " @import(name)" }} };
     try refuse(fixture, &.{"a.zig"}, &diagnostic);
@@ -395,10 +395,10 @@ test "unsupported Python loader detection follows implicit line continuation" {
 }
 
 fn strictAllocations(alloc: std.mem.Allocator) !void {
-    var diagnostic = g.ScanDiagnostic.init(a);
+    var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
     const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.zig", .text = "@import(name);" }} };
-    if (g.scanWithDiagnostic(alloc, &.{"a.zig"}, fixture, f.Fixture.read, strictOptions(), &diagnostic)) |value| {
+    if (g.scan(alloc, std.testing.io, &.{"a.zig"}, fixture, f.Fixture.read, strictOptions(&diagnostic))) |value| {
         var graph = value;
         defer graph.deinit();
         return error.TestExpectedUnsupportedImport;

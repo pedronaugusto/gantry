@@ -281,11 +281,11 @@ test "scan retains large recovered operands within a bounded allocator" {
         defer a.free(source);
         // Memory readers may lend bytes. The graph must keep only its owned copy.
         const Reader = struct {
-            fn read(_: std.mem.Allocator, text: []const u8, _: []const u8) !?[]const u8 {
+            fn read(_: std.mem.Allocator, _: std.Io, text: []const u8, _: []const u8) !?[]const u8 {
                 return text;
             }
         };
-        break :blk try g.scan(fixed.allocator(), &.{"app.go"}, source, Reader.read, .{});
+        break :blk try g.scan(fixed.allocator(), std.testing.io, &.{"app.go"}, source, Reader.read, .{});
     };
     defer graph.deinit();
     try eq(1, graph.references().len);

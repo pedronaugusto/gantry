@@ -5,7 +5,7 @@ const State = @This();
 arena: std.heap.ArenaAllocator,
 recovery: t.Recovery = .{},
 
-pub fn create(gpa: std.mem.Allocator) !*State {
+pub fn create(gpa: std.mem.Allocator) std.mem.Allocator.Error!*State {
     const state = try gpa.create(State);
     state.* = .{ .arena = .init(gpa) };
     return state;

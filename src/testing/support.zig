@@ -3,7 +3,7 @@ const g = @import("../gantry.zig");
 pub const Item = struct { path: []const u8, text: ?[]const u8 = "" };
 pub const Fixture = struct {
     items: []const Item,
-    pub fn read(a: std.mem.Allocator, self: Fixture, path: []const u8) !?[]const u8 {
+    pub fn read(a: std.mem.Allocator, _: std.Io, self: Fixture, path: []const u8) !?[]const u8 {
         for (self.items) |item| if (std.mem.eql(u8, item.path, path)) {
             return if (item.text) |text| try a.dupe(u8, text) else null;
         };
@@ -13,7 +13,7 @@ pub const Fixture = struct {
         const paths = try a.alloc([]const u8, self.items.len);
         defer a.free(paths);
         for (self.items, paths) |item, *p| p.* = item.path;
-        return g.scan(a, paths, self, read, options);
+        return g.scan(a, std.testing.io, paths, self, read, options);
     }
 };
 /// `graph` has one invalid file, `path`, for `cause`.

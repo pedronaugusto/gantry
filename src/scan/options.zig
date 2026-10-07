@@ -1,6 +1,7 @@
 //! Scan inputs and language selection, below scanning and the public facade.
 const build_module = @import("../lang/go/build.zig");
 const check_module = @import("../rules/check.zig");
+const diagnostic_module = @import("diagnostic.zig");
 const std = @import("std");
 const t = @import("../types.zig");
 const Kind = t.Kind;
@@ -34,6 +35,9 @@ pub const Options = struct {
     /// source files in a supported language, for `graph.tokens()` and the
     /// same rules in `rules.Rules.tokens`. Only `kind` and `token` are read.
     tokens: []const check_module.TokenRule = &.{},
+    /// Caller-owned output for a failed scan: the failed path, phase,
+    /// optional byte offset and cause. `scan` clears it on entry.
+    diagnostics: ?*diagnostic_module.Diagnostics = null,
 };
 
 pub fn languageOf(p: []const u8) ?Language {

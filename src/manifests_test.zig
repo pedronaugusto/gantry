@@ -35,7 +35,7 @@ test "fixture: manifest fixtures name dependencies and their sources from temp f
         path.* = item.path;
         try tmp.dir.writeFile(io, .{ .sub_path = item.path, .data = item.text.? });
     }
-    var graph = try g.scan(a, &paths, g.DirReader{ .io = io, .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try g.scan(a, io, &paths, g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
     defer graph.deinit();
     try eq(11, graph.dependencies().len);
     try dep(graph.dependencies(), "strand", "git+https://github.com/me/strand#abc");
@@ -151,7 +151,7 @@ test "manifest dependencies are separate from internal graph and scan order dete
     } };
     var graph = try fixture.scan(a, .{});
     defer graph.deinit();
-    var other = try g.scan(a, &.{ "x.ts", "main.ts", "package.json" }, fixture, f.Fixture.read, .{});
+    var other = try g.scan(a, std.testing.io, &.{ "x.ts", "main.ts", "package.json" }, fixture, f.Fixture.read, .{});
     defer other.deinit();
     try eq(1, graph.edges().len);
     try eq(2, graph.dependencies().len);
@@ -725,12 +725,12 @@ test "Nimble requirements that are not string literals declare nothing and are k
     try eq(4, graph.unsupported().len);
     try std.testing.expectEqualStrings("a.nim", graph.unsupported()[0].from.?);
     try std.testing.expectEqualStrings("x.nimble", graph.unsupported()[1].from.?);
-    var options: g.Options = .{ .strict_imports = true };
-    options.kinds = &.{};
-    var diagnostic = g.ScanDiagnostic.init(a);
+    var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
-    try std.testing.expectError(error.UnsupportedImport, g.scanWithDiagnostic(a, &.{"x.nimble"}, fixture, f.Fixture.read, options, &diagnostic));
-    try std.testing.expectEqual(g.ScanDiagnostic.Phase.manifests, diagnostic.failure.?.phase);
+    var options: g.Options = .{ .strict_imports = true, .diagnostics = &diagnostic };
+    options.kinds = &.{};
+    try std.testing.expectError(error.UnsupportedImport, g.scan(a, std.testing.io, &.{"x.nimble"}, fixture, f.Fixture.read, options));
+    try std.testing.expectEqual(g.Diagnostics.Phase.manifests, diagnostic.failure.?.phase);
     try std.testing.expectEqual(@as(?usize, std.mem.find(u8, text, "requires \"a\"")), diagnostic.failure.?.offset);
 }
 test "TOML array-of-tables headers and dotted dependency keys" {

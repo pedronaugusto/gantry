@@ -18,8 +18,8 @@ pub const Token = struct {
         return (t.kind == .word or t.kind == .punctuation) and std.mem.eql(u8, t.text, s);
     }
 };
-pub fn lex(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8) ![]Token {
-    return lexSeen(lang, a, text, null);
+pub fn lex(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error![]Token {
+    return lexSeen(lang, arena, text, null);
 }
 /// Called as each word or string joins a stream, with the stream so far.
 pub const Observer = struct {
@@ -28,27 +28,27 @@ pub const Observer = struct {
 };
 /// `lex`, telling `seen` of each word and string as it is emitted. One
 /// lexer serves both, so a scan without observers runs the same code.
-pub fn lexSeen(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, seen: ?Observer) ![]Token {
-    return tokenize(lang, true, a, text, seen);
+pub fn lexSeen(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
+    return tokenize(lang, true, arena, text, seen);
 }
 /// `compact(lexSeen(…))`, without emitting the newlines it would drop.
-pub fn lexCompact(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, seen: ?Observer) ![]Token {
-    return tokenize(lang, false, a, text, seen);
+pub fn lexCompact(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
+    return tokenize(lang, false, arena, text, seen);
 }
-fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator, text: []const u8, seen: ?Observer) ![]Token {
+fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
     var out: Stream = .{ .total = text.len };
     // Room at once for a small file: a token in four bytes, up to a few
     // hundred, which a large sparse file never pays for. Under a kilobyte
     // the stream grows as any list does, in blocks no larger than it needs.
-    if (text.len >= 1024) try out.list.ensureTotalCapacityPrecise(a, @min(text.len / 4 + 4, 512));
+    if (text.len >= 1024) try out.list.ensureTotalCapacityPrecise(gpa, @min(text.len / 4 + 4, 512));
     var i: usize = 0;
     var regex_allowed = true;
     var control_pending = false;
-    errdefer out.list.deinit(a);
+    errdefer out.list.deinit(gpa);
     var controls: std.ArrayList(bool) = .empty;
-    defer controls.deinit(a);
+    defer controls.deinit(gpa);
     var templates: std.ArrayList(usize) = .empty;
-    defer templates.deinit(a);
+    defer templates.deinit(gpa);
     // A leading byte order mark is no part of the text; skipping it keeps
     // every offset a byte offset of the file.
     if (std.mem.startsWith(u8, text, bom)) i = bom.len;
@@ -63,7 +63,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
         if (lang == .javascript and (c == '`' or (c == '}' and templates.items.len > 0 and templates.items[templates.items.len - 1] == 0))) {
             // Retain an opaque boundary so a string inside an interpolation
             // cannot become the literal operand of an enclosing import call.
-            try out.push(a, .{ .kind = .template, .text = text[start .. start + 1], .offset = start, .end = start + 1 });
+            try out.push(gpa, .{ .kind = .template, .text = text[start .. start + 1], .offset = start, .end = start + 1 });
             if (c == '}') _ = templates.pop();
             i += 1;
             while (i < text.len) {
@@ -76,7 +76,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
                     break;
                 }
                 if (text[i] == '$' and i + 1 < text.len and text[i + 1] == '{') {
-                    try templates.append(a, 0);
+                    try templates.append(gpa, 0);
                     i += 2;
                     regex_allowed = true;
                     break;
@@ -85,7 +85,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             }
             continue;
         }
-        if (try skipTrivia(lang, newlines, a, text, start, &out)) |end| {
+        if (try skipTrivia(lang, newlines, gpa, text, start, &out)) |end| {
             i = end;
             continue;
         }
@@ -109,7 +109,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             regex_allowed = false;
             continue;
         }
-        if (try literal(lang, a, text, start, &out, seen)) |end| {
+        if (try literal(lang, gpa, text, start, &out, seen)) |end| {
             i = end;
             regex_allowed = false;
             continue;
@@ -118,7 +118,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             i += 1;
             while (i < text.len and identIn(lang, text[i])) : (i += 1) {}
             const word = text[start..i];
-            try out.push(a, .{ .kind = .word, .text = word, .offset = start, .end = i });
+            try out.push(gpa, .{ .kind = .word, .text = word, .offset = start, .end = i });
             if (seen) |observer| try observer.token(observer.context, out.list.items);
             if (lang == .javascript) {
                 const class = js_words.get(word) orelse .other;
@@ -128,11 +128,11 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             continue;
         }
         i += 1;
-        try out.push(a, .{ .kind = .punctuation, .text = text[start..i], .offset = start, .end = i });
+        try out.push(gpa, .{ .kind = .punctuation, .text = text[start..i], .offset = start, .end = i });
         if (lang == .javascript) {
             regex_allowed = std.mem.findScalar(u8, "=(:,;!&|?{}", c) != null;
             if (c == '(') {
-                try controls.append(a, control_pending);
+                try controls.append(gpa, control_pending);
                 control_pending = false;
             }
             if (c == ')') regex_allowed = controls.pop() orelse false;
@@ -142,7 +142,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator
             }
         }
     }
-    return out.list.toOwnedSlice(a);
+    return out.list.toOwnedSlice(gpa);
 }
 /// A token stream as it is lexed. It grows by the density of the text read
 /// so far, so a long stream moves a few times rather than at every half
@@ -151,23 +151,23 @@ const Stream = struct {
     list: std.ArrayList(Token) = .empty,
     /// The length of the text.
     total: usize,
-    fn push(s: *Stream, a: std.mem.Allocator, token: Token) !void {
+    fn push(s: *Stream, arena: std.mem.Allocator, token: Token) !void {
         std.debug.assert(token.offset < token.end);
         std.debug.assert(token.end <= s.total);
         if (s.list.items.len > 0) std.debug.assert(s.list.items[s.list.items.len - 1].end <= token.offset);
-        if (s.list.items.len == s.list.capacity) try s.grow(a, token.end);
+        if (s.list.items.len == s.list.capacity) try s.grow(arena, token.end);
         s.list.appendAssumeCapacity(token);
     }
-    fn grow(s: *Stream, a: std.mem.Allocator, read: usize) !void {
+    fn grow(s: *Stream, arena: std.mem.Allocator, read: usize) !void {
         @branchHint(.unlikely);
         const n = s.list.items.len;
         // A short stream has too little behind it to project from.
-        if (n < 512) return s.list.ensureUnusedCapacity(a, 1);
+        if (n < 512) return s.list.ensureUnusedCapacity(arena, 1);
         const projected = @as(u128, n) * s.total / @max(read, 1);
         // Between half again and four times what is held.
         const least = n + n / 2 + 16;
         const most = 4 * n + 16;
-        try s.list.ensureTotalCapacityPrecise(a, @intCast(@min(@max(projected, least), most)));
+        try s.list.ensureTotalCapacityPrecise(arena, @intCast(@min(@max(projected, least), most)));
     }
 };
 /// The UTF-8 byte order mark, which editors on Windows put first.
@@ -237,11 +237,11 @@ const Scanned = struct { end: usize, closed: bool, code: bool };
 /// A Groovy or Kotlin double-quoted string, whose `${…}` code can hold
 /// braces and further strings. Nesting is kept on an explicit stack, so
 /// source depth never consumes the call stack.
-fn interpolation(a: std.mem.Allocator, t: []const u8, from: usize) !Scanned {
+fn interpolation(gpa: std.mem.Allocator, t: []const u8, from: usize) !Scanned {
     const Frame = union(enum) { string, code: usize };
     var frames: std.ArrayList(Frame) = .empty;
-    defer frames.deinit(a);
-    try frames.append(a, .string);
+    defer frames.deinit(gpa);
+    try frames.append(gpa, .string);
     var code = false;
     var i = from;
     while (i < t.len) {
@@ -261,7 +261,7 @@ fn interpolation(a: std.mem.Allocator, t: []const u8, from: usize) !Scanned {
                 }
                 if (c == '$' and i + 1 < t.len and t[i + 1] == '{') {
                     code = true;
-                    try frames.append(a, .{ .code = 1 });
+                    try frames.append(gpa, .{ .code = 1 });
                     i += 2;
                     continue;
                 }
@@ -274,7 +274,7 @@ fn interpolation(a: std.mem.Allocator, t: []const u8, from: usize) !Scanned {
                     depth.* -= 1;
                     if (depth.* == 0) _ = frames.pop();
                 } else if (c == '"') {
-                    try frames.append(a, .string);
+                    try frames.append(gpa, .string);
                 } else if (c == '\'') {
                     // A Kotlin character or a Groovy single-quoted string.
                     i += 1;
@@ -325,35 +325,37 @@ pub fn compact(tokens: []Token) []Token {
     };
     return tokens[0..n];
 }
+/// What decoding a literal fails with: an escape its language does not define, or memory.
+pub const DecodeError = error{ InvalidEscape, OutOfMemory };
 /// Decode the ordinary escapes shared by JS, Go and manifest literals.
 /// Unsupported escapes are an error rather than an invented path.
-pub fn decode(a: std.mem.Allocator, text: []const u8) ![]const u8 {
-    return decodeImpl(a, text, false);
+pub fn decode(arena: std.mem.Allocator, text: []const u8) DecodeError![]const u8 {
+    return decodeImpl(arena, text, false);
 }
-pub fn decodeJs(a: std.mem.Allocator, text: []const u8) ![]const u8 {
-    return decodeImpl(a, text, true);
+pub fn decodeJs(arena: std.mem.Allocator, text: []const u8) DecodeError![]const u8 {
+    return decodeImpl(arena, text, true);
 }
-fn decodeImpl(a: std.mem.Allocator, text: []const u8, javascript: bool) ![]const u8 {
+fn decodeImpl(arena: std.mem.Allocator, text: []const u8, javascript: bool) DecodeError![]const u8 {
     if (std.mem.findScalar(u8, text, '\\') == null) return text;
     var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
     while (i < text.len) : (i += 1) {
         if (text[i] != '\\') {
-            try out.append(a, text[i]);
+            try out.append(arena, text[i]);
             continue;
         }
         i += 1;
         if (i == text.len) return error.InvalidEscape;
         switch (text[i]) {
-            '\\', '\'', '"', '/' => try out.append(a, text[i]),
-            'n' => try out.append(a, '\n'),
-            'r' => try out.append(a, '\r'),
-            't' => try out.append(a, '\t'),
+            '\\', '\'', '"', '/' => try out.append(arena, text[i]),
+            'n' => try out.append(arena, '\n'),
+            'r' => try out.append(arena, '\r'),
+            't' => try out.append(arena, '\t'),
             '\n' => {},
-            'b' => try out.append(a, 8),
-            'f' => try out.append(a, 12),
-            'v' => try out.append(a, 11),
-            '0' => try out.append(a, 0),
+            'b' => try out.append(arena, 8),
+            'f' => try out.append(arena, 12),
+            'v' => try out.append(arena, 11),
+            '0' => try out.append(arena, 0),
             'x', 'u', 'U' => {
                 const escape = text[i];
                 const brace = javascript and escape == 'u' and i + 1 < text.len and text[i + 1] == '{';
@@ -369,26 +371,26 @@ fn decodeImpl(a: std.mem.Allocator, text: []const u8, javascript: bool) ![]const
                     code = 0x10000 + (code - 0xd800) * 0x400 + (low - 0xdc00);
                     i += 6;
                 }
-                if (escape == 'x' and !javascript) try out.append(a, @intCast(code)) else {
+                if (escape == 'x' and !javascript) try out.append(arena, @intCast(code)) else {
                     var buf: [4]u8 = undefined;
                     const len = std.unicode.utf8Encode(code, &buf) catch return error.InvalidEscape;
-                    try out.appendSlice(a, buf[0..len]);
+                    try out.appendSlice(arena, buf[0..len]);
                 }
             },
-            else => if (javascript) try out.append(a, text[i]) else return error.InvalidEscape,
+            else => if (javascript) try out.append(arena, text[i]) else return error.InvalidEscape,
         }
     }
-    return out.toOwnedSlice(a);
+    return out.toOwnedSlice(arena);
 }
 
 /// Whitespace, comments, and opaque raw literals never produce operands.
-fn skipTrivia(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocator, text: []const u8, start: usize, out: *Stream) !?usize {
+fn skipTrivia(comptime lang: Syntax, comptime newlines: bool, arena: std.mem.Allocator, text: []const u8, start: usize, out: *Stream) !?usize {
     std.debug.assert(start < text.len);
     var i = start;
     const c = text[i];
     if (c == '\n') {
         i += 1;
-        if (newlines) try out.push(a, .{ .kind = .newline, .text = text[start..i], .offset = start, .end = i });
+        if (newlines) try out.push(arena, .{ .kind = .newline, .text = text[start..i], .offset = start, .end = i });
         return i;
     }
     if (space[c]) {
@@ -420,7 +422,7 @@ fn skipTrivia(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocat
                 depth += 1;
                 i += 2;
             } else {
-                if (newlines and lang == .c and text[i] == '\n') try out.push(a, .{ .kind = .newline, .text = text[i .. i + 1], .offset = i, .end = i + 1 });
+                if (newlines and lang == .c and text[i] == '\n') try out.push(arena, .{ .kind = .newline, .text = text[i .. i + 1], .offset = i, .end = i + 1 });
                 i += 1;
             }
         }
@@ -473,7 +475,7 @@ fn skipTrivia(comptime lang: Syntax, comptime newlines: bool, a: std.mem.Allocat
 }
 
 /// Quoted operands and interpolation boundaries, with source offsets intact.
-fn literal(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, start: usize, out: *Stream, seen: ?Observer) !?usize {
+fn literal(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, start: usize, out: *Stream, seen: ?Observer) !?usize {
     var i = start;
     const c = text[i];
     if (lang == .nim and c == '"' and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (i > 0 and ident(text[i - 1])))) {
@@ -481,7 +483,7 @@ fn literal(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, start:
         // prefixed one doubles its quote. A prefix like `fmt` makes a call.
         const triple = std.mem.startsWith(u8, text[i..], "\"\"\"");
         i = if (triple) tripleEnd(text, i + 3, "\"\"\"") else nimRawEnd(text, i + 1);
-        if (!triple) try out.push(a, .{ .kind = .template, .text = text[start..i], .offset = start, .end = i });
+        if (!triple) try out.push(arena, .{ .kind = .template, .text = text[start..i], .offset = start, .end = i });
         return i;
     }
     if ((lang == .java or lang == .groovy or lang == .kotlin) and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (lang == .groovy and std.mem.startsWith(u8, text[i..], "'''")))) {
@@ -490,16 +492,16 @@ fn literal(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, start:
         return i;
     }
     if ((lang == .groovy or lang == .kotlin) and c == '"') {
-        const scanned = try interpolation(a, text, i + 1);
+        const scanned = try interpolation(arena, text, i + 1);
         i = scanned.end;
-        if (scanned.closed) try out.push(a, .{ .kind = if (scanned.code) .template else .string, .text = text[start + 1 .. i - 1], .offset = start, .end = i });
+        if (scanned.closed) try out.push(arena, .{ .kind = if (scanned.code) .template else .string, .text = text[start + 1 .. i - 1], .offset = start, .end = i });
         return i;
     }
     if (lang == .kotlin and c == '`') {
         // A backquoted Kotlin name is a word.
         const close = std.mem.findAnyPos(u8, text, i + 1, "`\n") orelse text.len;
         if (close < text.len and text[close] == '`') {
-            try out.push(a, .{ .kind = .word, .text = text[i + 1 .. close], .offset = start, .end = close + 1 });
+            try out.push(arena, .{ .kind = .word, .text = text[i + 1 .. close], .offset = start, .end = close + 1 });
             i = close + 1;
             return i;
         }
@@ -543,7 +545,7 @@ fn literal(comptime lang: Syntax, a: std.mem.Allocator, text: []const u8, start:
         if (closed) i = @min(i + width, text.len);
         const character = c == '\'' and (lang == .zig or lang == .c or lang == .rust or lang == .java or lang == .kotlin);
         if (closed and !triple and !character and !(lang == .javascript and c == '`')) {
-            try out.push(a, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
+            try out.push(arena, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
             if (seen) |observer| try observer.token(observer.context, out.list.items);
         }
         return i;

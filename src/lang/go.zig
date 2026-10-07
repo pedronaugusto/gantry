@@ -7,13 +7,13 @@ const Spec = types.Spec;
 // Go import declarations require string literals. There is no computed
 // import expression to detect without adding a syntax-validation contract.
 /// The token stream recovery reads; `seen` observes it as it grows.
-pub fn lex(a: std.mem.Allocator, source: []const u8, seen: ?l.Observer) ![]const l.Token {
-    return l.lexCompact(.go, a, source, seen);
+pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) std.mem.Allocator.Error![]const l.Token {
+    return l.lexCompact(.go, arena, source, seen);
 }
-pub fn recover(a: std.mem.Allocator, source: []const u8) !types.Recovery {
-    return recoverTokens(a, source, try lex(a, source, null));
+pub fn recover(arena: std.mem.Allocator, source: []const u8) error{ InvalidEscape, OutOfMemory }!types.Recovery {
+    return recoverTokens(arena, source, try lex(arena, source, null));
 }
-pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Token) !types.Recovery {
+pub fn recoverTokens(arena: std.mem.Allocator, source: []const u8, ts: []const l.Token) error{ InvalidEscape, OutOfMemory }!types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     var i: usize = 0;
     while (i < ts.len) : (i += 1) {
@@ -25,7 +25,7 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
         while (j < ts.len and !ts[j].is(")")) : (j += 1) {
             if (ts[j].kind == .string) {
                 const raw = source[ts[j].offset] == '`';
-                try out.append(a, .{ .name = if (raw) ts[j].text else try l.decode(a, ts[j].text), .offset = t.offset });
+                try out.append(arena, .{ .name = if (raw) ts[j].text else try l.decode(arena, ts[j].text), .offset = t.offset });
                 if (!block) break;
             } else if (!block and ts[j].kind != .word and !ts[j].is(".")) break;
         }
@@ -33,11 +33,11 @@ pub fn recoverTokens(a: std.mem.Allocator, source: []const u8, ts: []const l.Tok
         // an unclosed block is read once rather than once per `import`.
         i = @max(i, j -| 1);
     }
-    return .{ .specs = try out.toOwnedSlice(a) };
+    return .{ .specs = try out.toOwnedSlice(arena) };
 }
 
 const p = @import("../path.zig");
-pub fn resolve(c: anytype, from: []const u8, spec: Spec) ![]const []const u8 {
+pub fn resolve(c: anytype, from: []const u8, spec: Spec) types.ResolveError![]const []const u8 {
     var out: std.ArrayList([]const u8) = .empty;
     const a = c.allocator;
     const name = spec.name;

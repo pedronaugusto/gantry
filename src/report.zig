@@ -10,11 +10,15 @@ const text = @import("report/json.zig");
 const Writer = std.Io.Writer;
 
 /// What writing a report fails with: the writer's error, or memory;
-/// `sarifWithSource` adds its reader's errors.
+/// `sarif` adds its reader's errors (`SourceError`).
 pub const Error = text.Error;
+/// Nodes, edges and findings as one JSON object.
 pub const json = text.json;
+/// Findings as a SARIF 2.1.0 log, placed at lines and columns when given a reader.
 pub const sarif = text.sarif;
-pub const sarifWithSource = text.sarifWithSource;
+/// The reader errors `sarif` returns besides `Error`.
+pub const SourceError = text.SourceError;
+/// Where `sarif` places the scanned root in the repository.
 pub const SarifOptions = text.SarifOptions;
 
 pub const Cluster = enum {

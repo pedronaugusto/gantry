@@ -32,7 +32,7 @@ test "fixture: a Maven Java project resolves types, packages, statics, tests and
         if (g.path.dir(item.path).len > 0) try tmp.dir.createDirPath(io, g.path.dir(item.path));
         try tmp.dir.writeFile(io, .{ .sub_path = item.path, .data = item.text.? });
     }
-    var graph = try g.scan(a, &paths, g.DirReader{ .io = io, .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try g.scan(a, io, &paths, g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
     defer graph.deinit();
     const app = "src/main/java/com/acme/app/App.java";
     const strings = "src/main/java/com/acme/util/Strings.java";
@@ -106,14 +106,14 @@ test "Java sources are read once for packages and imports" {
     const Reader = struct {
         const Self = @This();
         calls: usize = 0,
-        fn read(scratch: std.mem.Allocator, self: *Self, name: []const u8) !?[]const u8 {
+        fn read(scratch: std.mem.Allocator, _: std.Io, self: *Self, name: []const u8) !?[]const u8 {
             self.calls += 1;
             const value = try scratch.dupe(u8, if (std.mem.eql(u8, name, "A.java")) "package a; import b.B;" else "package b; class B {}");
             return value;
         }
     };
     var reader: Reader = .{};
-    var graph = try g.scan(a, &.{ "A.java", "B.java" }, &reader, Reader.read, .{});
+    var graph = try g.scan(a, std.testing.io, &.{ "A.java", "B.java" }, &reader, Reader.read, .{});
     defer graph.deinit();
     try f.edge(&graph, "A.java", "B.java", .import, 1);
     try eq(2, reader.calls);

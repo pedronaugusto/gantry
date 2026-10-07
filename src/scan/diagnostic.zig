@@ -5,7 +5,7 @@ const std = @import("std");
 /// clears this output. Failure text survives scan cleanup and remains valid
 /// until the next scan using this diagnostic or `deinit`.
 /// Move this owner; do not copy it and deinitialize it twice.
-pub const ScanDiagnostic = struct {
+pub const Diagnostics = struct {
     gpa: std.mem.Allocator,
     /// Null after success; otherwise the first failure that aborted the scan.
     failure: ?Failure = null,
@@ -51,14 +51,14 @@ pub const ScanDiagnostic = struct {
     };
 
     /// This allocator owns only the diagnostic's copy of the failed path.
-    pub fn init(gpa: std.mem.Allocator) ScanDiagnostic {
+    pub fn init(gpa: std.mem.Allocator) Diagnostics {
         return .{ .gpa = gpa };
     }
-    pub fn deinit(diagnostic: *ScanDiagnostic) void {
+    pub fn deinit(diagnostic: *Diagnostics) void {
         diagnostic.clear();
         diagnostic.* = undefined;
     }
-    fn clear(diagnostic: *ScanDiagnostic) void {
+    fn clear(diagnostic: *Diagnostics) void {
         if (diagnostic.failure) |failure| if (failure.path) |path| diagnostic.gpa.free(path);
         diagnostic.failure = null;
     }
@@ -107,7 +107,7 @@ pub fn ReadError(comptime read: anytype) type {
 /// A selected file the scan read but could not use, and why.
 pub const InvalidFile = struct {
     path: []const u8,
-    phase: ScanDiagnostic.Phase,
+    phase: Diagnostics.Phase,
     /// The import a `ConflictingReplacement` is about; null otherwise.
     offset: ?usize = null,
     cause: FileError,
@@ -121,15 +121,15 @@ fn fileError(comptime err: anyerror) ?FileError {
     return null;
 }
 
-pub fn reset(diagnostic: ?*ScanDiagnostic) void {
+pub fn reset(diagnostic: ?*Diagnostics) void {
     if (diagnostic) |d| d.clear();
 }
 
-/// Progress borrows the current path; only ScanDiagnostic owns output.
+/// Progress borrows the current path; only Diagnostics owns output.
 /// Capture failure before releasing graph and resolution workspace storage.
 pub const Progress = struct {
-    diagnostic: ?*ScanDiagnostic,
-    phase: ScanDiagnostic.Phase = .paths,
+    diagnostic: ?*Diagnostics,
+    phase: Diagnostics.Phase = .paths,
     path: ?[]const u8 = null,
     offset: ?usize = null,
     /// The graph's allocator, which owns `invalid` and its paths; set once
@@ -156,7 +156,7 @@ pub const Progress = struct {
         try progress.invalid.append(a, .{ .path = try a.dupe(u8, path), .phase = progress.phase, .offset = progress.offset, .cause = cause });
     }
 
-    pub fn at(progress: *Progress, phase: ScanDiagnostic.Phase, path: ?[]const u8) void {
+    pub fn at(progress: *Progress, phase: Diagnostics.Phase, path: ?[]const u8) void {
         progress.phase = phase;
         progress.path = path;
         progress.offset = null;

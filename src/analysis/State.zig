@@ -17,7 +17,7 @@ directory_coupling: []const t.Coupling = &.{},
 const Adjacency = reach_module.Adjacency;
 const empty: Adjacency = .{ .offsets = &.{}, .targets = &.{} };
 
-pub fn init(gpa: std.mem.Allocator) !*State {
+pub fn init(gpa: std.mem.Allocator) std.mem.Allocator.Error!*State {
     const self = try gpa.create(State);
     self.* = .{ .allocator = gpa, .arena = .init(gpa) };
     return self;

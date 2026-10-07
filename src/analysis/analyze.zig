@@ -91,8 +91,8 @@ pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!
 }
 
 /// Each node's distinct dependents and dependencies, itself not counted.
-fn fileCoupling(a: std.mem.Allocator, paths: []const []const u8, from: []const u32, to: []const u32) ![]const t.Coupling {
-    const result = try a.alloc(t.Coupling, paths.len);
+fn fileCoupling(arena: std.mem.Allocator, paths: []const []const u8, from: []const u32, to: []const u32) ![]const t.Coupling {
+    const result = try arena.alloc(t.Coupling, paths.len);
     for (paths, result) |path, *c| c.* = .{ .path = path, .fan_in = 0, .fan_out = 0 };
     for (from, to) |v, w| if (v != w) {
         result[v].fan_out += 1;
@@ -103,7 +103,7 @@ fn fileCoupling(a: std.mem.Allocator, paths: []const []const u8, from: []const u
 /// Every directory above a node, as a slice of the node's own path, with
 /// the dependencies that cross its boundary: a pair counts for each
 /// directory that holds one end and not the other.
-fn directoryCoupling(a: std.mem.Allocator, s: std.mem.Allocator, paths: []const []const u8, from: []const u32, to: []const u32) ![]const t.Coupling {
+fn directoryCoupling(arena: std.mem.Allocator, s: std.mem.Allocator, paths: []const []const u8, from: []const u32, to: []const u32) ![]const t.Coupling {
     var names: std.ArrayList([]const u8) = .empty;
     // Each node's directories, outermost first, as one list with offsets.
     // Paths are sorted, so a directory's nodes are one run: the previous
@@ -149,7 +149,7 @@ fn directoryCoupling(a: std.mem.Allocator, s: std.mem.Allocator, paths: []const 
             return std.mem.order(u8, x.path, y.path) == .lt;
         }
     }.less);
-    return a.dupe(t.Coupling, counts);
+    return arena.dupe(t.Coupling, counts);
 }
 
 /// Kosaraju finish order, then reverse walks, sorted by lowest node.
@@ -209,7 +209,7 @@ fn stronglyConnected(s: std.mem.Allocator, adj: Adjacency, rev: Adjacency) !std.
 }
 
 /// Actual directed cycles, with one stamped BFS workspace shared by SCCs.
-fn cycleWitnesses(a: std.mem.Allocator, s: std.mem.Allocator, owned: []const []const u8, adj: Adjacency, groups: []const []usize, components: []const []const []const u8, component: []const usize) ![]const t.Cycle {
+fn cycleWitnesses(arena: std.mem.Allocator, s: std.mem.Allocator, owned: []const []const u8, adj: Adjacency, groups: []const []usize, components: []const []const []const u8, component: []const usize) ![]const t.Cycle {
     const n = owned.len;
     var cycles: std.ArrayList(t.Cycle) = .empty;
     // One reusable BFS workspace for every witness; no O(V * SCCs) clearing.
@@ -226,7 +226,7 @@ fn cycleWitnesses(a: std.mem.Allocator, s: std.mem.Allocator, owned: []const []c
         if (members.len == 1 and (first == null or first.? != start)) continue;
         const next = first.?;
         var witness: std.ArrayList([]const u8) = .empty;
-        try witness.append(a, owned[start]);
+        try witness.append(arena, owned[start]);
         if (next != start) {
             var queue: std.ArrayList(usize) = .empty;
             const stamp = id + 1;
@@ -251,11 +251,11 @@ fn cycleWitnesses(a: std.mem.Allocator, s: std.mem.Allocator, owned: []const []c
             var k = route.items.len;
             while (k > 0) {
                 k -= 1;
-                try witness.append(a, owned[route.items[k]]);
+                try witness.append(arena, owned[route.items[k]]);
             }
         }
-        try witness.append(a, owned[start]);
-        try cycles.append(a, .{ .members = names, .path = try witness.toOwnedSlice(a) });
+        try witness.append(arena, owned[start]);
+        try cycles.append(arena, .{ .members = names, .path = try witness.toOwnedSlice(arena) });
     }
-    return cycles.toOwnedSlice(a);
+    return cycles.toOwnedSlice(arena);
 }
