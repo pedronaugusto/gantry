@@ -17,18 +17,9 @@ const manifests = @import("../manifests.zig");
 /// The longest input a property reads.
 const most = 4096;
 
-/// A corpus entry for `Smith.sliceWithHash`, which reads a little-endian
-/// `u32` length before the bytes.
-fn seed(comptime bytes: []const u8) []const u8 {
-    const n: u32 = bytes.len;
-    return std.mem.toBytes(std.mem.nativeToLittle(u32, n)) ++ bytes;
-}
-fn seeds(comptime entries: []const []const u8) []const []const u8 {
-    comptime var out: [entries.len][]const u8 = undefined;
-    inline for (entries, 0..) |entry, i| out[i] = comptime seed(entry);
-    const done = out;
-    return &done;
-}
+/// Corpus entries for `Smith.sliceWithHash`: each a little-endian `u32`
+/// length before the bytes.
+const seeds = @import("shakedown").corpus.entries;
 fn bytesOf(smith: *testing.Smith, buffer: *[most]u8) []const u8 {
     return buffer[0..smith.sliceWithHash(buffer, 0)];
 }

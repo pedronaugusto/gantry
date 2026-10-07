@@ -8,18 +8,9 @@ const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 
-const comment120 = repeated("comment ", 120);
-const comment16 = repeated("comment ", 16);
-
-/// `text` repeated `n` times, at compile time.
-pub fn repeated(comptime text: []const u8, comptime n: usize) *const [text.len * n]u8 {
-    comptime {
-        var out: [text.len * n]u8 = undefined;
-        for (0..n) |i| @memcpy(out[i * text.len ..][0..text.len], text);
-        const final = out;
-        return &final;
-    }
-}
+const repeat = @import("shakedown").corpus.repeat;
+const comment120 = repeat("comment ", 120);
+const comment16 = repeat("comment ", 16);
 
 /// Writes `text` at `root/sub`, creating folders. With `only_if_changed`,
 /// an identical file is left alone, so its timestamps stay.
@@ -354,10 +345,17 @@ fn treeDigest(a: Allocator, io: Io, root: []const u8) ![64]u8 {
 }
 
 /// `fixtures <synthetic|operations> <root> [--smoke]`: writes one set under
-/// `root`. `--smoke` writes the smallest sizes only.
+/// `root`. `--smoke` writes the smallest sizes only, and `--smoke` alone
+/// writes both under the working directory.
 pub fn main(init: std.process.Init) !void {
     const a = init.arena.allocator();
     const args = try init.minimal.args.toSlice(a);
+    if (args.len == 2 and std.mem.eql(u8, args[1], "--smoke")) {
+        const root = try std.Io.Dir.cwd().realPathFileAlloc(init.io, ".", a);
+        _ = try synthetic(.{ .io = init.io, .a = a, .root = try std.Io.Dir.path.join(a, &.{ root, "corpus" }) }, 10);
+        _ = try operations(.{ .io = init.io, .a = a, .root = try std.Io.Dir.path.join(a, &.{ root, "ops" }) }, true);
+        return;
+    }
     if (args.len < 3) return error.ExpectedKindAndRoot;
     const smoke = args.len > 3 and std.mem.eql(u8, args[3], "--smoke");
     const w: Writer = .{ .io = init.io, .a = a, .root = args[2] };

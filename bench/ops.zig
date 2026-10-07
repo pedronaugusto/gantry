@@ -1,11 +1,15 @@
 //! Every public gantry operation, timed in process.
 //! `ops --list` names the workloads; `ops <workload> <arg>`
 //! runs one and prints five-column rows: side, workload, metric, value, unit.
+//! With no arguments it runs every workload, at the medium size, over
+//! fixtures it writes to its working directory; `--smoke` runs each once at
+//! the small size.
 //! In-memory workloads take a size (small, medium, large) or a fixture file
 //! and repeat the operation for 200 ms after one untimed warm-up; fixture
 //! construction stays outside the clock. Directory workloads time their
 //! phases once each: the quiet pass times the whole process from outside.
-const smoke = @import("bench_options").smoke;
+/// Each workload runs once and samples no clock.
+var smoke = false;
 const std = @import("std");
 const gantry = @import("gantry");
 const fixtures = @import("fixtures.zig");
@@ -33,9 +37,54 @@ pub fn main(init: std.process.Init) !void {
     const w = &stdout.interface;
     defer w.flush() catch {};
     if (args.len == 2 and std.mem.eql(u8, args[1], "--list")) return list(w);
+    if (args.len == 1 or (args.len == 2 and std.mem.eql(u8, args[1], "--smoke"))) {
+        smoke = args.len == 2;
+        return everything(gpa, io, w);
+    }
     if (args.len != 3) return error.ExpectedWorkloadAndArgument;
-    const name: []const u8 = args[1];
-    const arg: []const u8 = args[2];
+    return one(gpa, io, w, args[1], args[2]);
+}
+
+/// Every workload `list` names: in-memory ones at the medium size, or the
+/// small one in a smoke run, and the file and tree ones over fixtures
+/// written to the working directory first, as trials lays them out.
+fn everything(gpa: std.mem.Allocator, io: std.Io, w: *std.Io.Writer) !void {
+    var arena: std.heap.ArenaAllocator = .init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const root = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", a);
+    const ops = try std.Io.Dir.path.join(a, &.{ root, "ops" });
+    const corpus = try std.Io.Dir.path.join(a, &.{ root, "corpus" });
+    const files = try fixtures.operations(.{ .io = io, .a = a, .root = ops }, smoke);
+    _ = try fixtures.synthetic(.{ .io = io, .a = a, .root = corpus }, if (smoke) 10 else 1000);
+    var names: std.Io.Writer.Allocating = .init(a);
+    try list(&names.writer);
+    const size_name = if (smoke) "small" else "medium";
+    var lines = std.mem.tokenizeScalar(u8, names.written(), '\n');
+    while (lines.next()) |name| {
+        const slash = std.mem.findScalar(u8, name, '/') orelse return error.UnknownWorkload;
+        const family = name[0..slash];
+        const arg: []const u8 = if (std.mem.eql(u8, family, "imports") or std.mem.eql(u8, family, "manifests") or std.mem.eql(u8, family, "kinds"))
+            fixtures.find(files, family, name[slash + 1 ..], if (smoke) .small else .medium) orelse return error.MissingFixture
+        else if (std.mem.eql(u8, family, "process"))
+            try processRoot(a, name[slash + 1 ..], ops, corpus)
+        else
+            size_name;
+        try one(gpa, io, w, name, arg);
+    }
+}
+
+/// The tree a process workload reads, as trials gives it.
+fn processRoot(a: std.mem.Allocator, mode: []const u8, ops: []const u8, corpus: []const u8) ![]const u8 {
+    for ([_][2][]const u8{
+        .{ "metrics-js", "typescript" }, .{ "check-python", "python" },
+        .{ "reach-python", "python" },   .{ "type-checking-python", "typing" },
+        .{ "links", "markdown" },
+    }) |entry| if (std.mem.eql(u8, mode, entry[0])) return std.Io.Dir.path.join(a, &.{ ops, entry[1] });
+    return corpus;
+}
+
+fn one(gpa: std.mem.Allocator, io: std.Io, w: *std.Io.Writer, name: []const u8, arg: []const u8) !void {
     const out: Out = .{ .writer = w, .workload = name };
     if (std.mem.startsWith(u8, name, "imports/")) return importsWorkload(gpa, io, out, std.meta.stringToEnum(gantry.Language, name["imports/".len..]) orelse return error.UnknownLanguage, arg);
     if (std.mem.startsWith(u8, name, "manifests/")) return manifestWorkload(gpa, io, out, name["manifests/".len..], arg);
@@ -241,7 +290,7 @@ const Corpus = struct {
         return store.get(p);
     }
 };
-const filler = fixtures.repeated("comment ", 16);
+const filler = @import("shakedown").corpus.repeat("comment ", 16);
 
 const token_rule_list = [_]gantry.rules.TokenRule{.{ .name = "owned", .tokens = &.{"Forbidden"}, .owners = &.{"g0/**"} }};
 
@@ -491,6 +540,10 @@ fn helperWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, name: []const u8
         gpa: std.mem.Allocator,
         raw: []const []const u8,
         which: enum { normalize, path, token },
+        // Runtime patterns, as a caller has them: a literal here would let
+        // the compiler specialize the matcher to it.
+        path_pattern: []const u8,
+        token_pattern: []const u8,
         hits: usize = 0,
         fn op(c: *@This()) !void {
             var scratch: std.heap.ArenaAllocator = .init(c.gpa);
@@ -501,16 +554,16 @@ fn helperWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, name: []const u8
                     if (std.mem.endsWith(u8, try gantry.path.normalize(scratch.allocator(), p), "f3.zig")) c.hits += 1;
                 },
                 .path => {
-                    if (gantry.rules.matches("g1*/**/f?.zig", p)) c.hits += 1;
+                    if (gantry.rules.matches(c.path_pattern, p)) c.hits += 1;
                 },
                 .token => {
-                    if (gantry.rules.matchesToken("g1*f3*", p)) c.hits += 1;
+                    if (gantry.rules.matchesToken(c.token_pattern, p)) c.hits += 1;
                 },
             };
         }
     };
     const which: @FieldType(Ctx, "which") = if (std.mem.eql(u8, name, "path/normalize")) .normalize else if (std.mem.eql(u8, name, "match/path")) .path else if (std.mem.eql(u8, name, "match/token")) .token else return error.UnknownHelper;
-    var ctx: Ctx = .{ .gpa = gpa, .raw = raw, .which = which };
+    var ctx: Ctx = .{ .gpa = gpa, .raw = raw, .which = which, .path_pattern = try a.dupe(u8, "g1*/**/f?.zig"), .token_pattern = try a.dupe(u8, "g1*f3*") };
     try repeat(io, out, &ctx, Ctx.op);
     try out.count("inputs", n);
     try out.count("hits", ctx.hits);

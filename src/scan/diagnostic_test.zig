@@ -244,7 +244,7 @@ fn allocations(alloc: std.mem.Allocator, expected: ?*const g.Graph) !g.Graph {
 }
 
 test "scan diagnostics release every allocation failure without exposing a partial graph" {
-    // Refusing in-place resizes, as `f.steady` does, so every run allocates alike.
+    // Refusing in-place resizes, as `NoResize` does, so every run allocates alike.
     var count = std.testing.FailingAllocator.init(a, .{ .resize_fail_index = 0 });
     var full = try allocations(count.allocator(), null);
     defer full.deinit();

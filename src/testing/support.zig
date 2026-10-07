@@ -1,4 +1,5 @@
 const std = @import("std");
+const shakedown = @import("shakedown");
 const g = @import("../gantry.zig");
 pub const Item = struct { path: []const u8, text: ?[]const u8 = "" };
 pub const Fixture = struct {
@@ -30,52 +31,10 @@ pub fn edge(graph: *const g.Graph, from: []const u8, to: []const u8, kind: g.Kin
     std.debug.print("missing {s} -> {s}\n", .{ from, to });
     return error.TestExpectedEdge;
 }
-/// The most bytes held at once through `allocator()`.
-pub const Peak = struct {
-    child: std.mem.Allocator,
-    live: usize = 0,
-    peak: usize = 0,
-    pub fn allocator(self: *Peak) std.mem.Allocator {
-        return .{ .ptr = self, .vtable = &.{ .alloc = alloc, .resize = resize, .remap = remap, .free = free } };
-    }
-    fn grow(self: *Peak, old: usize, new: usize) void {
-        self.live = self.live - old + new;
-        self.peak = @max(self.peak, self.live);
-    }
-    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret: usize) ?[*]u8 {
-        const self: *Peak = @ptrCast(@alignCast(ctx)); // safe: allocator() stores the original aligned Peak pointer as its callback context.
-        const result = self.child.rawAlloc(len, alignment, ret) orelse return null;
-        self.grow(0, len);
-        return result;
-    }
-    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, len: usize, ret: usize) bool {
-        const self: *Peak = @ptrCast(@alignCast(ctx)); // safe: allocator() stores the original aligned Peak pointer as its callback context.
-        if (!self.child.rawResize(memory, alignment, len, ret)) return false;
-        self.grow(memory.len, len);
-        return true;
-    }
-    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, len: usize, ret: usize) ?[*]u8 {
-        const self: *Peak = @ptrCast(@alignCast(ctx)); // safe: allocator() stores the original aligned Peak pointer as its callback context.
-        const result = self.child.rawRemap(memory, alignment, len, ret) orelse return null;
-        self.grow(memory.len, len);
-        return result;
-    }
-    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret: usize) void {
-        const self: *Peak = @ptrCast(@alignCast(ctx)); // safe: allocator() stores the original aligned Peak pointer as its callback context.
-        self.child.rawFree(memory, alignment, ret);
-        self.grow(memory.len, 0);
-    }
-};
-/// A backing whose allocations happen the same way on every run: it
-/// refuses to resize in place. `std.testing.allocator` grows an
-/// allocation in place or not by where earlier runs left its buckets,
-/// so under it two runs of one scenario can count different allocations.
-pub fn steady() std.testing.FailingAllocator {
-    return .init(std.testing.allocator, .{ .resize_fail_index = 0 });
-}
-/// `std.testing.checkAllAllocationFailures` over `steady`, whose count of
-/// allocations from the first run every failing run then repeats.
+/// `std.testing.checkAllAllocationFailures` over shakedown's `NoResize`,
+/// whose every growth is an allocation, so each failing run repeats the
+/// first run's count.
 pub fn checkAllAllocationFailures(comptime test_fn: anytype, extra_args: anytype) !void {
-    var backing = steady();
+    var backing: shakedown.alloc.NoResize = .init(std.testing.allocator);
     return std.testing.checkAllAllocationFailures(backing.allocator(), test_fn, extra_args);
 }

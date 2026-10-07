@@ -161,7 +161,9 @@ unsupported. A test file's import is a `test` edge whatever its form. A test fil
 by its language's convention (Go `_test.go`; Python `test_*.py` and `*_test.py`; JS/TS
 `*.test.*`, `*.spec.*` and `__tests__/`; Nim's `tests/` layout; Java test source sets;
 Rust modules under `cfg(test)`) or one `Options.test_paths` names, in the pattern dialect
-of layer rules. Zig has no convention, so its callers name theirs (`src/testing/**`).
+of layer rules. Zig has no convention, so its callers name theirs (`src/testing/**`). A
+test path, named module `from` or token sweep refuses fails the scan with
+`error.InvalidPattern`.
 
 In Zig an import is also `test` inside a `test` declaration, in the taken branch of
 `if (builtin.is_test)`, and in a container-level declaration only tests reach. Zig
@@ -216,10 +218,15 @@ To follow some edge kinds only, analyse a graph of those edges (`Analysis.init`)
 counts for each directory holding one end and not the other. Edges of several kinds between two files are one dependency.
 
 Rules restrict ordered layers, source/target patterns, raw references, required paths
-and cycles. Exceptions apply to a named restriction. Path patterns use `*` and `?`
-within a component; `**` is a whole component that stands for zero or more of them, so
-`a/**` also matches `a`, and `**` inside a component (`a**`) is `*`. A pattern without
-`/` matches the base name. Every matching restriction reports in rule order. These rules operate on the recovered graph.
+and cycles. Exceptions apply to a named restriction. Path patterns are git's, read by
+[sweep](https://github.com/pedronaugusto/sweep): `*`, `?` and brackets stay within a
+component, `**` standing as a whole component spans zero or more of them, so `a/**` is
+what lies under `a` and not `a` itself, `**` inside a component (`a**`) is `*`, and `\`
+escapes. A pattern without `/` matches the base name. `rules.matches(pattern, path)` says
+whether one pattern matches. A check compiles each pattern once, and one sweep refuses
+(an unclosed `[`, a trailing `\`) fails it with `error.InvalidPattern`, whatever the
+graph holds. Every matching restriction reports in rule order. These rules operate on
+the recovered graph.
 
 A `transitive` forbidden rule restricts chains of any length: each file matching
 `from` from which edges lead, through any files, to a file matching `to` reports the
@@ -257,7 +264,8 @@ at all is unreached unless it is an entry. `kind` restricts the edges chains fol
 A token rule names identifiers, or string literals' values after their escapes, that
 only its owners' files may spell: `.{ .name = "console", .tokens = &.{ "CreateFileW",
 "WriteConsoleW" }, .owners = &.{"src/os/**"} }`. `*` in a token matches any bytes and `?`
-one byte. Pass the same rules
+one byte; every other byte, brackets and `\` included, matches itself
+(`rules.matchesToken`). Pass the same rules
 in `Options.tokens` and `Rules.tokens`: the scan records their occurrences from the token
 streams it lexes for imports (`graph.tokens()`, with path, line and byte column), and
 `check` reports those outside the owners, or `error.UnscannedToken` for a rule the scan
@@ -350,11 +358,13 @@ Compile-only jobs use the default `zig build` for `x86_64-linux-gnu`,
 `aarch64-windows-gnu`, `x86_64-macos`, `aarch64-macos`, `x86_64-freebsd` and
 `x86_64-netbsd`.
 
-`zig build bench` installs the benchmarks from `bench/` in ReleaseFast under
-`zig-out/bench`: `fixtures synthetic <dir>` writes a six-language tree, `scan <dir>`
+`zig build bench` builds the benchmarks from `bench/` in ReleaseFast under
+`zig-out/bench` and runs them one after another: `scan` writes a six-language tree and
 times its walk, scans from disk and from memory, analysis and aggregation, and `ops`
-times each public operation in process (`ops --list` names them; `fixtures operations
-<dir>` writes the files they read). CI compiles them and runs none.
+times every public operation in process. Run from `zig-out/bench`, `scan <dir>` times a
+tree of your own, `ops <workload> <arg>` one operation (`ops --list` names them), and
+`fixtures synthetic|operations <dir>` writes the inputs. `zig build test` runs each
+once at its smallest size with `--smoke`; CI times none of them.
 
 ## Licence
 

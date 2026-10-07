@@ -1,7 +1,7 @@
 const lexer_module = @import("../lexer.zig");
 const std = @import("std");
 const g = @import("../gantry.zig");
-const f = @import("support.zig");
+const Counting = @import("shakedown").alloc.Counting;
 const a = std.testing.allocator;
 
 /// A Go module whose `app` files each import package `lib`, so every one
@@ -10,16 +10,16 @@ const Module = struct {
     importers: usize,
     members: usize,
     big: []const u8 = "",
-    counter: f.Peak = .{ .child = a },
+    counter: Counting = .init(a),
     before_big: usize = 0,
     after_big: usize = 0,
     fn read(self: *Module, s: std.mem.Allocator, _: std.Io, path: []const u8) !?[]const u8 {
         if (std.mem.eql(u8, path, "go.mod")) return "module example.org/m";
         if (std.mem.eql(u8, path, "big/big.go")) {
-            self.before_big = self.counter.live;
+            self.before_big = self.counter.live_bytes;
             return self.big;
         }
-        if (std.mem.eql(u8, path, "lib/l0.go") and self.after_big == 0) self.after_big = self.counter.live;
+        if (std.mem.eql(u8, path, "lib/l0.go") and self.after_big == 0) self.after_big = self.counter.live_bytes;
         if (std.mem.startsWith(u8, path, "app/")) return "package app\nimport \"example.org/m/lib\"\n";
         const value = try s.dupe(u8, "package lib\n");
         return value;
@@ -36,7 +36,7 @@ const Module = struct {
         for (0..self.members) |i| try paths.append(s, try s.print("lib/l{d}.go", .{i}));
         var graph = try g.scan(self.counter.allocator(), std.testing.io, paths.items, self, read, .{ .manifests = false });
         defer graph.deinit();
-        return .{ graph.edges().len, self.counter.peak };
+        return .{ graph.edges().len, self.counter.peak_bytes };
     }
 };
 
@@ -56,6 +56,6 @@ test "scan returns a large file's scratch before reading the next" {
     var module: Module = .{ .importers = 1, .members = 1, .big = source.items };
     _ = try module.scan();
     const tokens = 100_002 * @sizeOf(lexer_module.Token);
-    try std.testing.expect(module.counter.peak > tokens);
+    try std.testing.expect(module.counter.peak_bytes > tokens);
     try std.testing.expect(module.after_big - module.before_big < tokens / 2);
 }

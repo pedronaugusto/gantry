@@ -1,6 +1,6 @@
 const std = @import("std");
 const g = @import("../gantry.zig");
-const f = @import("support.zig");
+const Counting = @import("shakedown").alloc.Counting;
 const a = std.testing.allocator;
 const eq = std.testing.expectEqual;
 
@@ -200,19 +200,19 @@ test "affected and reach hold one mark and one queue entry per file on a 50,000-
     }
     var analysis = try g.Analysis.init(a, paths, list.items);
     defer analysis.deinit();
-    var counter: f.Peak = .{ .child = a };
+    var counter: Counting = .init(a);
     const everything = try analysis.affected(counter.allocator(), &.{"g0/f0.zig"});
     defer counter.allocator().free(everything);
     try eq(n, everything.len);
     // The result's n slices, n marks and a queue of at most n positions
     // grown by halves: no per-pair or per-start storage.
     const bound = n * (@sizeOf([]const u8) + 1 + 2 * @sizeOf(u32)) + 4096;
-    try std.testing.expect(counter.peak < bound);
-    var many: f.Peak = .{ .child = a };
+    try std.testing.expect(counter.peak_bytes < bound);
+    var many: Counting = .init(a);
     const changed = try s.alloc([]const u8, n / 2);
     for (changed, 0..) |*p, i| p.* = paths[2 * i];
     const all = try analysis.affected(many.allocator(), changed);
     defer many.allocator().free(all);
     try eq(n, all.len);
-    try std.testing.expect(many.peak < bound + n / 2 * @sizeOf(u32) * 2);
+    try std.testing.expect(many.peak_bytes < bound + n / 2 * @sizeOf(u32) * 2);
 }

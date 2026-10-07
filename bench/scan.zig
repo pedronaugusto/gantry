@@ -1,7 +1,13 @@
 //! The scan of a directory: `scan <dir> [rounds]` lists it, then times
-//! complete scans from disk and from memory, analysis and aggregation.
+//! complete scans from disk and from memory, analysis and aggregation. With
+//! no arguments it scans the synthetic corpus, written to its working
+//! directory first; `--smoke` scans a small one once.
 const std = @import("std");
 const gantry = @import("gantry");
+const fixtures = @import("fixtures.zig");
+
+/// One round and no clock.
+var smoke = false;
 
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
@@ -11,10 +17,17 @@ pub fn main(init: std.process.Init) !void {
     var stdout = std.Io.File.stdout().writerStreaming(io, &buffer);
     const w = &stdout.interface;
     defer w.flush() catch {};
-    if (args.len < 2 or args.len > 3) return error.ExpectedCorpusDirectory;
-    var dir = try std.Io.Dir.cwd().openDir(io, args[1], .{ .iterate = true });
+    if (args.len > 3) return error.ExpectedCorpusDirectory;
+    smoke = args.len == 2 and std.mem.eql(u8, args[1], "--smoke");
+    const generated = args.len == 1 or smoke;
+    if (generated) {
+        const root = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", init.arena.allocator());
+        const corpus = try std.Io.Dir.path.join(init.arena.allocator(), &.{ root, "corpus" });
+        _ = try fixtures.synthetic(.{ .io = io, .a = init.arena.allocator(), .root = corpus }, if (smoke) 10 else 5000);
+    }
+    var dir = try std.Io.Dir.cwd().openDir(io, if (generated) "corpus" else args[1], .{ .iterate = true });
     defer dir.close(io);
-    const rounds: usize = if (args.len == 3) try std.fmt.parseInt(usize, args[2], 10) else 5;
+    const rounds: usize = if (smoke) 1 else if (args.len == 3) try std.fmt.parseInt(usize, args[2], 10) else 5;
     const listing = benchmarkNow(io);
     var paths = try gantry.walk(gpa, io, dir, {}, keep);
     defer paths.deinit();
@@ -67,6 +80,6 @@ fn readMemory(store: *const std.StringHashMapUnmanaged([]const u8), _: std.mem.A
 // Smoke exercises correctness without sampling a benchmark clock.
 var smoke_ticks = std.atomic.Value(i64).init(0);
 fn benchmarkNow(io: std.Io) std.Io.Timestamp {
-    if (@import("bench_options").smoke) return .{ .nanoseconds = smoke_ticks.fetchAdd(1, .monotonic) };
+    if (smoke) return .{ .nanoseconds = smoke_ticks.fetchAdd(1, .monotonic) };
     return std.Io.Clock.awake.now(io);
 }
