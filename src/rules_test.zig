@@ -25,7 +25,7 @@ test "path globs are component-aware and double-star covers zero directories" {
         .{ .pattern = "*.zig", .path = "main.ZIG", .want = false },
         .{ .pattern = "a*b?d", .path = "a12b3d", .want = true },
     };
-    for (cases) |case| try eq(case.want, g.rules.matches(case.pattern, case.path));
+    for (cases) |case| try eq(case.want, try g.rules.matches(case.pattern, case.path));
 }
 test "fixture: layers entry exceptions required modules and no cycles are data" {
     var graph = try g.Graph.fromEdges(a, &.{ "daemon/leaf.zig", "daemon/station.zig", "daemon/main.zig", "daemon/tests.zig", "daemon/a.zig", "daemon/b.zig" }, &.{
@@ -286,13 +286,13 @@ test "transitive findings agree with an independent nearest-target search" {
 }
 test "path patterns: ** is a whole component, a/** is what lies under a, a slashless pattern the base name" {
     const m = g.rules.matches;
-    try std.testing.expect(!m("a/**", "a"));
-    try std.testing.expect(m("a/**", "a/b/c"));
-    try std.testing.expect(m("a/**/c", "a/c"));
-    try std.testing.expect(!m("a**/c", "ax/y/c"));
-    try std.testing.expect(m("a**/c", "ax/c"));
-    try std.testing.expect(m("*.zig", "src/x/a.zig"));
-    try std.testing.expect(!m("src/*.zig", "src/x/a.zig"));
+    try std.testing.expect(!try m("a/**", "a"));
+    try std.testing.expect(try m("a/**", "a/b/c"));
+    try std.testing.expect(try m("a/**/c", "a/c"));
+    try std.testing.expect(!try m("a**/c", "ax/y/c"));
+    try std.testing.expect(try m("a**/c", "ax/c"));
+    try std.testing.expect(try m("*.zig", "src/x/a.zig"));
+    try std.testing.expect(!try m("src/*.zig", "src/x/a.zig"));
 }
 test "a rule pattern sweep refuses fails the check, whatever the graph holds" {
     var graph = try (f.Fixture{ .items = &.{
@@ -308,4 +308,28 @@ test "a rule pattern sweep refuses fails the check, whatever the graph holds" {
 test "a test path sweep refuses fails the scan" {
     try std.testing.expectError(error.InvalidPattern, (f.Fixture{ .items = &.{.{ .path = "a.zig", .text = "" }} }).scan(a, .{ .test_paths = &.{"src/[x"} }));
     try std.testing.expectError(error.InvalidPattern, (f.Fixture{ .items = &.{.{ .path = "a.zig", .text = "" }} }).scan(a, .{ .named_modules = &.{.{ .name = "m", .path = "a.zig", .from = "\\" }} }));
+}
+test "public path matching returns malformed pattern errors" {
+    try std.testing.expectError(error.InvalidPattern, g.rules.matches("[", "x"));
+    try std.testing.expectError(error.InvalidPattern, g.rules.matches("trailing\\", ""));
+}
+
+test "public compiled globs own keys and share the one-shot dialect" {
+    var arena = std.heap.ArenaAllocator.init(a);
+    defer arena.deinit();
+    var globs: g.rules.Globs = .{ .arena = arena.allocator() };
+    var key = [_]u8{ '*', '.', 'z', 'i', 'g' };
+    const compiled = try globs.get(.path, &key);
+    key[0] = 'x';
+    try expect(compiled == try globs.get(.path, "*.zig"));
+    const paths = try globs.list(.path, &.{ "src/**", "*.zig" });
+    try expect(g.rules.anyOf(paths, "deep/a.zig"));
+    try expect(!g.rules.anyOf(paths, "deep/a.c"));
+    try expect(g.rules.literal("src/a.zig"));
+    try expect(!g.rules.literal("src/[ab].zig"));
+    try std.testing.expectError(error.InvalidPattern, globs.get(.path, "["));
+    try std.testing.expectError(error.InvalidPattern, globs.get(.path, "["));
+    try std.testing.expectError(error.InvalidPattern, globs.list(.path, &.{ "**", "[" }));
+    try std.testing.expectError(error.InvalidPattern, globs.sequence(&.{}));
+    try std.testing.expectError(error.InvalidPattern, globs.sequence(&.{"io . async"}));
 }

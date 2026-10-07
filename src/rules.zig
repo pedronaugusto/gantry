@@ -16,7 +16,7 @@ pub const Required = engine.Required;
 pub const Reachable = engine.Reachable;
 /// Imports checked against the manifests that govern their files.
 pub const DependencyRule = engine.DependencyRule;
-/// Identifiers or string values only the owners' files may spell.
+/// Identifiers, string values or code token sequences only owners may spell.
 pub const TokenRule = engine.TokenRule;
 /// Every restriction `Graph.check` applies, in rule order.
 pub const Rules = engine.Rules;
@@ -32,6 +32,13 @@ pub const matches = engine.matches;
 pub const matchesToken = engine.matchesToken;
 /// The dialects a rule's patterns are read in: `path`, `name` and `token`.
 pub const Dialect = engine.Dialect;
-/// The sweep options a dialect reads a pattern with, to compile one with
-/// `sweep.Pattern` and match it many times.
-pub const patternOptions = engine.patternOptions;
+/// Patterns compiled once in gantry's dialects, owned by the supplied arena.
+pub const Globs = engine.Globs;
+/// A compiled pattern returned by `Globs.get`.
+pub const Pattern = @import("sweep").Pattern;
+/// Errors when compiling patterns in gantry's dialects.
+pub const CompileError = @import("sweep").CompileError;
+/// Whether any compiled pattern matches the text.
+pub const anyOf = engine.anyOf;
+/// Whether a path pattern names one literal path.
+pub const literal = engine.literal;

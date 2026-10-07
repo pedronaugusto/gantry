@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Breaking
 
+- `rules.matches`, `rules.matchesToken` and `TokenRule.names` return pattern errors instead of hiding them. Layer report patterns return errors too. `rules.patternOptions` is replaced by `rules.Globs`, `rules.Pattern`, `rules.CompileError`, `rules.anyOf` and `rules.literal`: callers compile and match in gantry's dialect without depending on sweep.
+- `Token.Kind` includes `sequence`; its evidence contains code tokens joined with spaces. `TokenRule.sequences` matches adjacent code token patterns, ignoring whitespace and comments, with each wildcard confined to one token.
+
 - Path rules are git's glob dialect, read by sweep, gantry's one dependency: `a/**` is what lies under `a` and no longer matches `a`, brackets (`[ch]`, `[!a-z]`) and `\` escapes are syntax, and `*` and `?` stay within a component as before. Token rules are unchanged: `*` and `?` are the only wildcards. `rules.matches` and `rules.matchesToken` keep their names.
 - A rule, test path, named module `from` or token pattern sweep refuses (an unclosed `[`, a trailing `\`, or one past `sweep.Pattern.max_units`) fails: `check` returns `error.InvalidPattern` or `error.PatternTooLong`, both in `rules.CheckError`, whatever the graph holds, and `scan` returns them, both in `ScanError`. Such a pattern matched nothing before.
 - `scan` takes an `io` after its allocator and hands it to the reader, which is `read(context, scratch, io, path)`: the value it is called on first, as every method takes it. `DirReader.read(self, scratch, io, path)` follows it, and a reader of another shape fails to compile in `scan` with the expected signature by name. `DirReader` holds no `Io` (`.{ .dir = dir }`); nothing gantry returns keeps one.

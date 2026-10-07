@@ -12,7 +12,7 @@ const Writer = std.Io.Writer;
 
 /// What writing a report fails with: the writer's error, or memory;
 /// `sarif` adds its reader's errors (`SourceError`).
-pub const Error = text.Error;
+pub const Error = text.Error || sweep.CompileError;
 /// Nodes, edges and findings as one JSON object.
 pub const json = text.json;
 /// Findings as a SARIF 2.1.0 log, placed at lines and columns when given a reader.
@@ -311,18 +311,14 @@ fn position(paths: []const []const u8, p: []const u8) ?usize {
 }
 
 /// Each path's first layer, `layers.len` for none, with every pattern
-/// compiled once. A pattern sweep refuses names no path, as in
-/// `rules.matches`.
-fn placeLayers(gpa: std.mem.Allocator, layers: []const engine.Layer, paths: []const []const u8, out: []usize) std.mem.Allocator.Error!void {
+/// compiled once. Malformed patterns return their compile errors.
+fn placeLayers(gpa: std.mem.Allocator, layers: []const engine.Layer, paths: []const []const u8, out: []usize) sweep.CompileError!void {
     var arena: std.heap.ArenaAllocator = .init(gpa);
     defer arena.deinit();
     var globs: engine.Globs = .{ .arena = arena.allocator() };
     var placed: std.ArrayList(struct { at: usize, pattern: *const sweep.Pattern }) = .empty;
     for (layers, 0..) |l, i| for (l.patterns) |pattern| {
-        const compiled = globs.get(.path, pattern) catch |err| switch (err) {
-            error.OutOfMemory => return error.OutOfMemory,
-            error.InvalidPattern, error.PatternTooLong => continue,
-        };
+        const compiled = try globs.get(.path, pattern);
         try placed.append(arena.allocator(), .{ .at = i, .pattern = compiled });
     };
     for (paths, out) |p, *at| {

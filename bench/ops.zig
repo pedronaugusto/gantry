@@ -123,7 +123,7 @@ fn list(w: *std.Io.Writer) !void {
     try w.writeAll("process/type-checking-python\n");
     try w.writeAll("scan/memory\nscan/links\nscan/assets\n");
     try w.writeAll("scan/diagnostic\n");
-    try w.writeAll("scan/tokens\n");
+    try w.writeAll("scan/tokens\nscan/sequences\n");
     try w.writeAll("graph/from-edges\ngraph/analysis-init\ngraph/analyze\ngraph/aggregate\npath/normalize\nmatch/path\n");
     try w.writeAll("match/token\n");
     try w.writeAll("process/walk\nprocess/check-js\nprocess/check-python\nprocess/links\n");
@@ -294,6 +294,8 @@ const filler = @import("shakedown").corpus.repeat("comment ", 16);
 
 const token_rule_list = [_]gantry.rules.TokenRule{.{ .name = "owned", .tokens = &.{"Forbidden"}, .owners = &.{"g0/**"} }};
 
+const sequence_rule_list = [_]gantry.rules.TokenRule{.{ .name = "definitions", .sequences = &.{&.{ "const", "Forbidden", "=" }} }};
+
 fn tokenOptions() gantry.Options {
     var options: gantry.Options = .{};
     options.tokens = &token_rule_list;
@@ -405,8 +407,9 @@ fn scanWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u8, 
     var options: gantry.Options = .{};
     if (shape == .links) options.kinds = &.{.link};
     if (shape == .assets) options.kinds = &.{.asset};
-    const tokens = std.mem.eql(u8, mode, "tokens");
+    const tokens = std.mem.eql(u8, mode, "tokens") or std.mem.eql(u8, mode, "sequences");
     if (tokens) options = tokenOptions();
+    if (std.mem.eql(u8, mode, "sequences")) options.tokens = &sequence_rule_list;
     if (!tokens and !std.mem.eql(u8, mode, "memory") and !std.mem.eql(u8, mode, "diagnostic") and shape == .zig) return error.UnknownScan;
     var ctx: Ctx = .{ .gpa = gpa, .io = io, .corpus = &corpus, .options = options, .diagnostic = std.mem.eql(u8, mode, "diagnostic") };
     try repeat(io, out, &ctx, Ctx.op);
@@ -554,10 +557,10 @@ fn helperWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, name: []const u8
                     if (std.mem.endsWith(u8, try gantry.path.normalize(scratch.allocator(), p), "f3.zig")) c.hits += 1;
                 },
                 .path => {
-                    if (gantry.rules.matches(c.path_pattern, p)) c.hits += 1;
+                    if (try gantry.rules.matches(c.path_pattern, p)) c.hits += 1;
                 },
                 .token => {
-                    if (gantry.rules.matchesToken(c.token_pattern, p)) c.hits += 1;
+                    if (try gantry.rules.matchesToken(c.token_pattern, p)) c.hits += 1;
                 },
             };
         }

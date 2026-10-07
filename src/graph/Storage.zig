@@ -62,6 +62,15 @@ pub fn scannedFor(g: *const Storage, rule: check_module.TokenRule) bool {
             if (scanned.kind == rule.kind and std.mem.eql(u8, scanned.text, token)) break;
         } else return false;
     }
+    for (rule.sequences) |sequence| {
+        for (g.scanned_tokens) |scanned| {
+            if (scanned.kind != .sequence) continue;
+            var parts = std.mem.splitScalar(u8, scanned.text, ' ');
+            for (sequence) |part| {
+                if (!std.mem.eql(u8, part, parts.next() orelse break)) break;
+            } else if (parts.next() == null) break;
+        } else return false;
+    }
     return true;
 }
 pub fn deinit(g: *Storage) void {

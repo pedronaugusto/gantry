@@ -1,4 +1,5 @@
 const std = @import("std");
+const shakedown = @import("shakedown");
 const g = @import("gantry.zig");
 const f = @import("testing/support.zig");
 const a = std.testing.allocator;
@@ -166,7 +167,7 @@ test "token patterns: star spans any bytes and question mark one" {
         // A star is a star wherever the text has one.
         .{ .pattern = "*a", .text = "*ba", .want = true },
     };
-    for (cases) |case| try eq(case.want, g.rules.matchesToken(case.pattern, case.text));
+    for (cases) |case| try eq(case.want, try g.rules.matchesToken(case.pattern, case.text));
 }
 
 fn tokenAllocations(allocator: std.mem.Allocator) !void {
@@ -212,4 +213,44 @@ test "token rules with many patterns all keep matching" {
     } }).scan(a, .{ .tokens = &owned });
     defer graph.deinit();
     try eq(3, graph.tokens().len);
+}
+
+test "token sequences ignore trivia and retain boundaries and locations" {
+    const owned: []const g.rules.TokenRule = &.{
+        .{ .name = "sync", .sequences = &.{&.{ ".", "sync", "(" }}, .owners = &.{"src/airlock/**"} },
+        .{ .name = "async", .sequences = &.{&.{ "io", ".", "async", "(" }} },
+        .{ .name = "slots", .sequences = &.{&.{ "vtable", ".", "*", "=" }} },
+    };
+    const fixture: f.Fixture = .{ .items = &.{
+        .{ .path = "src/app.zig", .text = "// file.sync( io.async(\nconst literal = \"file.sync(\";\nfile . // comment\n sync\n (io); io . async (work); vtable.read = value;\nfile.resync(io); otherio.async(work); vtable.read + value;\n" },
+        .{ .path = "src/airlock/write.zig", .text = "file.sync(io);" },
+    } };
+    var graph = try fixture.scan(a, .{ .tokens = owned });
+    defer graph.deinit();
+    var findings = try graph.check(a, .{ .tokens = owned });
+    defer findings.deinit();
+    try eq(3, findings.items().len);
+    const sync = findings.items()[0].token.?;
+    try eq(3, sync.line);
+    try eq(6, sync.column);
+    try eqs(". sync (", sync.text);
+    try eqs("io . async (", findings.items()[1].token.?.text);
+    try eqs("vtable . read =", findings.items()[2].token.?.text);
+    const unscanned: []const g.rules.TokenRule = &.{.{ .name = "other", .sequences = &.{&.{ "absent", "(" }} }};
+    try std.testing.expectError(error.UnscannedToken, graph.check(a, .{ .tokens = unscanned }));
+}
+
+test "token sequences clean up under every allocation failure" {
+    const Probe = struct {
+        fn run(gpa: std.mem.Allocator) !void {
+            const owned = [_]g.rules.TokenRule{.{ .name = "sync", .sequences = &.{&.{ ".", "sync", "(" }} }};
+            var graph = try (f.Fixture{ .items = &.{.{ .path = "a.zig", .text = "pub fn work() void { file.sync(io); }" }} }).scan(gpa, .{ .tokens = &owned });
+            defer graph.deinit();
+            var findings = try graph.check(gpa, .{ .tokens = &owned });
+            defer findings.deinit();
+            try eq(1, findings.items().len);
+        }
+    };
+    var no_resize = shakedown.alloc.NoResize.init(a);
+    try std.testing.checkAllAllocationFailures(no_resize.allocator(), Probe.run, .{});
 }

@@ -21,6 +21,9 @@ pub const Recorder = struct {
     /// The file being lexed, which `observer` points the lexer at.
     current: File = undefined,
 
+    sequences: []const []const *const sweep.Pattern = &.{},
+    endings: Filter = .{},
+
     const Named = struct { kind: t.Token.Kind, pattern: *const sweep.Pattern };
 
     pub fn init(w: std.mem.Allocator, strings: std.mem.Allocator, rules: []const TokenRule, globs: *check_module.Globs, files: usize) sweep.CompileError!Recorder {
@@ -30,7 +33,16 @@ pub const Recorder = struct {
         var patterns: std.ArrayList(Named) = .empty;
         for (rules) |rule| for (rule.tokens) |token| try patterns.append(w, .{ .kind = rule.kind, .pattern = try globs.get(.token, token) });
         var r: Recorder = .{ .rules = rules, .patterns = patterns.items, .strings = strings, .done = done };
-        for (rules) |rule| for (rule.tokens) |token| r.filters[@backingInt(rule.kind)].add(token);
+        for (rules) |rule| {
+            if (rule.kind == .sequence) return error.InvalidPattern;
+            for (rule.tokens) |token| r.filters[@backingInt(rule.kind)].add(token);
+        }
+        var sequences: std.ArrayList([]const *const sweep.Pattern) = .empty;
+        for (rules) |rule| for (rule.sequences) |sequence| {
+            try sequences.append(w, try globs.sequence(sequence));
+            r.endings.add(sequence[sequence.len - 1]);
+        };
+        r.sequences = sequences.items;
         return r;
     }
     pub fn active(r: *const Recorder) bool {
@@ -54,7 +66,7 @@ pub const Recorder = struct {
         if (!r.wants(index)) return null;
         r.done[index] = true;
         r.current = .{ .recorder = r, .scratch = scratch, .path = path, .language = language, .source = source };
-        return .{ .context = &r.current, .token = File.token };
+        return .{ .context = &r.current, .token = if (r.sequences.len > 0) File.sequenceToken else File.token, .punctuation = r.sequences.len > 0 };
     }
     /// Occurrences by path and offset, in graph storage.
     pub fn finish(r: *Recorder) std.mem.Allocator.Error![]const t.Token {
@@ -116,6 +128,60 @@ const File = struct {
             .line = f.line,
             .column = current.offset - f.line_start + 1,
         });
+    }
+
+    fn sequenceToken(context: *anyopaque, tokens: []const l.Token) error{OutOfMemory}!void {
+        const f: *File = @ptrCast(@alignCast(context)); // safe: observer supplies the recorder's own File
+        const kind = tokens[tokens.len - 1].kind;
+        if (kind == .word or kind == .punctuation) try f.sequences(tokens);
+        if (kind == .word or kind == .string) try token(context, tokens);
+    }
+
+    fn sequences(f: *File, tokens: []const l.Token) !void {
+        const r = f.recorder;
+        if (r.sequences.len == 0 or !r.endings.admits(tokens[tokens.len - 1].text)) return;
+        const recorded = r.found.items.len;
+        for (r.sequences) |sequence| {
+            var end = tokens.len;
+            var first: usize = end;
+            var at = sequence.len;
+            while (at > 0) {
+                while (end > 0 and tokens[end - 1].kind == .newline) end -= 1;
+                if (end == 0) break;
+                end -= 1;
+                const part = tokens[end];
+                if ((part.kind != .word and part.kind != .punctuation) or !sequence[at - 1].matches(part.text)) break;
+                first = end;
+                at -= 1;
+            }
+            if (at != 0) continue;
+            var text: std.ArrayList(u8) = .empty;
+            for (tokens[first..]) |part| {
+                if (part.kind == .newline) continue;
+                if (text.items.len > 0) try text.append(f.scratch, ' ');
+                try text.appendSlice(f.scratch, part.text);
+            }
+            // Several rules may name the same occurrence.
+            for (r.found.items[recorded..]) |found| {
+                if (found.kind == .sequence and found.offset == tokens[first].offset and std.mem.eql(u8, found.path, f.path) and std.mem.eql(u8, found.text, text.items)) break;
+            } else {
+                const offset = tokens[first].offset;
+                while (f.counted < offset) : (f.counted += 1) if (f.source[f.counted] == '\n') {
+                    f.line += 1;
+                    f.line_start = f.counted + 1;
+                };
+                const back = std.mem.count(u8, f.source[offset..f.counted], "\n");
+                const start = if (back == 0) f.line_start else if (std.mem.findScalarLast(u8, f.source[0..offset], '\n')) |n| n + 1 else 0;
+                try r.found.append(r.strings, .{
+                    .kind = .sequence,
+                    .path = f.path,
+                    .text = try r.strings.dupe(u8, text.items),
+                    .offset = offset,
+                    .line = f.line - back,
+                    .column = offset - start + 1,
+                });
+            }
+        }
     }
 };
 

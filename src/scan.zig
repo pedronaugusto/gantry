@@ -160,6 +160,7 @@ fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype
     if (recorder.active()) {
         var scanned: std.ArrayList(Graph.ScannedToken) = .empty;
         for (options.tokens) |rule| for (rule.tokens) |token| try scanned.append(a, .{ .kind = rule.kind, .text = try a.dupe(u8, token) });
+        for (options.tokens) |rule| for (rule.sequences) |sequence| try scanned.append(a, .{ .kind = .sequence, .text = try std.mem.join(a, " ", sequence) });
         g.scanned_tokens = scanned.items;
     }
     const cached: []?t.Recovery = if (needs_cache) try w.alloc(?t.Recovery, g.paths.len) else &.{};

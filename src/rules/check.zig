@@ -68,13 +68,16 @@ pub const Required = struct { name: []const u8, paths: []const []const u8 };
 pub const TokenRule = struct {
     name: []const u8,
     kind: t.Token.Kind = .identifier,
-    tokens: []const []const u8,
+    tokens: []const []const u8 = &.{},
+    /// Adjacent code tokens, ignoring whitespace and comments. Each element
+    /// is one token pattern (`*`, `?`); strings never stand for code.
+    sequences: []const []const []const u8 = &.{},
     /// Path patterns, as layers use them, of the files that may spell them.
     owners: []const []const u8 = &.{},
 
     /// Whether one of `tokens` matches `text`.
-    pub fn names(r: TokenRule, text: []const u8) bool {
-        for (r.tokens) |token| if (matchesToken(token, text)) return true;
+    pub fn names(r: TokenRule, text: []const u8) sweep.PatternError!bool {
+        for (r.tokens) |token| if (try matchesToken(token, text)) return true;
         return false;
     }
 };
@@ -215,6 +218,7 @@ pub const Globs = struct {
         errdefer _ = g.compiled[@backingInt(dialect)].remove(text);
         const pattern = try g.arena.create(sweep.Pattern);
         pattern.* = try .compile(g.arena, text, patternOptions(dialect));
+        entry.key_ptr.* = try g.arena.dupe(u8, text);
         entry.value_ptr.* = pattern;
         return pattern;
     }
@@ -234,7 +238,9 @@ pub const Globs = struct {
             for (r.except_from) |p| _ = try g.get(.path, p);
         }
         for (rules.tokens) |r| {
+            if (r.kind == .sequence) return error.InvalidPattern;
             for (r.tokens) |p| _ = try g.get(.token, p);
+            for (r.sequences) |parts| _ = try g.sequence(parts);
             for (r.owners) |p| _ = try g.get(.path, p);
         }
         for (rules.reachable) |r| {
@@ -245,6 +251,13 @@ pub const Globs = struct {
             _ = try g.get(.path, r.from);
             for (r.ignore) |p| _ = try g.get(.token, p);
         }
+    }
+    /// Compiles one code sequence. Empty sequences or slots, and whitespace
+    /// inside a slot, are invalid: a slot names exactly one code token.
+    pub fn sequence(g: *Globs, parts: []const []const u8) sweep.CompileError![]const *const sweep.Pattern {
+        if (parts.len == 0) return error.InvalidPattern;
+        for (parts) |part| if (part.len == 0 or std.mem.findAny(u8, part, " \t\r\n") != null) return error.InvalidPattern;
+        return g.list(.token, parts);
     }
     /// `patterns`, each compiled, for a loop that matches them many times.
     pub fn list(g: *Globs, dialect: Dialect, patterns: []const []const u8) sweep.CompileError![]const *const sweep.Pattern {
@@ -345,8 +358,14 @@ pub fn check(comptime dependencies: type, gpa: std.mem.Allocator, g: anytype, ru
     for (rules.tokens) |r| {
         const tokens = try globs.list(.token, r.tokens);
         const owners = try globs.list(.path, r.owners);
+        const sequences = try arena.alloc([]const *const sweep.Pattern, r.sequences.len);
+        for (r.sequences, sequences) |sequence, *compiled| compiled.* = try globs.sequence(sequence);
         for (g.tokens()) |*token| {
-            if (token.kind != r.kind or !anyOf(tokens, token.text)) continue;
+            if (token.kind == .sequence) {
+                for (sequences) |sequence| {
+                    if (sequenceMatches(sequence, token.text)) break;
+                } else continue;
+            } else if (token.kind != r.kind or !anyOf(tokens, token.text)) continue;
             if (!anyOf(owners, token.path)) try out.items.append(out.gpa, .{ .rule = r.name, .reason = .token, .token = token });
         }
     }
@@ -525,20 +544,26 @@ const Walks = struct {
 /// within a component, `**` standing as a whole component spans zero or
 /// more of them, `\` escapes, and a pattern without `/` matches the last
 /// component at any depth. Byte and case exact on every platform. A pattern
-/// sweep refuses matches nothing.
-pub fn matches(pattern: []const u8, path: []const u8) bool {
-    return sweep.match(pattern, path, path_options) catch false;
+/// sweep refuses returns its compile error.
+pub fn matches(pattern: []const u8, path: []const u8) sweep.PatternError!bool {
+    return sweep.match(pattern, path, path_options);
 }
 const path_options: sweep.Options = .{ .anywhere = true };
-/// A raw import name is matched in full; unlike file rules, an unqualified
-/// pattern does not also match the basename of a package path.
-fn matchesFull(pattern: []const u8, path: []const u8) bool {
-    return sweep.match(pattern, path, full_options) catch false;
-}
 const full_options: sweep.Options = .{};
 /// A token rule's text: `*` matches any run of bytes, including `/`, and
 /// `?` one byte; every other byte matches itself.
-pub fn matchesToken(pattern: []const u8, text: []const u8) bool {
-    return sweep.match(pattern, text, token_options) catch false;
+pub fn matchesToken(pattern: []const u8, text: []const u8) sweep.PatternError!bool {
+    return sweep.match(pattern, text, token_options);
 }
 const token_options: sweep.Options = .{ .syntax = .{ .separator = null, .escape = false, .brackets = .none } };
+
+fn sequenceMatches(patterns: []const *const sweep.Pattern, text: []const u8) bool {
+    var parts = std.mem.splitScalar(u8, text, ' ');
+    for (patterns) |pattern| if (!pattern.matches(parts.next() orelse return false)) return false;
+    return parts.next() == null;
+}
+
+/// Whether a path pattern is one literal path, rather than a glob.
+pub fn literal(pattern: []const u8) bool {
+    return sweep.literalPrefix(pattern, path_options.syntax) == pattern.len;
+}

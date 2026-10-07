@@ -296,3 +296,13 @@ test "reports release everything when an allocation fails" {
         }
     }.run, .{ &graph, findings });
 }
+
+test "layer reports reject malformed patterns even with no paths" {
+    var graph = try g.Graph.fromEdges(a, &.{}, &.{});
+    defer graph.deinit();
+    var out: std.Io.Writer.Allocating = .init(a);
+    defer out.deinit();
+    const options: g.report.Options = .{ .cluster = .layer, .layers = &.{.{ .name = "bad", .patterns = &.{"["} }} };
+    try std.testing.expectError(error.InvalidPattern, g.report.dot(a, &out.writer, &graph, options));
+    try std.testing.expectError(error.InvalidPattern, g.report.mermaid(a, &out.writer, &graph, options));
+}

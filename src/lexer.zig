@@ -21,12 +21,13 @@ pub const Token = struct {
 pub fn lex(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error![]Token {
     return lexSeen(lang, arena, text, null);
 }
-/// Called as each word or string joins a stream, with the stream so far.
+/// Called as each code token or string joins a stream, with the stream so far.
 pub const Observer = struct {
     context: *anyopaque,
+    punctuation: bool = false,
     token: *const fn (context: *anyopaque, stream: []const Token) error{OutOfMemory}!void,
 };
-/// `lex`, telling `seen` of each word and string as it is emitted. One
+/// `lex`, telling `seen` of each code token and string as it is emitted. One
 /// lexer serves both, so a scan without observers runs the same code.
 pub fn lexSeen(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
     return tokenize(lang, true, arena, text, seen);
@@ -129,6 +130,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
         }
         i += 1;
         try out.push(gpa, .{ .kind = .punctuation, .text = text[start..i], .offset = start, .end = i });
+        if (seen) |observer| if (observer.punctuation) try observer.token(observer.context, out.list.items);
         if (lang == .javascript) {
             regex_allowed = std.mem.findScalar(u8, "=(:,;!&|?{}", c) != null;
             if (c == '(') {

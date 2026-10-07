@@ -223,7 +223,10 @@ and cycles. Exceptions apply to a named restriction. Path patterns are git's, re
 component, `**` standing as a whole component spans zero or more of them, so `a/**` is
 what lies under `a` and not `a` itself, `**` inside a component (`a**`) is `*`, and `\`
 escapes. A pattern without `/` matches the base name. `rules.matches(pattern, path)` says
-whether one pattern matches. A check compiles each pattern once, and one sweep refuses
+whether one pattern matches, returning `error.InvalidPattern` or `error.PatternTooLong`
+for malformed patterns. For repeated matches, use `rules.Globs` with an arena: `try globs.get(.path, pattern)`
+returns a compiled `rules.Pattern`; `try globs.list(.path, patterns)` and `rules.anyOf` match a set.
+Gantry owns the dialect, so callers need no direct sweep dependency. A check compiles each pattern once, and one sweep refuses
 (an unclosed `[`, a trailing `\`) fails it with `error.InvalidPattern`, whatever the
 graph holds. Every matching restriction reports in rule order. These rules operate on
 the recovered graph.
@@ -265,7 +268,11 @@ A token rule names identifiers, or string literals' values after their escapes, 
 only its owners' files may spell: `.{ .name = "console", .tokens = &.{ "CreateFileW",
 "WriteConsoleW" }, .owners = &.{"src/os/**"} }`. `*` in a token matches any bytes and `?`
 one byte; every other byte, brackets and `\` included, matches itself
-(`rules.matchesToken`). Pass the same rules
+(`rules.matchesToken`, returning pattern errors). A rule may also name `sequences`, each
+an array of adjacent code token patterns: `.sequences = &.{ &.{ ".", "sync", "(" },
+&.{ "io", ".", "async", "(" } }`. Whitespace and comments between tokens are ignored;
+strings cannot become code, and each wildcard matches just one token. Sequence evidence
+is joined with spaces and points to the first token. Pass the same rules
 in `Options.tokens` and `Rules.tokens`: the scan records their occurrences from the token
 streams it lexes for imports (`graph.tokens()`, with path, line and byte column), and
 `check` reports those outside the owners, or `error.UnscannedToken` for a rule the scan

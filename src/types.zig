@@ -52,10 +52,10 @@ pub const Reference = struct {
 };
 /// An identifier or string literal in a source file that a token rule names.
 pub const Token = struct {
-    pub const Kind = enum { identifier, string };
+    pub const Kind = enum { identifier, string, sequence };
     path: []const u8,
     kind: Token.Kind,
-    /// The identifier, or the string literal's value after its escapes.
+    /// The identifier, decoded string, or code sequence joined with spaces.
     text: []const u8,
     /// Byte offset of the token's first byte, or of the opening quote of a
     /// string or a Zig `@"name"`.
