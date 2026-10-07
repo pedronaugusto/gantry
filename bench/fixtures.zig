@@ -326,7 +326,12 @@ fn treeDigest(a: Allocator, io: Io, root: []const u8) ![64]u8 {
     var walker = try dir.walk(a);
     defer walker.deinit();
     var names: std.ArrayList([]const u8) = .empty;
-    while (try walker.next(io)) |entry| if (entry.kind == .file) try names.append(a, try a.dupe(u8, entry.path));
+    // Slash-separated on every host, so the digest is one value everywhere.
+    while (try walker.next(io)) |entry| if (entry.kind == .file) {
+        const name = try a.dupe(u8, entry.path);
+        std.mem.replaceScalar(u8, name, '\\', '/');
+        try names.append(a, name);
+    };
     std.mem.sort([]const u8, names.items, {}, struct {
         fn less(_: void, x: []const u8, y: []const u8) bool {
             return std.mem.lessThan(u8, x, y);
