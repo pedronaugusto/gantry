@@ -6,8 +6,8 @@
     .paths = .{ "build.zig", "build.zig.zon", "src", "examples", "ci", ".github", "README.md", "CHANGELOG.md", "LICENSE" },
     .dependencies = .{
         .preflight = .{
-            .url = "git+https://github.com/pedronaugusto/preflight#dcdb8b0e71f3c36b5c6b15520798e57a3a1f1143",
-            .hash = "preflight-0.1.0-LX1ZwsTsBADiEIlN1vmzcFCg6JXM6a1KyJfWej6SG2kF",
+            .url = "git+https://github.com/pedronaugusto/preflight#7529062f3af0190e2bbc3f843e1ae0a0247125ff",
+            .hash = "preflight-0.1.0-LX1ZwjvuBADAj7ukyFSK8YT0EXBlwN8CZkprUGIpFE2u",
             .lazy = true,
         },
     },
