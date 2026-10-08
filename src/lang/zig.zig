@@ -53,7 +53,13 @@ pub fn recoverTokens(arena: std.mem.Allocator, source: []const u8, ts: []const l
 fn classify(comptime capacity: usize, arena: std.mem.Allocator, ts: []const l.Token, shape: liveness.Shape, out: *std.ArrayList(Spec), where: *std.ArrayList(u32), aliases: std.StringHashMapUnmanaged([]const u8)) std.mem.Allocator.Error!void {
     // No recovered reference borrows this table after classification.
     var slots: [capacity]u32 = undefined;
-    var words = try liveness.Words.init(arena, ts, shape, &slots);
+    // A short stream has at most 128 members and references. Its member
+    // lists, name links and grouped traversal fit in this bounded workspace.
+    // One allocator owns all of that temporary state until classification.
+    var buffer: [if (capacity == 64) 24 * 1024 else 0]u8 = undefined;
+    var scratch: std.heap.FixedBufferAllocator = .init(&buffer);
+    const workspace = if (capacity == 64) scratch.allocator() else arena;
+    var words = try liveness.Words.init(workspace, ts, shape, &slots);
     for (ts, 0..) |t, i| {
         if (t.kind == .string) try words.see(capacity, i);
         if (t.kind != .word) continue;
@@ -65,11 +71,7 @@ fn classify(comptime capacity: usize, arena: std.mem.Allocator, ts: []const l.To
             try where.append(arena, @intCast(i));
         }
     }
-    // At most 128 members and references in a short stream: the grouped
-    // edges, reach marks and traversal stack fit in 4 KiB and never escape.
-    var reach_buffer: [if (capacity == 64) 4096 else 0]u8 = undefined;
-    var reach_scratch: std.heap.FixedBufferAllocator = .init(&reach_buffer);
-    try words.classify(if (capacity == 64) reach_scratch.allocator() else arena, out.items, where.items);
+    try words.classify(workspace, out.items, where.items);
 }
 
 const p = @import("../path.zig");

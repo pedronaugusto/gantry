@@ -39,10 +39,8 @@ pub fn lexCompact(comptime lang: Syntax, arena: std.mem.Allocator, text: []const
 }
 fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
     var out: Stream = .{ .total = text.len };
-    // Room at once for a small file: a token in four bytes, up to a few
-    // hundred, which a large sparse file never pays for. Under a kilobyte
-    // the stream grows as any list does, in blocks no larger than it needs.
-    if (text.len >= 1024) try out.list.ensureTotalCapacityPrecise(gpa, @min(text.len / 4 + 4, 512));
+    const capacity = tokenCapacity(lang, text.len);
+    if (capacity > 0) try out.list.ensureTotalCapacityPrecise(gpa, capacity);
     var i: usize = 0;
     var regex_allowed = true;
     var control_pending = false;
@@ -156,6 +154,14 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
 /// A token stream as it is lexed. It grows by the density of the text read
 /// so far, so a long stream moves a few times rather than at every half
 /// again, and a sparse text never holds room for tokens it lacks.
+// A sparse large file reserves at most a few hundred tokens. Short Zig
+// files need a denser hint to avoid several buffers before liveness runs.
+fn tokenCapacity(comptime lang: Syntax, bytes: usize) usize {
+    if (bytes >= 1024) return @min(bytes / 4 + 4, 512);
+    if (lang == .zig and bytes >= 32) return @min(bytes / 2 + 4, 32);
+    return 0;
+}
+
 const Stream = struct {
     list: std.ArrayList(Token) = .empty,
     /// The length of the text.

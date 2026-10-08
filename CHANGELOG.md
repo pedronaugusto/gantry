@@ -77,7 +77,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Zig recovery keeps file-local name lookup and short-file reachability in caller-owned scratch. The 5,000-file `scan/memory` benchmark runs 26.5% faster; test-only and dead-import classification are unchanged.
+- Zig recovery keeps file-local name lookup and short-file reachability in caller-owned scratch. Short Zig files reserve at most 32 tokens before recovery. The 5,000-file `scan/memory` benchmark runs 26.8% faster; test-only and dead-import classification are unchanged.
 
 - CI pins the new preflight and adopts its shared durability, shakedown and no-async rule sets. File naming uses ziglint Z009; the empty preflight naming ledger is removed.
 
