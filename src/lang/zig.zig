@@ -8,15 +8,27 @@ pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) std.
     return l.lexCompact(.zig, arena, source, seen);
 }
 pub fn recover(arena: std.mem.Allocator, source: []const u8) error{ InvalidLiteral, OutOfMemory }!types.Recovery {
-    return recoverTokens(arena, source, try lex(arena, source, null));
+    return recoverSeen(arena, source, null);
 }
 pub fn recoverTokens(arena: std.mem.Allocator, source: []const u8, ts: []const l.Token) error{ InvalidLiteral, OutOfMemory }!types.Recovery {
+    return recoverShaped(arena, source, ts, try liveness.Shape.read(arena, ts));
+}
+/// Recover while collecting structure in the lexer's emission pass.
+pub fn recoverSeen(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) error{ InvalidLiteral, OutOfMemory }!types.Recovery {
+    // Short files keep a smaller builder; every list still spills on overflow.
+    return if (source.len <= 1024) recoverBuilt(true, arena, source, seen) else recoverBuilt(false, arena, source, seen);
+}
+fn recoverBuilt(comptime small: bool, arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) error{ InvalidLiteral, OutOfMemory }!types.Recovery {
+    var builder: liveness.Builder(true, small) = .{};
+    const ts = try l.lexCompactWith(.zig, liveness.Builder(true, small), arena, source, seen, &builder);
+    return recoverShaped(arena, source, ts, try builder.finish(arena, ts));
+}
+fn recoverShaped(arena: std.mem.Allocator, source: []const u8, ts: []const l.Token, shape: liveness.Shape) error{ InvalidLiteral, OutOfMemory }!types.Recovery {
     var out: std.ArrayList(Spec) = .empty;
     // The token of each spec, which says whether only tests reach it.
     var where: std.ArrayList(u32) = .empty;
     var unsupported: std.ArrayList(types.UnsupportedReference) = .empty;
     var aliases: std.StringHashMapUnmanaged([]const u8) = .empty;
-    const shape = try liveness.Shape.read(arena, ts);
     for (shape.imports) |index| {
         const i: usize = index;
         const t = ts[i];

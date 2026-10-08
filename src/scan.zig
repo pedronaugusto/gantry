@@ -59,6 +59,7 @@ fn extract(arena: std.mem.Allocator, language: Language, source: []const u8, rec
         inline else => |lang| {
             const module = @field(languages, @tagName(lang));
             const seen = if (recorder) |r| r.observer(arena, index, file, lang, source) else null;
+            if (lang == .zig) return module.recoverSeen(arena, source, seen);
             return module.recoverTokens(arena, source, try module.lex(arena, source, seen));
         },
     };

@@ -1,6 +1,7 @@
 const std = @import("std");
 const g = @import("../gantry.zig");
 const a = std.testing.allocator;
+const support = @import("../testing/support.zig");
 
 /// The kind of each `@import` of `source`, by name, in source order.
 fn expectKinds(source: []const u8, expected: []const struct { []const u8, g.Kind }) !void {
@@ -260,4 +261,67 @@ test "Zig liveness keeps colliding names distinct as a file grows" {
             try std.testing.expectEqual(if (i == 1) g.Kind.@"test" else g.Kind.import, spec.kind);
         }
     }
+}
+
+test "Zig streamed recovery keeps deep nesting and truncated test branches classified" {
+    var source: std.ArrayList(u8) = .empty;
+    defer source.deinit(a);
+    try source.appendSlice(a, "const builtin = @import(\"builtin\"); pub const value = ");
+    for (0..768) |_| try source.append(a, '(');
+    try source.appendSlice(a, "if (builtin.is_test) @import(\"fixture.zig\") else @import(\"prod.zig\")");
+    for (0..768) |_| try source.append(a, ')');
+    try source.appendSlice(a, "; test { _ = @import(\"late.zig\"); }");
+    try expectKinds(source.items, &.{ .{ "builtin", .import }, .{ "fixture.zig", .@"test" }, .{ "prod.zig", .import }, .{ "late.zig", .@"test" } });
+    // The unfinished expression still ends at the stream's final token.
+    try expectKinds("const b = @import(\"builtin\"); pub const T = if (b.is_test) struct { const x = @import(\"x.zig\");", &.{ .{ "builtin", .import }, .{ "x.zig", .@"test" } });
+    const S = struct {
+        fn run(allocator: std.mem.Allocator, text: []const u8) !void {
+            var imports = try g.imports(allocator, .zig, text);
+            defer imports.deinit();
+            try std.testing.expectEqual(@as(usize, 5), imports.items().len);
+            try std.testing.expectEqual(g.Kind.@"test", imports.items()[1].kind);
+            try std.testing.expectEqual(g.Kind.import, imports.items()[2].kind);
+        }
+    };
+    try support.checkAllAllocationFailures(S.run, .{source.items});
+}
+
+test "Zig streamed recovery preserves const tokens and uses token padding" {
+    const lexer = @import("../lexer.zig");
+    const zig = @import("zig.zig");
+    const OriginalToken = struct { kind: @FieldType(lexer.Token, "kind"), text: []const u8, offset: usize, end: usize };
+    if (@bitSizeOf(usize) == 64) try std.testing.expectEqual(@sizeOf(OriginalToken), @sizeOf(lexer.Token));
+    for ([_][]const u8{
+        "",
+        "@as(u8, 1) @import(name) @import",
+        "const b = @import(\"builtin\"); const x = @import(\"x.zig\"); pub fn f() void { if (b.is_test) _ = x; }",
+        "const Self = @This(); const a = @import(\"a.zig\"); const x = a.v; pub fn f() void { _ = @field(Self, \"x\"); } test { a.check(); }",
+        "} ) ] test { _ = @import(\"t.zig\"); const nested = (((",
+        "pub const S = struct { test { _ = @import(\"s.zig\"); } }; pub const a = @import(\"a\\x2ezig\");",
+    }) |source| {
+        var arena: std.heap.ArenaAllocator = .init(a);
+        defer arena.deinit();
+        const work = arena.allocator();
+        const ts = try zig.lex(work, source, null);
+        const replay = try zig.recoverTokens(work, source, ts);
+        for (ts) |token| try std.testing.expectEqual(@as(u32, 0), token.partner);
+        const streamed = try zig.recoverSeen(work, source, null);
+        try std.testing.expectEqualDeep(replay, streamed);
+    }
+}
+
+test "Zig streamed structural spills retain every builtin alias and test mark" {
+    var source: std.Io.Writer.Allocating = .init(a);
+    defer source.deinit();
+    for (0..6) |i| try source.writer.print("pub const b{d} = @import(\"builtin\"); ", .{i});
+    for (0..128) |_| try source.writer.writeAll("test { if (b5.is_test) { _ = @import(\"x.zig\"); } } ");
+    var expected: [134]struct { []const u8, g.Kind } = undefined;
+    for (expected[0..6]) |*entry| entry.* = .{ "builtin", .import };
+    for (expected[6..]) |*entry| entry.* = .{ "x.zig", .@"test" };
+    try expectKinds(source.written(), &expected);
+    source.clearRetainingCapacity();
+    for (0..12) |i| try source.writer.print("pub const x{d} = @import(\"x.zig\"); ", .{i});
+    const short_expected: [12]struct { []const u8, g.Kind } = @splat(.{ "x.zig", .import });
+    try std.testing.expect(source.written().len <= 1024);
+    try expectKinds(source.written(), &short_expected);
 }

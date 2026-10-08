@@ -2,8 +2,8 @@
 //! `test` declaration, in the taken branch of `if (builtin.is_test)`, or in a
 //! container-level declaration that nothing but tests reaches is never
 //! compiled outside `zig test`. Read in the passes recovery already makes:
-//! `Shape.read` in its pass over every token, `Words.see` in its pass over
-//! the words.
+//! `Builder` as tokens are emitted, `Words.see` in its pass over words.
+//! Recovery of caller-supplied tokens reads the same shape without mutation.
 const std = @import("std");
 const l = @import("../../lexer.zig");
 const types = @import("../../types.zig");
@@ -11,6 +11,18 @@ const Token = l.Token;
 
 /// Token indices, both ends included.
 const Range = struct { first: u32, last: u32 };
+/// Streamed structure borrows token padding; recovery of a supplied const
+/// stream owns a separate table and never mutates that caller's tokens.
+const Partners = union(enum) {
+    stream: []const Token,
+    table: []const u32,
+    fn get(self: Partners, i: usize) u32 {
+        return switch (self) {
+            .stream => |ts| ts[i].partner,
+            .table => |table| table[i],
+        };
+    }
+};
 
 /// What one pass over a file's tokens finds for recovery and liveness.
 pub const Shape = struct {
@@ -18,7 +30,7 @@ pub const Shape = struct {
     imports: []const u32,
     /// For each bracket its partner; an unclosed one runs to the last token
     /// and a stray closer is its own partner. Other tokens are left undefined.
-    partner: []const u32,
+    partner: Partners,
     /// Disjoint and in order: `test` bodies at any depth, and the
     /// then-branches of `if (builtin.is_test)`, `if (comptime
     /// builtin.is_test)` and `if (@import("builtin").is_test)`, where
@@ -26,48 +38,115 @@ pub const Shape = struct {
     tests: []const Range,
 
     pub fn read(arena: std.mem.Allocator, ts: []const Token) std.mem.Allocator.Error!Shape {
-        const partner = try arena.alloc(u32, ts.len);
-        var open: std.ArrayList(u32) = .empty;
-        var imports: std.ArrayList(u32) = .empty;
-        var marks: std.ArrayList(u32) = .empty;
-        var builtins: std.ArrayList([]const u8) = .empty;
-        for (ts, 0..) |t, i| switch (t.kind) {
-            .punctuation => switch (t.text[0]) {
-                '(', '[', '{' => try open.append(arena, @intCast(i)),
-                ')', ']', '}' => {
-                    const o = open.pop() orelse @as(u32, @intCast(i));
-                    partner[o] = @intCast(i);
-                    partner[i] = o;
-                },
-                '@' => if (i + 1 < ts.len and ts[i + 1].is("import")) {
-                    try imports.append(arena, @intCast(i));
-                    if (open.items.len == 0 and i >= 3 and ts[i - 3].is("const") and ts[i - 2].kind == .word and ts[i - 1].is("=") and builtinImport(ts, i))
-                        try builtins.append(arena, ts[i - 2].text);
-                },
-                else => {},
-            },
-            .word => if (t.text.len == 4 or t.text.len == 7) if (t.is("test") or t.is("is_test")) try marks.append(arena, @intCast(i)),
-            else => {},
-        };
-        for (open.items) |o| partner[o] = @intCast(ts.len - 1);
-        // Marks are in order and each range starts at or after its mark, so
-        // the ranges come in order of their first token.
-        var tests: std.ArrayList(Range) = .empty;
-        for (marks.items) |i| {
-            const range: Range = if (testDecl(ts, i)) |brace| .{ .first = i, .last = partner[brace] } else if (isTestCondition(ts, i, builtins.items)) then: {
-                const first = i + 2;
-                if (first >= ts.len) continue;
-                const last = if (ts[first].is("{")) partner[first] else expressionEnd(ts, partner, first) orelse continue;
-                break :then .{ .first = first, .last = @intCast(last) };
-            } else continue;
-            if (tests.items.len > 0 and range.first <= tests.items[tests.items.len - 1].last) {
-                const top = &tests.items[tests.items.len - 1];
-                top.last = @max(top.last, range.last);
-            } else try tests.append(arena, range);
-        }
-        return .{ .imports = imports.items, .partner = partner, .tests = tests.items };
+        var builder: Builder(false, false) = .{};
+        try builder.reserve(arena, ts.len);
+        for (ts, 0..) |token, i| try builder.token(arena, token, ts[0 .. i + 1]);
+        var shape = try builder.finish(arena, ts);
+        // The local builder ends here; only streamed recovery consumes its
+        // inline import list while the builder is still alive.
+        shape.imports = try arena.dupe(u32, shape.imports);
+        return shape;
     }
 };
+
+/// Bracket pairs and import/test marks collected as the lexer emits tokens.
+/// Streamed partners live in token padding; a supplied const stream uses
+/// an owned table. All offsets and observer tokens remain unchanged.
+pub fn Builder(comptime streamed: bool, comptime small: bool) type {
+    return struct {
+        const Self = @This();
+        const Tokens = if (streamed) []Token else []const Token;
+        partner: std.ArrayList(u32) = .empty,
+        open: SmallList(u32, if (small) 16 else 64) = .{},
+        imports: SmallList(u32, if (small) 8 else 64) = .{},
+        marks: SmallList(u32, if (small) 8 else 64) = .{},
+        builtins: SmallList([]const u8, 4) = .{},
+
+        pub fn reserve(self: *Self, arena: std.mem.Allocator, capacity: usize) std.mem.Allocator.Error!void {
+            if (!streamed) try self.partner.ensureTotalCapacityPrecise(arena, capacity);
+        }
+        pub inline fn token(self: *Self, arena: std.mem.Allocator, t: Token, ts: Tokens) std.mem.Allocator.Error!void {
+            const i = ts.len - 1;
+            if (!streamed) self.partner.appendAssumeCapacity(undefined);
+            switch (t.kind) {
+                .punctuation => switch (t.text[0]) {
+                    '(', '[', '{' => try self.open.append(arena, @intCast(i)),
+                    ')', ']', '}' => {
+                        const o = self.open.pop() orelse @as(u32, @intCast(i));
+                        self.put(ts, o, @intCast(i));
+                        self.put(ts, i, o);
+                    },
+                    else => {},
+                },
+                .word => {
+                    if (t.text.len == 4 or t.text.len == 7) if (t.is("test") or t.is("is_test")) try self.marks.append(arena, @intCast(i));
+                    if (t.is("import") and i > 0 and ts[i - 1].is("@")) try self.imports.append(arena, @intCast(i - 1));
+                },
+                else => {},
+            }
+            // Emission cannot look ahead to `import` or its literal operand.
+            // Recognise the completed builtin binding at its closing parenthesis.
+            if (t.is(")") and self.open.items().len == 0 and i >= 7 and ts[i - 7].is("const") and ts[i - 6].kind == .word and ts[i - 5].is("=") and ts[i - 3].is("import") and builtinImport(ts, i - 4))
+                try self.builtins.append(arena, ts[i - 6].text);
+        }
+        pub fn finish(self: *Self, arena: std.mem.Allocator, ts: Tokens) std.mem.Allocator.Error!Shape {
+            // The `import` word completed each recorded prefix during emission.
+            const n = self.imports.items().len;
+            for (self.open.items()) |o| self.put(ts, o, @intCast(ts.len - 1));
+            const partner: Partners = if (streamed) .{ .stream = ts } else .{ .table = self.partner.items };
+            // Marks are in order and each range starts at or after its mark, so
+            // the ranges come in order of their first token.
+            var tests: std.ArrayList(Range) = .empty;
+            for (self.marks.items()) |i| {
+                const range: Range = if (testDecl(ts, i)) |brace| .{ .first = i, .last = partner.get(brace) } else if (isTestCondition(ts, i, self.builtins.items())) then: {
+                    const first = i + 2;
+                    if (first >= ts.len) continue;
+                    const last = if (ts[first].is("{")) partner.get(first) else expressionEnd(ts, partner, first) orelse continue;
+                    break :then .{ .first = first, .last = @intCast(last) };
+                } else continue;
+                if (tests.items.len > 0 and range.first <= tests.items[tests.items.len - 1].last) {
+                    const top = &tests.items[tests.items.len - 1];
+                    top.last = @max(top.last, range.last);
+                } else try tests.append(arena, range);
+            }
+            return .{ .imports = self.imports.items()[0..n], .partner = partner, .tests = tests.items };
+        }
+        fn put(self: *Self, ts: Tokens, i: usize, value: u32) void {
+            if (streamed) ts[i].partner = value else self.partner.items[i] = value;
+        }
+    };
+}
+/// Structural lists normally stay beside the builder. Spilling copies
+/// their prefix once, then keeps one allocator-owned list, even after pop.
+/// This keeps temporary marks from blocking token-buffer arena resizing.
+fn SmallList(comptime T: type, comptime capacity: usize) type {
+    return struct {
+        const Self = @This();
+        buffer: [capacity]T = undefined,
+        used: usize = 0,
+        spill: std.ArrayList(T) = .empty,
+        spilled: bool = false,
+
+        fn items(self: *Self) []T {
+            return if (self.spilled) self.spill.items else self.buffer[0..self.used];
+        }
+        fn append(self: *Self, arena: std.mem.Allocator, value: T) std.mem.Allocator.Error!void {
+            if (!self.spilled and self.used == capacity) {
+                try self.spill.appendSlice(arena, &self.buffer);
+                self.spilled = true;
+            }
+            if (self.spilled) return self.spill.append(arena, value);
+            self.buffer[self.used] = value;
+            self.used += 1;
+        }
+        fn pop(self: *Self) ?T {
+            if (self.spilled) return self.spill.pop();
+            if (self.used == 0) return null;
+            self.used -= 1;
+            return self.buffer[self.used];
+        }
+    };
+}
 fn opener(t: Token) bool {
     return t.kind == .punctuation and (t.text[0] == '(' or t.text[0] == '[' or t.text[0] == '{');
 }
@@ -112,12 +191,12 @@ fn isTestCondition(ts: []const Token, i: usize, builtins: []const []const u8) bo
 }
 /// The last token of an expression starting at `first`: before the `else`,
 /// `;`, `,` or closer that ends it at its own depth.
-fn expressionEnd(ts: []const Token, partner: []const u32, first: usize) ?usize {
+fn expressionEnd(ts: []const Token, partner: Partners, first: usize) ?usize {
     var k = first;
     while (k < ts.len) {
         const t = ts[k];
         if (t.is("else") or t.is(";") or t.is(",") or closer(t)) break;
-        k = if (opener(t)) partner[k] + 1 else k + 1;
+        k = if (opener(t)) partner.get(k) + 1 else k + 1;
     }
     return if (k > first) k - 1 else null;
 }
@@ -125,7 +204,7 @@ fn expressionEnd(ts: []const Token, partner: []const u32, first: usize) ?usize {
 const Member = struct { first: u32, last: u32, name: ?[]const u8 = null, root: bool = false, is_test: bool = false, this: bool = false };
 
 /// The file's container-level members in order, tiling the stream.
-fn rootMembers(arena: std.mem.Allocator, ts: []const Token, partner: []const u32) ![]const Member {
+fn rootMembers(arena: std.mem.Allocator, ts: []const Token, partner: Partners) ![]const Member {
     var out: std.ArrayList(Member) = .empty;
     var i: usize = 0;
     while (i < ts.len) {
@@ -135,7 +214,7 @@ fn rootMembers(arena: std.mem.Allocator, ts: []const Token, partner: []const u32
     }
     return out.items;
 }
-fn memberFrom(ts: []const Token, partner: []const u32, first: usize) Member {
+fn memberFrom(ts: []const Token, partner: Partners, first: usize) Member {
     var m: Member = .{ .first = @intCast(first), .last = @intCast(first) };
     var k = first;
     while (k < ts.len) : (k += 1) {
@@ -144,7 +223,7 @@ fn memberFrom(ts: []const Token, partner: []const u32, first: usize) Member {
             m.root = true;
         } else if (t.is("comptime")) {
             m.root = true;
-            if (k + 1 < ts.len and ts[k + 1].is("{")) return ending(m, partner[k + 1]);
+            if (k + 1 < ts.len and ts[k + 1].is("{")) return ending(m, partner.get(k + 1));
         } else if (t.is("extern")) {
             if (k + 1 < ts.len and ts[k + 1].kind == .string) k += 1;
         } else if (!(t.is("inline") or t.is("noinline") or t.is("threadlocal"))) break;
@@ -152,7 +231,7 @@ fn memberFrom(ts: []const Token, partner: []const u32, first: usize) Member {
     if (k >= ts.len) return ending(m, ts.len - 1);
     if (testDecl(ts, k)) |brace| {
         m.is_test = true;
-        return ending(m, partner[brace]);
+        return ending(m, partner.get(brace));
     }
     const t = ts[k];
     if (t.is("fn") or t.is("const") or t.is("var")) {
@@ -173,24 +252,24 @@ fn ending(m: Member, end: usize) Member {
     return out;
 }
 /// The `;` that ends a declaration, or a function's body brace.
-fn declarationEnd(ts: []const Token, partner: []const u32, start: usize, function: bool) usize {
+fn declarationEnd(ts: []const Token, partner: Partners, start: usize, function: bool) usize {
     var k = start;
     while (k < ts.len) {
         const t = ts[k];
         if (t.is(";")) return k;
         if (closer(t)) return k -| 1;
-        if (function and t.is("{") and body(ts, partner, k)) return partner[k];
-        k = if (opener(t)) partner[k] + 1 else k + 1;
+        if (function and t.is("{") and body(ts, partner, k)) return partner.get(k);
+        k = if (opener(t)) partner.get(k) + 1 else k + 1;
     }
     return ts.len - 1;
 }
 /// A brace after a signature opens the body unless it opens a type in the
 /// return type: `error{`, `struct {`, `union(enum) {`.
-fn body(ts: []const Token, partner: []const u32, k: usize) bool {
+fn body(ts: []const Token, partner: Partners, k: usize) bool {
     if (k == 0) return true;
     const prev = ts[k - 1];
     if (prev.is(")")) {
-        const o = partner[k - 1];
+        const o = partner.get(k - 1);
         return o == 0 or !container(ts[o - 1]);
     }
     return !prev.is("error") and !container(prev);
@@ -198,13 +277,13 @@ fn body(ts: []const Token, partner: []const u32, k: usize) bool {
 fn container(t: Token) bool {
     return t.is("struct") or t.is("union") or t.is("enum") or t.is("opaque");
 }
-fn fieldEnd(ts: []const Token, partner: []const u32, start: usize) usize {
+fn fieldEnd(ts: []const Token, partner: Partners, start: usize) usize {
     var k = start;
     while (k < ts.len) {
         const t = ts[k];
         if (t.is(";") or t.is(",")) return k;
         if (closer(t)) return k -| 1;
-        k = if (opener(t)) partner[k] + 1 else k + 1;
+        k = if (opener(t)) partner.get(k) + 1 else k + 1;
     }
     return ts.len - 1;
 }
@@ -240,7 +319,7 @@ const Names = struct {
         names.this = this.items;
         return names;
     }
-    fn find(self: Names, comptime capacity: usize, word: []const u8) ?u32 {
+    inline fn find(self: *const Names, comptime capacity: usize, word: []const u8) ?u32 {
         if (self.lengths & length(word) == 0) return null;
         var i = self.slots[sketch(word) & (capacity - 1)];
         while (i != none) : (i = self.next[i]) if (std.mem.eql(u8, self.members[i].name.?, word)) return i;
@@ -289,9 +368,9 @@ pub const Words = struct {
         return .{ .arena = arena, .ts = ts, .tests = shape.tests, .members = members, .names = try .init(arena, members, slots), .named_by = named_by, .seeded = seeded };
     }
     /// Each word and string of the stream, in order.
-    pub fn see(self: *Words, comptime capacity: usize, i: usize) std.mem.Allocator.Error!void {
+    pub inline fn see(self: *Words, comptime capacity: usize, i: usize) std.mem.Allocator.Error!void {
         const target = self.names.find(capacity, self.ts[i].text) orelse return;
-        if (!reference(self.ts, i, self.names)) return;
+        if (!reference(self.ts, i, &self.names)) return;
         while (self.members[self.at].last < i) self.at += 1;
         while (self.in < self.tests.len and self.tests[self.in].last < i) self.in += 1;
         if (self.in < self.tests.len and self.tests[self.in].first <= i) {
@@ -343,7 +422,7 @@ pub const Words = struct {
         return out;
     }
 };
-fn reference(ts: []const Token, i: usize, names: Names) bool {
+fn reference(ts: []const Token, i: usize, names: *const Names) bool {
     if (ts[i].kind == .string) return i >= 2 and ts[i - 1].is(",") and i + 1 < ts.len and ts[i + 1].is(")") and fieldOfThis(ts, i - 2, names);
     const next_colon = i + 1 < ts.len and ts[i + 1].is(":");
     if (i == 0) return !next_colon;
@@ -366,7 +445,7 @@ fn reference(ts: []const Token, i: usize, names: Names) bool {
 }
 
 /// Whether the expression ending at `k` is `@This()` or a name bound to it.
-fn containerThis(ts: []const Token, k: usize, names: Names) bool {
+fn containerThis(ts: []const Token, k: usize, names: *const Names) bool {
     const owner = ts[k];
     if (owner.kind == .word) {
         for (names.this) |name| if (std.mem.eql(u8, name, owner.text)) return true;
@@ -375,7 +454,7 @@ fn containerThis(ts: []const Token, k: usize, names: Names) bool {
     return owner.is(")") and k >= 3 and ts[k - 1].is("(") and ts[k - 2].is("This") and ts[k - 3].is("@");
 }
 /// `@field(T, ` before the `,` that follows `k`, with `T` the container.
-fn fieldOfThis(ts: []const Token, k: usize, names: Names) bool {
+fn fieldOfThis(ts: []const Token, k: usize, names: *const Names) bool {
     if (!containerThis(ts, k, names)) return false;
     const open = if (ts[k].kind == .word) k -| 1 else k -| 4;
     return open >= 2 and ts[open].is("(") and ts[open - 1].is("field") and ts[open - 2].is("@");

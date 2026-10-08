@@ -77,6 +77,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Zig scans collect test/import structure as tokens are emitted, keep bracket pairs in token padding and spill bounded scratch lists without limiting recovery. The 178-file real-source scan is 11.2% faster with identical graph, test/dead classifications and peak allocation; it remains 2.05% above its pre-context replay. Detailed A/B samples are in `bench/scan2.md` and `bench/scan2.json`.
+
 - Zig recovery keeps file-local name lookup and short-file reachability in caller-owned scratch. Short Zig files reserve at most 32 tokens before recovery. The 5,000-file `scan/memory` benchmark runs 26.8% faster; test-only and dead-import classification are unchanged.
 
 - CI pins the new preflight and adopts its shared durability, shakedown and no-async rule sets. File naming uses ziglint Z009; the empty preflight naming ledger is removed.
