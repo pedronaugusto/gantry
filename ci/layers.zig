@@ -1,5 +1,6 @@
 //! Source layers, lowest first. Every source has one explicit place.
 const gantry = @import("gantry");
+const family = @import("preflight_rules");
 
 pub const layers: []const gantry.rules.Layer = &.{
     .{ .name = "primitives", .patterns = &.{
@@ -75,7 +76,7 @@ pub const entries: []const []const u8 = &.{};
 
 pub const modules: []const gantry.NamedModule = &.{};
 
-pub const references: []const gantry.rules.ReferenceRule = &.{
+const package_references = [_]gantry.rules.ReferenceRule{
     .{ .name = "named dependencies", .unresolved_only = true, .except_targets = &.{
         "std",
         "sweep",
@@ -83,6 +84,9 @@ pub const references: []const gantry.rules.ReferenceRule = &.{
     } },
     .{ .name = "source siblings", .suffix = ".zig", .relative = true, .except_targets = &.{"src/**"} },
 };
+
+pub const references: []const gantry.rules.ReferenceRule = &(package_references ++ family.shakedown);
+pub const owned: []const gantry.rules.TokenRule = &(family.durability ++ family.no_async);
 
 pub const required = [_][]const u8{
     "src/builtins.zig",

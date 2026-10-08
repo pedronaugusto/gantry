@@ -75,7 +75,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- A check compiles each pattern once, finds each path's layer once, and a scan matches test paths once per file: `rules/forbidden` and `rules/nothing-imports` run 7.5 times faster, `rules/allowed` 6 times, transitive rules 2.5 times, ordered layers 1.8 times. `rules.matches` and `rules.matchesToken` match one pattern once, `rules.matches` in half the time it took and `rules.matchesToken` in no more; a caller matching one many times compiles it with `sweep.Pattern` and `rules.patternOptions`.
+- CI pins the new preflight and adopts its shared durability, shakedown and no-async rule sets. File naming uses ziglint Z009; the empty preflight naming ledger is removed.
+
+- A check compiles each pattern once, finds each path's layer once, and a scan matches test paths once per file: `rules/forbidden` and `rules/nothing-imports` run 7.5 times faster, `rules/allowed` 6 times, transitive rules 2.5 times, ordered layers 1.8 times. `rules.matches` and `rules.matchesToken` match one pattern once, `rules.matches` in half the time it took and `rules.matchesToken` in no more; a caller matching one many times compiles it with `rules.Globs`.
 - Zig: `if (x.is_test)` is a test branch only when `x` is `@import("builtin")` or a container-level `const` bound to it, so `if (options.is_test)` keeps its imports `import`. Decl and enum literals (`return .default;`, `x = .empty`) and `@field(@This(), "name")` reach the declaration they name, where before such a declaration could be read as test-only or unreached. The label in `break :blk` is no reference.
 - Paths refuse only a drive spelling (`C:` at the start), not every colon; `walk` skips names a scan would refuse. `path.valid` says whether `normalize` takes a path.
 - Take a Zig import path as written when it has no escape, and look for alias members only in files that declare an alias.
