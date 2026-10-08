@@ -98,6 +98,7 @@ fn one(gpa: std.mem.Allocator, io: std.Io, w: *std.Io.Writer, name: []const u8, 
         if (std.mem.eql(u8, name["graph/".len..], query) and std.mem.startsWith(u8, name, "graph/")) return queryWorkload(gpa, io, out, query, n);
     }
     if (std.mem.startsWith(u8, name, "graph/")) return graphWorkload(gpa, io, out, name["graph/".len..], n);
+    if (std.mem.eql(u8, name, "match/path-compiled")) return compiledPathWorkload(gpa, io, out, n);
     if (std.mem.eql(u8, name, "path/normalize") or std.mem.startsWith(u8, name, "match/")) return helperWorkload(gpa, io, out, name, n);
     return error.UnknownWorkload;
 }
@@ -125,7 +126,7 @@ fn list(w: *std.Io.Writer) !void {
     try w.writeAll("scan/memory\nscan/links\nscan/assets\n");
     try w.writeAll("scan/diagnostic\n");
     try w.writeAll("scan/tokens\nscan/sequences\n");
-    try w.writeAll("graph/from-edges\ngraph/analysis-init\ngraph/analyze\ngraph/aggregate\npath/normalize\nmatch/path\n");
+    try w.writeAll("graph/from-edges\ngraph/analysis-init\ngraph/analyze\ngraph/aggregate\npath/normalize\nmatch/path\nmatch/path-compiled\n");
     try w.writeAll("match/token\n");
     try w.writeAll("process/walk\nprocess/check-js\nprocess/check-python\nprocess/links\n");
     try w.writeAll("process/tokens\n");
@@ -575,6 +576,30 @@ fn helperWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, name: []const u8
     };
     const which: @FieldType(Ctx, "which") = if (std.mem.eql(u8, name, "path/normalize")) .normalize else if (std.mem.eql(u8, name, "match/path")) .path else if (std.mem.eql(u8, name, "match/token")) .token else return error.UnknownHelper;
     var ctx: Ctx = .{ .gpa = gpa, .raw = raw, .which = which, .path_pattern = try a.dupe(u8, "g1*/**/f?.zig"), .token_pattern = try a.dupe(u8, "g1*f3*") };
+    try repeat(io, out, &ctx, Ctx.op);
+    try out.count("inputs", n);
+    try out.count("hits", ctx.hits);
+}
+
+/// The same subjects and runtime pattern as match/path. Compilation stays
+/// outside the clock, as it does for rules in a check or a scan.
+fn compiledPathWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, n: usize) !void {
+    var arena: std.heap.ArenaAllocator = .init(gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const raw = try a.alloc([]const u8, n);
+    for (raw, 0..) |*p, i| p.* = try a.print("g{d}/./sub/../f{d}.zig", .{ i / 10, i % 10 });
+    var globs: gantry.rules.Globs = .{ .arena = a };
+    const Ctx = struct {
+        raw: []const []const u8,
+        pattern: *const gantry.rules.Pattern,
+        hits: usize = 0,
+        fn op(c: *@This()) error{}!void {
+            c.hits = 0;
+            for (c.raw) |p| c.hits += @intFromBool(c.pattern.matches(p));
+        }
+    };
+    var ctx: Ctx = .{ .raw = raw, .pattern = try globs.get(.path, try a.dupe(u8, "g1*/**/f?.zig")) };
     try repeat(io, out, &ctx, Ctx.op);
     try out.count("inputs", n);
     try out.count("hits", ctx.hits);

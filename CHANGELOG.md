@@ -34,6 +34,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `match/path-compiled` benchmarks repeated matching in gantry's path dialect, with compilation outside the clock, alongside the one-shot path row.
+
 - `zig build bench` builds the benchmarks in `bench/`: a directory's scan, analysis and aggregation, and every public operation in process. CI compiles them.
 - Every declaration of the root module has a doc comment.
 - `Reference.dead` and `Spec.dead`: a Zig import in a container-level declaration that nothing reaches, neither a root nor a test, which no build compiles. Every Zig file is read for it, with or without tests.
