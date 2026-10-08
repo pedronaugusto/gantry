@@ -42,22 +42,34 @@ pub fn recoverTokens(arena: std.mem.Allocator, source: []const u8, ts: []const l
                 try aliases.put(arena, ts[j + 1].text, name);
         }
     }
-    // One pass over the words: references between declarations, and the
-    // members an alias reaches.
-    var words = if (out.items.len > 0) try liveness.Words.init(arena, ts, shape) else null;
-    if (words != null) for (ts, 0..) |t, i| {
-        if (t.kind == .string) try words.?.see(i);
+    // Short streams have at most a handful of declarations. Specialising
+    // the temporary table keeps its mask constant in the word loop.
+    if (out.items.len > 0) {
+        if (ts.len <= 128) try classify(64, arena, ts, shape, &out, &where, aliases) else try classify(4096, arena, ts, shape, &out, &where, aliases);
+    }
+    return .{ .specs = try out.toOwnedSlice(arena), .unsupported = try unsupported.toOwnedSlice(arena) };
+}
+
+fn classify(comptime capacity: usize, arena: std.mem.Allocator, ts: []const l.Token, shape: liveness.Shape, out: *std.ArrayList(Spec), where: *std.ArrayList(u32), aliases: std.StringHashMapUnmanaged([]const u8)) std.mem.Allocator.Error!void {
+    // No recovered reference borrows this table after classification.
+    var slots: [capacity]u32 = undefined;
+    var words = try liveness.Words.init(arena, ts, shape, &slots);
+    for (ts, 0..) |t, i| {
+        if (t.kind == .string) try words.see(capacity, i);
         if (t.kind != .word) continue;
-        try words.?.see(i);
+        try words.see(capacity, i);
         if (i + 2 >= ts.len or !ts[i + 1].is(".") or ts[i + 2].kind != .word) continue;
         if (i > 0 and ts[i - 1].is(".")) continue;
         if (aliases.get(t.text)) |name| {
             try out.append(arena, .{ .name = name, .member = ts[i + 2].text, .offset = t.offset });
             try where.append(arena, @intCast(i));
         }
-    };
-    if (words) |*w| try w.classify(out.items, where.items);
-    return .{ .specs = try out.toOwnedSlice(arena), .unsupported = try unsupported.toOwnedSlice(arena) };
+    }
+    // At most 128 members and references in a short stream: the grouped
+    // edges, reach marks and traversal stack fit in 4 KiB and never escape.
+    var reach_buffer: [if (capacity == 64) 4096 else 0]u8 = undefined;
+    var reach_scratch: std.heap.FixedBufferAllocator = .init(&reach_buffer);
+    try words.classify(if (capacity == 64) reach_scratch.allocator() else arena, out.items, where.items);
 }
 
 const p = @import("../path.zig");

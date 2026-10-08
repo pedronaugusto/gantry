@@ -75,6 +75,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Zig recovery keeps file-local name lookup and short-file reachability in caller-owned scratch. The 5,000-file `scan/memory` benchmark runs 26.5% faster; test-only and dead-import classification are unchanged.
+
 - CI pins the new preflight and adopts its shared durability, shakedown and no-async rule sets. File naming uses ziglint Z009; the empty preflight naming ledger is removed.
 
 - A check compiles each pattern once, finds each path's layer once, and a scan matches test paths once per file: `rules/forbidden` and `rules/nothing-imports` run 7.5 times faster, `rules/allowed` 6 times, transitive rules 2.5 times, ordered layers 1.8 times. `rules.matches` and `rules.matchesToken` match one pattern once, `rules.matches` in half the time it took and `rules.matchesToken` in no more; a caller matching one many times compiles it with `rules.Globs`.

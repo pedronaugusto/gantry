@@ -222,11 +222,10 @@ const Names = struct {
     this: []const []const u8,
     /// Bit `n` for a name of `n` bytes, the last bit for any longer.
     lengths: u64 = 0,
-    slots: *[1 << 12]u32,
+    slots: []u32,
     next: []u32,
 
-    fn init(arena: std.mem.Allocator, members: []const Member) std.mem.Allocator.Error!Names {
-        const slots = try arena.create([1 << 12]u32);
+    fn init(arena: std.mem.Allocator, members: []const Member, slots: []u32) std.mem.Allocator.Error!Names {
         @memset(slots, none);
         var this: std.ArrayList([]const u8) = .empty;
         var names: Names = .{ .members = members, .this = &.{}, .slots = slots, .next = try arena.alloc(u32, members.len) };
@@ -234,16 +233,16 @@ const Names = struct {
             if (m.this) try this.append(arena, name);
             if (m.root) continue;
             names.lengths |= length(name);
-            const slot = &slots[sketch(name)];
+            const slot = &slots[sketch(name) & (slots.len - 1)];
             names.next[i] = slot.*;
             slot.* = @intCast(i);
         };
         names.this = this.items;
         return names;
     }
-    fn find(self: Names, word: []const u8) ?u32 {
+    fn find(self: Names, comptime capacity: usize, word: []const u8) ?u32 {
         if (self.lengths & length(word) == 0) return null;
-        var i = self.slots[sketch(word)];
+        var i = self.slots[sketch(word) & (capacity - 1)];
         while (i != none) : (i = self.next[i]) if (std.mem.eql(u8, self.members[i].name.?, word)) return i;
         return null;
     }
@@ -281,17 +280,17 @@ pub const Words = struct {
     at: usize = 0,
     in: usize = 0,
 
-    pub fn init(arena: std.mem.Allocator, ts: []const Token, shape: Shape) std.mem.Allocator.Error!Words {
+    pub fn init(arena: std.mem.Allocator, ts: []const Token, shape: Shape, slots: []u32) std.mem.Allocator.Error!Words {
         const members = try rootMembers(arena, ts, shape.partner);
         const named_by = try arena.alloc(u32, members.len);
         @memset(named_by, Names.none);
         const seeded = try arena.alloc(bool, members.len);
         @memset(seeded, false);
-        return .{ .arena = arena, .ts = ts, .tests = shape.tests, .members = members, .names = try .init(arena, members), .named_by = named_by, .seeded = seeded };
+        return .{ .arena = arena, .ts = ts, .tests = shape.tests, .members = members, .names = try .init(arena, members, slots), .named_by = named_by, .seeded = seeded };
     }
     /// Each word and string of the stream, in order.
-    pub fn see(self: *Words, i: usize) std.mem.Allocator.Error!void {
-        const target = self.names.find(self.ts[i].text) orelse return;
+    pub fn see(self: *Words, comptime capacity: usize, i: usize) std.mem.Allocator.Error!void {
+        const target = self.names.find(capacity, self.ts[i].text) orelse return;
         if (!reference(self.ts, i, self.names)) return;
         while (self.members[self.at].last < i) self.at += 1;
         while (self.in < self.tests.len and self.tests[self.in].last < i) self.in += 1;
@@ -307,17 +306,16 @@ pub const Words = struct {
     /// build analyses, and `dead` each one no build analyses. A dead import
     /// keeps its kind, since dead code is no evidence of a test. `where`
     /// holds the index in the stream of each spec's token.
-    pub fn classify(self: *Words, specs: []types.Spec, where: []const u32) std.mem.Allocator.Error!void {
+    pub fn classify(self: *Words, scratch: std.mem.Allocator, specs: []types.Spec, where: []const u32) std.mem.Allocator.Error!void {
         std.debug.assert(specs.len == where.len);
-        const reach = try self.reachable();
+        const reach = try self.reachable(scratch);
         for (specs, where) |*spec, at| {
             const member = reach[memberAt(self.members, at)];
             spec.dead = member == .dead;
             if (spec.kind == .import and (rangeAt(self.tests, at) or member == .test_only)) spec.kind = .@"test";
         }
     }
-    fn reachable(self: *Words) ![]const Reach {
-        const arena = self.arena;
+    fn reachable(self: *Words, arena: std.mem.Allocator) ![]const Reach {
         const n = self.members.len;
         // Edges grouped by source for the walk.
         const starts = try arena.alloc(u32, n + 1);

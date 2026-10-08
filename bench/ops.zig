@@ -13,6 +13,7 @@ var smoke = false;
 const std = @import("std");
 const gantry = @import("gantry");
 const fixtures = @import("fixtures.zig");
+const shakedown = @import("shakedown");
 
 const budget_ns: i96 = 200 * std.time.ns_per_ms;
 
@@ -413,6 +414,13 @@ fn scanWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u8, 
     if (!tokens and !std.mem.eql(u8, mode, "memory") and !std.mem.eql(u8, mode, "diagnostic") and shape == .zig) return error.UnknownScan;
     var ctx: Ctx = .{ .gpa = gpa, .io = io, .corpus = &corpus, .options = options, .diagnostic = std.mem.eql(u8, mode, "diagnostic") };
     try repeat(io, out, &ctx, Ctx.op);
+    // One untimed pass profiles allocation without charging the counter to
+    // the operation above. Corpus construction stays outside this too.
+    var allocations: shakedown.alloc.Counting = .init(gpa);
+    ctx.gpa = allocations.allocator();
+    try Ctx.op(&ctx);
+    try out.row("allocated_bytes", allocations.total_bytes, "bytes");
+    try out.row("allocations", allocations.allocations, "count");
     try out.row("source", bytes, "bytes");
     try out.count("files", n);
     try out.count("edges", ctx.edges);

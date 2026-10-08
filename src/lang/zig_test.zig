@@ -226,3 +226,38 @@ test "Zig imports a root, a test, a field, a call or a decl literal reaches are 
         "const a = @import(\"a.zig\");\nconst helper = a.x;\npub fn f() void { _ = @field(@This(), \"helper\"); }\n",
     }) |text| try expectDead(text, &.{});
 }
+
+test "Zig small-file liveness fits in an 8 KiB heap allocation budget" {
+    const shakedown = @import("shakedown");
+    var counted: shakedown.alloc.Counting = .init(a);
+    var imports = try g.imports(counted.allocator(), .zig,
+        \\const dep = @import("dep.zig");
+        \\pub fn f() void { _ = dep; }
+    );
+    defer imports.deinit();
+    try std.testing.expectEqual(@as(usize, 1), imports.items().len);
+    try std.testing.expect(!imports.items()[0].dead);
+    try std.testing.expectEqual(g.Kind.import, imports.items()[0].kind);
+    std.testing.expect(counted.total_bytes <= 8 * 1024) catch |err| {
+        std.debug.print("small-file heap: total {d}, peak {d}, allocations {d}\n", .{ counted.total_bytes, counted.peak_bytes, counted.allocations });
+        return err;
+    };
+}
+
+test "Zig liveness keeps colliding names distinct as a file grows" {
+    for ([_]usize{ 3, 8, 12, 16, 30, 300, 3000 }) |n| {
+        var source: std.ArrayList(u8) = .empty;
+        defer source.deinit(a);
+        // These names have the same length and first and last byte. Some
+        // share every sampled byte too, so collision chains remain needed.
+        for (0..n) |i| try source.print(a, "const a{d:0>4}z = @import(\"{d}.zig\");\n", .{ i, i });
+        try source.appendSlice(a, "pub fn f() void { _ = a0000z; }\ntest { _ = a0001z; }\n");
+        var imports = try g.imports(a, .zig, source.items);
+        defer imports.deinit();
+        try std.testing.expectEqual(n, imports.items().len);
+        for (imports.items(), 0..) |spec, i| {
+            try std.testing.expectEqual(i >= 2, spec.dead);
+            try std.testing.expectEqual(if (i == 1) g.Kind.@"test" else g.Kind.import, spec.kind);
+        }
+    }
+}
