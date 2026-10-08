@@ -1,5 +1,7 @@
 # gantry
 
+Work in progress.
+
 gantry recovers file dependencies from caller-selected source files, Markdown links and
 asset paths in Zig. It returns a graph with directory aggregation, layers, cycle
 witnesses and checks against caller-defined boundaries.

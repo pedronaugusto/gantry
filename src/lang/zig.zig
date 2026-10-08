@@ -76,14 +76,19 @@ fn classify(comptime capacity: usize, arena: std.mem.Allocator, ts: []const l.To
         if (t.kind == .string) try words.see(capacity, i);
         if (t.kind != .word) continue;
         try words.see(capacity, i);
-        if (i + 2 >= ts.len or !ts[i + 1].is(".") or ts[i + 2].kind != .word) continue;
-        if (i > 0 and ts[i - 1].is(".")) continue;
+        if (i + 2 >= ts.len or !dot(ts[i + 1]) or ts[i + 2].kind != .word) continue;
+        if (i > 0 and dot(ts[i - 1])) continue;
         if (aliases.get(t.text)) |name| {
             try out.append(arena, .{ .name = name, .member = ts[i + 2].text, .offset = t.offset });
             try where.append(arena, @intCast(i));
         }
     }
     try words.classify(workspace, out.items, where.items);
+}
+
+// This hot check needs one byte, rather than generic slice equality.
+inline fn dot(t: l.Token) bool {
+    return (t.kind == .word or t.kind == .punctuation) and t.text.len == 1 and t.text[0] == '.';
 }
 
 const p = @import("../path.zig");

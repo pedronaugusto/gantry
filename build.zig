@@ -65,6 +65,20 @@ pub fn build(b: *std.Build) !void {
                 .optimize = optimize,
             },
         });
+        // The hosted matrices come from preflight's planner, with the same
+        // repository configuration as the source gate.
+        const tooling = try b.dependencyLazy("preflight", .{});
+        const tool_target = b.resolveTargetQuery(.{ .cpu_arch = b.graph.host.result.cpu.arch, .cpu_model = .baseline, .os_tag = b.graph.host.result.os.tag, .abi = b.graph.host.result.abi });
+        const tool_gantry = try tooling.builder.dependencyLazy("gantry", .{ .target = tool_target, .optimize = .debug });
+        const planner = b.addExecutable(.{
+            .name = "preflight-checks",
+            .root_module = b.createModule(.{ .root_source_file = tooling.path("src/main.zig"), .target = tool_target, .optimize = .safe, .imports = &.{.{ .name = "gantry", .module = tool_gantry.module("gantry") }} }),
+        });
+        const plan = b.addRunArtifact(planner);
+        plan.setCwd(b.path("."));
+        plan.addArgs(&.{ "plan", "--config", "ci/workflow.json" });
+        plan.addPassthruArgs();
+        b.step("plan", "Print the hosted CI plan from preflight").dependOn(&plan.step);
         // A project that depends on gantry by path, with no packages to
         // fetch: the build a consumer gets.
         preflight.addConsumerCheck(b, .{ .package = "gantry", .program = b.path("ci/consumer.zig"), .packages = &.{sweep_package} });
