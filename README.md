@@ -73,7 +73,10 @@ return gantry.scan(gpa, io, paths, Files{}, Files.read, .{ .diagnostics = &diagn
 
 ## Design
 
-The library uses only `std`. Every public function returns a named error set. A call
+See [design invariants](docs/design.md) for storage and indexing contracts.
+
+The library uses `std` and the `sweep` runtime dependency for glob matching.
+Every public function returns a named error set. A call
 that can block takes an `std.Io`: `scan` passes its `io` to the reader, and `walk` lists
 a directory with it; nothing gantry returns keeps one. Scan scratch storage is released
 between files; reader bytes need to survive processing until the next read. Graph,

@@ -1,4 +1,6 @@
-# Invariants
+# Design
+
+## Invariants
 
 - Graph, imports and analysis handles identify live, aligned allocations. Each
   allocation has one owner; deinit poisons it before releasing its storage.
