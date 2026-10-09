@@ -123,7 +123,7 @@ fn list(w: *std.Io.Writer) !void {
     try w.writeAll("process/metrics-js\n");
     try w.writeAll("process/reach-js\nprocess/reach-python\n");
     try w.writeAll("process/type-checking-python\n");
-    try w.writeAll("scan/memory\nscan/links\nscan/assets\n");
+    try w.writeAll("scan/memory\nscan/zig\nscan/links\nscan/assets\n");
     try w.writeAll("scan/diagnostic\n");
     try w.writeAll("scan/tokens\nscan/sequences\n");
     try w.writeAll("graph/from-edges\ngraph/analysis-init\ngraph/analyze\ngraph/aggregate\npath/normalize\nmatch/path\nmatch/path-compiled\n");
@@ -218,7 +218,7 @@ const Corpus = struct {
     store: std.StringHashMapUnmanaged([]const u8) = .empty,
     edges: []const gantry.Edge = &.{},
 
-    const Shape = enum { zig, links, assets, packages };
+    const Shape = enum { zig, zig_modules, links, assets, packages };
     fn init(gpa: std.mem.Allocator, n: usize, shape: Shape) !Corpus {
         var c: Corpus = .{ .arena = .init(gpa), .paths = &.{} };
         errdefer c.arena.deinit();
@@ -234,6 +234,11 @@ const Corpus = struct {
                     p.* = try a.print("g{d}/f{d}.zig", .{ g, m });
                     const up = if (m == 0 and g > 0) try a.print("const up = @import(\"../g{d}/f5.zig\");\n", .{g - 1}) else "";
                     try c.store.put(a, p.*, try a.print("const Forbidden = {d};\nconst dep = @import(\"f{d}.zig\");\n{s}// {s} @import(\"fake.zig\")\nconst text = \"Forbidden @import(\\\"fake.zig\\\")\";\n", .{ i, prev, up, filler }));
+                },
+                .zig_modules => {
+                    // Source of the size a Zig module has, which the front end reads whole.
+                    p.* = try a.print("m{d}/f{d}.zig", .{ g, m });
+                    try c.store.put(a, p.*, try fixtures.source(a, "zig", 40));
                 },
                 .links => {
                     p.* = try a.print("d{d}/m{d}.md", .{ g, m });
@@ -380,7 +385,7 @@ fn rulesWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, family: []const u
 }
 
 fn scanWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u8, n: usize) !void {
-    const shape: Corpus.Shape = if (std.mem.eql(u8, mode, "links")) .links else if (std.mem.eql(u8, mode, "assets")) .assets else .zig;
+    const shape: Corpus.Shape = if (std.mem.eql(u8, mode, "links")) .links else if (std.mem.eql(u8, mode, "assets")) .assets else if (std.mem.eql(u8, mode, "zig")) .zig_modules else .zig;
     var corpus = try Corpus.init(gpa, n, shape);
     defer corpus.deinit();
     var bytes: usize = 0;
@@ -425,7 +430,7 @@ fn scanWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u8, 
     try out.row("source", bytes, "bytes");
     try out.count("files", n);
     try out.count("edges", ctx.edges);
-    if (shape == .zig) try out.count("references", ctx.references);
+    if (shape == .zig or shape == .zig_modules) try out.count("references", ctx.references);
     if (tokens) try out.count("tokens", ctx.tokens);
 }
 

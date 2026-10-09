@@ -36,6 +36,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `scan/zig` benchmark: a scan of Zig files of the size a module has, which the front end reads whole.
+
 - `match/path-compiled` benchmarks repeated matching in gantry's path dialect, with compilation outside the clock, alongside the one-shot path row.
 
 - `zig build bench` builds the benchmarks in `bench/`: a directory's scan, analysis and aggregation, and every public operation in process. CI compiles them.
