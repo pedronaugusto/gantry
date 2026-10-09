@@ -1,493 +1,371 @@
-//! Which Zig imports only a test build sees. Zig analyses lazily: code in a
-//! `test` declaration, in the taken branch of `if (builtin.is_test)`, or in a
-//! container-level declaration that nothing but tests reaches is never
-//! compiled outside `zig test`. Read in the passes recovery already makes:
-//! `Builder` as tokens are emitted, `Words.see` in its pass over words.
-//! Recovery of caller-supplied tokens reads the same shape without mutation.
+//! Which Zig imports only a test build sees, and which no build analyses.
+//! Zig analyses lazily: code in a `test` declaration, in the taken branch of
+//! `if (builtin.is_test)`, or in a container-level declaration that nothing
+//! but tests reaches is never compiled outside `zig test`. The facts are
+//! glint's: where an identifier or member resolves, and in which context.
+//! This file owns only the architecture policy over them, a reach walk over
+//! the file's container-level members.
+//!
+//! What glint leaves unknown is read towards production, never towards
+//! test or dead: a call it cannot resolve may call any member of that name,
+//! and so may a decl literal (`.name`) or a reflection (`@field(T, "name")`),
+//! whose type it does not infer.
 const std = @import("std");
-const l = @import("../../lexer.zig");
+const glint = @import("glint");
 const types = @import("../../types.zig");
-const Token = l.Token;
+const Ast = std.zig.Ast;
+const Allocator = std.mem.Allocator;
+const Projection = glint.Projection;
+const none = std.math.maxInt(u32);
 
 /// Token indices, both ends included.
 const Range = struct { first: u32, last: u32 };
-/// Streamed structure borrows token padding; recovery of a supplied const
-/// stream owns a separate table and never mutates that caller's tokens.
-const Partners = union(enum) {
-    stream: []const Token,
-    table: []const u32,
-    fn get(self: Partners, i: usize) u32 {
-        return switch (self) {
-            .stream => |ts| ts[i].partner,
-            .table => |table| table[i],
-        };
-    }
-};
 
-/// What one pass over a file's tokens finds for recovery and liveness.
-pub const Shape = struct {
-    /// Each `@` that starts an `@import`.
-    imports: []const u32,
-    /// For each bracket its partner; an unclosed one runs to the last token
-    /// and a stray closer is its own partner. Other tokens are left undefined.
-    partner: Partners,
-    /// Disjoint and in order: `test` bodies at any depth, and the
-    /// then-branches of `if (builtin.is_test)`, `if (comptime
-    /// builtin.is_test)` and `if (@import("builtin").is_test)`, where
-    /// `builtin` is any container-level `const` bound to `@import("builtin")`.
-    tests: []const Range,
-
-    pub fn read(arena: std.mem.Allocator, ts: []const Token) std.mem.Allocator.Error!Shape {
-        var builder: Builder(false, false) = .{};
-        try builder.reserve(arena, ts.len);
-        for (ts, 0..) |token, i| try builder.token(arena, token, ts[0 .. i + 1]);
-        var shape = try builder.finish(arena, ts);
-        // The local builder ends here; only streamed recovery consumes its
-        // inline import list while the builder is still alive.
-        shape.imports = try arena.dupe(u32, shape.imports);
-        return shape;
-    }
-};
-
-/// Bracket pairs and import/test marks collected as the lexer emits tokens.
-/// Streamed partners live in token padding; a supplied const stream uses
-/// an owned table. All offsets and observer tokens remain unchanged.
-pub fn Builder(comptime streamed: bool, comptime small: bool) type {
-    return struct {
-        const Self = @This();
-        const Tokens = if (streamed) []Token else []const Token;
-        partner: std.ArrayList(u32) = .empty,
-        open: SmallList(u32, if (small) 16 else 64) = .{},
-        imports: SmallList(u32, if (small) 8 else 64) = .{},
-        marks: SmallList(u32, if (small) 8 else 64) = .{},
-        builtins: SmallList([]const u8, 4) = .{},
-
-        pub fn reserve(self: *Self, arena: std.mem.Allocator, capacity: usize) std.mem.Allocator.Error!void {
-            if (!streamed) try self.partner.ensureTotalCapacityPrecise(arena, capacity);
-        }
-        pub inline fn token(self: *Self, arena: std.mem.Allocator, t: Token, ts: Tokens) std.mem.Allocator.Error!void {
-            const i = ts.len - 1;
-            if (!streamed) self.partner.appendAssumeCapacity(undefined);
-            switch (t.kind) {
-                .punctuation => switch (t.text[0]) {
-                    '(', '[', '{' => try self.open.append(arena, @intCast(i)),
-                    ')', ']', '}' => {
-                        const o = self.open.pop() orelse @as(u32, @intCast(i));
-                        self.put(ts, o, @intCast(i));
-                        self.put(ts, i, o);
-                    },
-                    else => {},
-                },
-                .word => {
-                    if (t.text.len == 4 or t.text.len == 7) if (t.is("test") or t.is("is_test")) try self.marks.append(arena, @intCast(i));
-                    if (t.is("import") and i > 0 and ts[i - 1].is("@")) try self.imports.append(arena, @intCast(i - 1));
-                },
-                else => {},
-            }
-            // Emission cannot look ahead to `import` or its literal operand.
-            // Recognise the completed builtin binding at its closing parenthesis.
-            if (t.is(")") and self.open.items().len == 0 and i >= 7 and ts[i - 7].is("const") and ts[i - 6].kind == .word and ts[i - 5].is("=") and ts[i - 3].is("import") and builtinImport(ts, i - 4))
-                try self.builtins.append(arena, ts[i - 6].text);
-        }
-        pub fn finish(self: *Self, arena: std.mem.Allocator, ts: Tokens) std.mem.Allocator.Error!Shape {
-            // The `import` word completed each recorded prefix during emission.
-            const n = self.imports.items().len;
-            for (self.open.items()) |o| self.put(ts, o, @intCast(ts.len - 1));
-            const partner: Partners = if (streamed) .{ .stream = ts } else .{ .table = self.partner.items };
-            // Marks are in order and each range starts at or after its mark, so
-            // the ranges come in order of their first token.
-            var tests: std.ArrayList(Range) = .empty;
-            for (self.marks.items()) |i| {
-                const range: Range = if (testDecl(ts, i)) |brace| .{ .first = i, .last = partner.get(brace) } else if (isTestCondition(ts, i, self.builtins.items())) then: {
-                    const first = i + 2;
-                    if (first >= ts.len) continue;
-                    const last = if (ts[first].is("{")) partner.get(first) else expressionEnd(ts, partner, first) orelse continue;
-                    break :then .{ .first = first, .last = @intCast(last) };
-                } else continue;
-                if (tests.items.len > 0 and range.first <= tests.items[tests.items.len - 1].last) {
-                    const top = &tests.items[tests.items.len - 1];
-                    top.last = @max(top.last, range.last);
-                } else try tests.append(arena, range);
-            }
-            return .{ .imports = self.imports.items()[0..n], .partner = partner, .tests = tests.items };
-        }
-        fn put(self: *Self, ts: Tokens, i: usize, value: u32) void {
-            if (streamed) ts[i].partner = value else self.partner.items[i] = value;
-        }
-    };
-}
-/// Structural lists normally stay beside the builder. Spilling copies
-/// their prefix once, then keeps one allocator-owned list, even after pop.
-/// This keeps temporary marks from blocking token-buffer arena resizing.
-fn SmallList(comptime T: type, comptime capacity: usize) type {
-    return struct {
-        const Self = @This();
-        buffer: [capacity]T = undefined,
-        used: usize = 0,
-        spill: std.ArrayList(T) = .empty,
-        spilled: bool = false,
-
-        fn items(self: *Self) []T {
-            return if (self.spilled) self.spill.items else self.buffer[0..self.used];
-        }
-        fn append(self: *Self, arena: std.mem.Allocator, value: T) std.mem.Allocator.Error!void {
-            if (!self.spilled and self.used == capacity) {
-                try self.spill.appendSlice(arena, &self.buffer);
-                self.spilled = true;
-            }
-            if (self.spilled) return self.spill.append(arena, value);
-            self.buffer[self.used] = value;
-            self.used += 1;
-        }
-        fn pop(self: *Self) ?T {
-            if (self.spilled) return self.spill.pop();
-            if (self.used == 0) return null;
-            self.used -= 1;
-            return self.buffer[self.used];
-        }
-    };
-}
-fn opener(t: Token) bool {
-    return t.kind == .punctuation and (t.text[0] == '(' or t.text[0] == '[' or t.text[0] == '{');
-}
-fn closer(t: Token) bool {
-    return t.kind == .punctuation and (t.text[0] == ')' or t.text[0] == ']' or t.text[0] == '}');
-}
-
-/// The body brace of a `test` declaration starting at `i`: `test {`,
-/// `test "name" {` or `test name {`.
-fn testDecl(ts: []const Token, i: usize) ?usize {
-    if (!ts[i].is("test") or i + 1 >= ts.len) return null;
-    if (ts[i + 1].is("{")) return i + 1;
-    if ((ts[i + 1].kind == .string or ts[i + 1].kind == .word) and i + 2 < ts.len and ts[i + 2].is("{")) return i + 2;
-    return null;
-}
-
-/// `@import("builtin")` from the `@` at `i`.
-fn builtinImport(ts: []const Token, i: usize) bool {
-    return i + 4 < ts.len and ts[i + 2].is("(") and ts[i + 3].kind == .string and std.mem.eql(u8, ts[i + 3].text, "builtin") and ts[i + 4].is(")");
-}
-/// `is_test` at `i` closes `if (B.is_test)` or `if (comptime B.is_test)`,
-/// where `B` is `@import("builtin")` or one of `builtins`, the names bound
-/// to it. Another value's `is_test` is no evidence of a test build.
-fn isTestCondition(ts: []const Token, i: usize, builtins: []const []const u8) bool {
-    if (!ts[i].is("is_test") or i < 3 or i + 1 >= ts.len or !ts[i + 1].is(")") or !ts[i - 1].is(".")) return false;
-    var k = i - 2;
-    if (ts[k].kind == .word) {
-        for (builtins) |name| {
-            if (std.mem.eql(u8, name, ts[k].text)) break;
-        } else return false;
-        if (k == 0) return false;
-        k -= 1;
-    } else if (k >= 4 and ts[k].is(")") and builtinImport(ts, k - 4)) {
-        if (k < 5) return false;
-        k -= 5;
-    } else return false;
-    if (ts[k].is("comptime")) {
-        if (k == 0) return false;
-        k -= 1;
-    }
-    return k > 0 and ts[k].is("(") and ts[k - 1].is("if");
-}
-/// The last token of an expression starting at `first`: before the `else`,
-/// `;`, `,` or closer that ends it at its own depth.
-fn expressionEnd(ts: []const Token, partner: Partners, first: usize) ?usize {
-    var k = first;
-    while (k < ts.len) {
-        const t = ts[k];
-        if (t.is("else") or t.is(";") or t.is(",") or closer(t)) break;
-        k = if (opener(t)) partner.get(k) + 1 else k + 1;
-    }
-    return if (k > first) k - 1 else null;
-}
-
-const Member = struct { first: u32, last: u32, name: ?[]const u8 = null, root: bool = false, is_test: bool = false, this: bool = false };
-
-/// The file's container-level members in order, tiling the stream.
-fn rootMembers(arena: std.mem.Allocator, ts: []const Token, partner: Partners) ![]const Member {
-    var out: std.ArrayList(Member) = .empty;
-    var i: usize = 0;
-    while (i < ts.len) {
-        const m = memberFrom(ts, partner, i);
-        try out.append(arena, m);
-        i = m.last + 1;
-    }
-    return out.items;
-}
-fn memberFrom(ts: []const Token, partner: Partners, first: usize) Member {
-    var m: Member = .{ .first = @intCast(first), .last = @intCast(first) };
-    var k = first;
-    while (k < ts.len) : (k += 1) {
-        const t = ts[k];
-        if (t.is("pub") or t.is("export")) {
-            m.root = true;
-        } else if (t.is("comptime")) {
-            m.root = true;
-            if (k + 1 < ts.len and ts[k + 1].is("{")) return ending(m, partner.get(k + 1));
-        } else if (t.is("extern")) {
-            if (k + 1 < ts.len and ts[k + 1].kind == .string) k += 1;
-        } else if (!(t.is("inline") or t.is("noinline") or t.is("threadlocal"))) break;
-    }
-    if (k >= ts.len) return ending(m, ts.len - 1);
-    if (testDecl(ts, k)) |brace| {
-        m.is_test = true;
-        return ending(m, partner.get(brace));
-    }
-    const t = ts[k];
-    if (t.is("fn") or t.is("const") or t.is("var")) {
-        if (k + 1 < ts.len and ts[k + 1].kind == .word) m.name = ts[k + 1].text;
-        if (m.name) |name| if (std.mem.eql(u8, name, "main")) {
-            m.root = true;
-        };
-        m.this = k + 6 < ts.len and ts[k + 2].is("=") and ts[k + 3].is("@") and ts[k + 4].is("This") and ts[k + 5].is("(") and ts[k + 6].is(")");
-        return ending(m, declarationEnd(ts, partner, k, t.is("fn")));
-    }
-    // A field, `usingnamespace` or bytes that are no declaration.
-    m.root = true;
-    return ending(m, fieldEnd(ts, partner, k));
-}
-fn ending(m: Member, end: usize) Member {
-    var out = m;
-    out.last = @intCast(@max(end, m.first));
-    return out;
-}
-/// The `;` that ends a declaration, or a function's body brace.
-fn declarationEnd(ts: []const Token, partner: Partners, start: usize, function: bool) usize {
-    var k = start;
-    while (k < ts.len) {
-        const t = ts[k];
-        if (t.is(";")) return k;
-        if (closer(t)) return k -| 1;
-        if (function and t.is("{") and body(ts, partner, k)) return partner.get(k);
-        k = if (opener(t)) partner.get(k) + 1 else k + 1;
-    }
-    return ts.len - 1;
-}
-/// A brace after a signature opens the body unless it opens a type in the
-/// return type: `error{`, `struct {`, `union(enum) {`.
-fn body(ts: []const Token, partner: Partners, k: usize) bool {
-    if (k == 0) return true;
-    const prev = ts[k - 1];
-    if (prev.is(")")) {
-        const o = partner.get(k - 1);
-        return o == 0 or !container(ts[o - 1]);
-    }
-    return !prev.is("error") and !container(prev);
-}
-fn container(t: Token) bool {
-    return t.is("struct") or t.is("union") or t.is("enum") or t.is("opaque");
-}
-fn fieldEnd(ts: []const Token, partner: Partners, start: usize) usize {
-    var k = start;
-    while (k < ts.len) {
-        const t = ts[k];
-        if (t.is(";") or t.is(",")) return k;
-        if (closer(t)) return k -| 1;
-        k = if (opener(t)) partner.get(k) + 1 else k + 1;
-    }
-    return ts.len - 1;
-}
+/// A container-level declaration, by its tokens. Roots are live whatever
+/// reaches them: `pub`, `export`, `main`, `comptime` blocks and fields.
+const Member = struct { first: u32, last: u32, root: bool, is_test: bool };
 
 const Reach = enum { dead, live, test_only };
 
-/// The names of container-level members that are not roots, the only ones
-/// a reference can change: by their lengths, then by a slot of length and
-/// ends with the members that share it chained. Most words name no such
-/// member, and most of those are passed over without reading their bytes.
-const Names = struct {
-    const none = std.math.maxInt(u32);
-    members: []const Member,
-    /// The names bound to `@This()`, roots or not.
-    this: []const []const u8,
-    /// Bit `n` for a name of `n` bytes, the last bit for any longer.
-    lengths: u64 = 0,
-    slots: []u32,
-    next: []u32,
-
-    fn init(arena: std.mem.Allocator, members: []const Member, slots: []u32) std.mem.Allocator.Error!Names {
-        @memset(slots, none);
-        var this: std.ArrayList([]const u8) = .empty;
-        var names: Names = .{ .members = members, .this = &.{}, .slots = slots, .next = try arena.alloc(u32, members.len) };
-        for (members, 0..) |m, i| if (m.name) |name| {
-            if (m.this) try this.append(arena, name);
-            if (m.root) continue;
-            names.lengths |= length(name);
-            const slot = &slots[sketch(name) & (slots.len - 1)];
-            names.next[i] = slot.*;
-            slot.* = @intCast(i);
-        };
-        names.this = this.items;
-        return names;
-    }
-    inline fn find(self: *const Names, comptime capacity: usize, word: []const u8) ?u32 {
-        if (self.lengths & length(word) == 0) return null;
-        var i = self.slots[sketch(word) & (capacity - 1)];
-        while (i != none) : (i = self.next[i]) if (std.mem.eql(u8, self.members[i].name.?, word)) return i;
-        return null;
-    }
-    fn length(word: []const u8) u64 {
-        return @as(u64, 1) << @intCast(@min(word.len, 63));
-    }
-    fn sketch(word: []const u8) u12 {
-        return @truncate(word.len *% 1031 +% @as(usize, word[0]) *% 37 +% word[word.len - 1]);
-    }
+/// One file of a project, with the projection of that project.
+pub const Facts = struct {
+    project: *const glint.Project,
+    file: glint.Project.FileId,
+    tree: *const Ast,
+    declarations: []const glint.Declaration,
+    projection: *const Projection,
 };
 
-/// References between container-level members, gathered as recovery walks
-/// a file's words and strings. Live from the roots (`pub`, `export`,
-/// `comptime`, fields, `main`), else test-only from `test` declarations and
-/// references in test context, else dead. References are names outside
-/// field position, `x.name(` calls, `Self.name` where `Self` is `@This()`,
-/// decl and enum literals (`.name` that follows no operand and initialises
-/// no field) and `@field(Self, "name")`: Zig forbids a local that shadows a
-/// container-level name, so a matching name is that declaration. A doubtful
-/// case is a reference, so it errs towards live.
-pub const Words = struct {
-    const Ref = struct { from: u32, to: u32 };
-    arena: std.mem.Allocator,
-    ts: []const Token,
-    tests: []const Range,
-    members: []const Member,
-    names: Names,
-    refs: std.ArrayList(Ref) = .empty,
-    seeds: std.ArrayList(u32) = .empty,
-    /// The member that last named each target: members come in order, so
-    /// a repeat from the same member is dropped.
-    named_by: []u32,
-    seeded: []bool,
-    /// The member and test range at or after the last word seen.
-    at: usize = 0,
-    in: usize = 0,
-
-    pub fn init(arena: std.mem.Allocator, ts: []const Token, shape: Shape, slots: []u32) std.mem.Allocator.Error!Words {
-        const members = try rootMembers(arena, ts, shape.partner);
-        const named_by = try arena.alloc(u32, members.len);
-        @memset(named_by, Names.none);
-        const seeded = try arena.alloc(bool, members.len);
-        @memset(seeded, false);
-        return .{ .arena = arena, .ts = ts, .tests = shape.tests, .members = members, .names = try .init(arena, members, slots), .named_by = named_by, .seeded = seeded };
+/// What a file's specs are, from its projection.
+/// Results are in `arena`; `scratch` holds what the reading needs meanwhile.
+pub fn read(arena: Allocator, scratch: Allocator, facts: Facts) error{ InvalidSource, OutOfMemory }!types.Recovery {
+    const tree = facts.tree;
+    const projection = facts.projection;
+    var reading: Reading = .{ .arena = scratch, .facts = facts };
+    try reading.members();
+    try reading.testRanges();
+    try reading.uses();
+    const reach = try reading.reach();
+    var specs: std.ArrayList(types.Spec) = .empty;
+    // Each import's member access straight on the call: `@import("x").m`.
+    const direct = try scratch.alloc(u32, projection.imports.len);
+    @memset(direct, none);
+    for (projection.references) |ref| {
+        if (tree.nodeTag(nodeOf(ref.node)) != .field_access) continue;
+        const lhs = tree.nodeData(nodeOf(ref.node)).node_and_token[0];
+        if (reading.importAt(lhs)) |i| direct[i] = ref.node.raw();
     }
-    /// Each word and string of the stream, in order.
-    pub inline fn see(self: *Words, comptime capacity: usize, i: usize) std.mem.Allocator.Error!void {
-        const target = self.names.find(capacity, self.ts[i].text) orelse return;
-        if (!reference(self.ts, i, &self.names)) return;
-        while (self.members[self.at].last < i) self.at += 1;
-        while (self.in < self.tests.len and self.tests[self.in].last < i) self.in += 1;
-        if (self.in < self.tests.len and self.tests[self.in].first <= i) {
+    for (projection.imports, direct) |imp, access| {
+        const token = tree.nodeMainToken(nodeOf(imp.node));
+        const offset = tree.tokenStart(token);
+        // AstGen rejects an import of anything but a string literal, so a file
+        // glint reports as parsed has a spelling for each; if one is ever
+        // missing the file is not read.
+        const name = try arena.dupe(u8, imp.spelling orelse return error.InvalidSource);
+        try specs.append(arena, reading.classified(reach, .{ .name = name, .offset = offset }, token, imp.context));
+        if (access == none) continue;
+        const member = tree.tokenSlice(tree.nodeData(@fromBackingInt(access)).node_and_token[1]);
+        try specs.append(arena, reading.classified(reach, .{ .name = name, .member = try arena.dupe(u8, member), .offset = offset }, token, imp.context));
+    }
+    // A member of an import through the alias it is bound to, read where
+    // that binding is in scope.
+    for (projection.references) |ref| {
+        const node = nodeOf(ref.node);
+        if (tree.nodeTag(node) != .field_access) continue;
+        const lhs = tree.nodeData(node).node_and_token[0];
+        if (tree.nodeTag(lhs) != .identifier) continue;
+        const i = reading.importBound(lhs) orelse continue;
+        const name = try arena.dupe(u8, projection.imports[i].spelling orelse continue);
+        const token = tree.nodeMainToken(lhs);
+        const member = tree.tokenSlice(tree.nodeData(node).node_and_token[1]);
+        try specs.append(arena, reading.classified(reach, .{ .name = name, .member = try arena.dupe(u8, member), .offset = tree.tokenStart(token) }, token, ref.context));
+    }
+    return .{ .specs = try specs.toOwnedSlice(arena) };
+}
+
+fn nodeOf(id: glint.Project.NodeId) Ast.Node.Index {
+    return @fromBackingInt(id.raw());
+}
+
+const Reading = struct {
+    arena: Allocator,
+    facts: Facts,
+    list: []const Member = &.{},
+    /// A member's declaration node to the member.
+    by_node: std.AutoHashMapUnmanaged(u32, u32) = .empty,
+    /// A member that is no root, by name.
+    by_name: std.StringHashMapUnmanaged(u32) = .empty,
+    tests: []const Range = &.{},
+    /// Uses between members, and the members tests use.
+    edges: std.ArrayList(struct { from: u32, to: u32 }) = .empty,
+    seeds: std.ArrayList(u32) = .empty,
+    seeded: []bool = &.{},
+    /// The member that last used each target; members come in order.
+    used_by: []u32 = &.{},
+
+    fn members(self: *Reading) Allocator.Error!void {
+        const tree = self.facts.tree;
+        const roots = tree.rootDecls();
+        const out = try self.arena.alloc(Member, roots.len);
+        for (roots, out, 0..) |node, *member, index| {
+            member.* = .{ .first = tree.firstToken(node), .last = tree.lastToken(node), .root = true, .is_test = false };
+            var buffer: [1]Ast.Node.Index = undefined;
+            var key = node;
+            var name: ?Ast.TokenIndex = null;
+            if (tree.nodeTag(node) == .test_decl) {
+                member.root = false;
+                member.is_test = true;
+            } else if (tree.fullFnProto(&buffer, node)) |function| {
+                if (tree.nodeTag(node) == .fn_decl) key = tree.nodeData(node).node_and_node[0];
+                name = function.name_token;
+                member.root = function.visib_token != null or exports(tree, function.extern_export_inline_token);
+            } else if (tree.fullVarDecl(node)) |variable| {
+                name = variable.ast.mut_token + 1;
+                member.root = variable.visib_token != null or exports(tree, variable.extern_export_token);
+            }
+            const token = name orelse continue;
+            try self.by_node.put(self.arena, @backingInt(key), @intCast(index)); // safe: a file's root declarations fit its u32 node count.
+            const text = try self.identifier(token) orelse continue;
+            if (std.mem.eql(u8, text, "main")) member.root = true;
+            if (!member.root) try self.by_name.put(self.arena, text, @intCast(index)); // safe: as above.
+        }
+        self.list = out;
+        self.seeded = try self.arena.alloc(bool, out.len);
+        @memset(self.seeded, false);
+        self.used_by = try self.arena.alloc(u32, out.len);
+        @memset(self.used_by, none);
+    }
+
+    fn exports(tree: *const Ast, token: ?Ast.TokenIndex) bool {
+        return if (token) |t| tree.tokenTag(t) == .keyword_export else false;
+    }
+
+    /// The name a token spells; `@"quoted"` names are decoded.
+    fn identifier(self: *Reading, token: Ast.TokenIndex) Allocator.Error!?[]const u8 {
+        const raw = self.facts.tree.tokenSlice(token);
+        if (!std.mem.startsWith(u8, raw, "@\"")) return raw;
+        return std.zig.string_literal.parseAlloc(self.arena, raw[1..]) catch |err| switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            error.InvalidLiteral => null,
+        };
+    }
+
+    /// The then-branches of `if (builtin.is_test)` and `if (comptime
+    /// builtin.is_test)`, where `builtin` is `@import("builtin")` or a
+    /// binding of it. Another value's `is_test` is no evidence of a test build.
+    fn testRanges(self: *Reading) Allocator.Error!void {
+        const tree = self.facts.tree;
+        var found: std.ArrayList(Range) = .empty;
+        for (tree.nodes.items(.tag), 0..) |tag, index| {
+            if (tag != .if_simple and tag != .@"if") continue;
+            const node: Ast.Node.Index = @fromBackingInt(@intCast(index)); // safe: a node index of this tree.
+            const branch = tree.fullIf(node).?;
+            var condition = branch.ast.cond_expr;
+            if (tree.nodeTag(condition) == .@"comptime") condition = tree.nodeData(condition).node;
+            if (tree.nodeTag(condition) != .field_access) continue;
+            const access = tree.nodeData(condition).node_and_token;
+            if (!std.mem.eql(u8, tree.tokenSlice(access[1]), "is_test")) continue;
+            const import = self.importOf(access[0]) orelse continue;
+            if (!std.mem.eql(u8, self.facts.projection.imports[import].spelling orelse continue, "builtin")) continue;
+            try found.append(self.arena, .{ .first = tree.firstToken(branch.ast.then_expr), .last = tree.lastToken(branch.ast.then_expr) });
+        }
+        // Nested branches are inside another; the walk is in node order,
+        // which is not token order.
+        std.mem.sort(Range, found.items, {}, struct {
+            fn less(_: void, x: Range, y: Range) bool {
+                return x.first < y.first;
+            }
+        }.less);
+        var merged: std.ArrayList(Range) = .empty;
+        for (found.items) |range| {
+            if (merged.items.len > 0 and range.first <= merged.items[merged.items.len - 1].last) {
+                const top = &merged.items[merged.items.len - 1];
+                top.last = @max(top.last, range.last);
+            } else try merged.append(self.arena, range);
+        }
+        self.tests = merged.items;
+    }
+
+    /// The index in `imports` of the import call at `node`.
+    fn importAt(self: *const Reading, node: Ast.Node.Index) ?usize {
+        const imports = self.facts.projection.imports;
+        var lo: usize = 0;
+        var hi: usize = imports.len;
+        const want = @backingInt(node);
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            if (imports[mid].node.raw() < want) lo = mid + 1 else hi = mid;
+        }
+        return if (lo < imports.len and imports[lo].node.raw() == want) lo else null;
+    }
+
+    /// The import `node` is, or the import of the binding `node` names.
+    fn importOf(self: *const Reading, node: Ast.Node.Index) ?usize {
+        return self.importAt(node) orelse if (self.facts.tree.nodeTag(node) == .identifier) self.importBound(node) else null;
+    }
+
+    /// The import that the identifier at `node` names through a binding
+    /// `const alias = @import("x");`, in whatever scope it is declared.
+    fn importBound(self: *const Reading, node: Ast.Node.Index) ?usize {
+        const refs = self.facts.projection.references;
+        var lo: usize = 0;
+        var hi: usize = refs.len;
+        const want = @backingInt(node);
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            if (refs[mid].node.raw() < want) lo = mid + 1 else hi = mid;
+        }
+        if (lo == refs.len or refs[lo].node.raw() != want) return null;
+        const decl = refs[lo].definition orelse return null;
+        const record = self.facts.declarations[decl.index];
+        if (record.kind != .variable) return null;
+        const init = (self.facts.tree.fullVarDecl(record.node) orelse return null).ast.init_node.unwrap() orelse return null;
+        return self.importAt(init);
+    }
+
+    fn memberAt(self: *const Reading, token: u32) ?u32 {
+        const list = self.list;
+        var lo: usize = 0;
+        var hi: usize = list.len;
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            if (list[mid].last < token) lo = mid + 1 else hi = mid;
+        }
+        return if (lo < list.len and list[lo].first <= token) @intCast(lo) else null; // safe: bounded by the member count.
+    }
+
+    fn inTest(self: *const Reading, token: u32) bool {
+        const ranges = self.tests;
+        var lo: usize = 0;
+        var hi: usize = ranges.len;
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            if (ranges[mid].last < token) lo = mid + 1 else hi = mid;
+        }
+        return lo < ranges.len and ranges[lo].first <= token;
+    }
+
+    /// Records that the member holding `token` uses `target`.
+    fn use(self: *Reading, token: u32, in_test: bool, target: u32) Allocator.Error!void {
+        if (self.list[target].root) return;
+        const from = self.memberAt(token) orelse return;
+        if (in_test or self.inTest(token)) {
             if (!self.seeded[target]) try self.seeds.append(self.arena, target);
             self.seeded[target] = true;
-        } else if (self.at != target and self.named_by[target] != self.at) {
-            self.named_by[target] = @intCast(self.at);
-            try self.refs.append(self.arena, .{ .from = @intCast(self.at), .to = target });
+        } else if (from != target and self.used_by[target] != from) {
+            self.used_by[target] = from;
+            try self.edges.append(self.arena, .{ .from = from, .to = target });
         }
     }
-    /// After every word: marks `test` each spec whose token only a test
-    /// build analyses, and `dead` each one no build analyses. A dead import
-    /// keeps its kind, since dead code is no evidence of a test. `where`
-    /// holds the index in the stream of each spec's token.
-    pub fn classify(self: *Words, scratch: std.mem.Allocator, specs: []types.Spec, where: []const u32) std.mem.Allocator.Error!void {
-        std.debug.assert(specs.len == where.len);
-        const reach = try self.reachable(scratch);
-        for (specs, where) |*spec, at| {
-            const member = reach[memberAt(self.members, at)];
-            spec.dead = member == .dead;
-            if (spec.kind == .import and (rangeAt(self.tests, at) or member == .test_only)) spec.kind = .@"test";
+
+    fn uses(self: *Reading) Allocator.Error!void {
+        const tree = self.facts.tree;
+        for (self.facts.projection.references) |ref| {
+            const decl = ref.definition orelse continue;
+            const record = self.facts.declarations[decl.index];
+            if (record.kind != .variable and record.kind != .function) continue;
+            const target = self.by_node.get(@backingInt(record.node)) orelse continue;
+            try self.use(tree.nodeMainToken(nodeOf(ref.node)), ref.context == .@"test", target);
+        }
+        // A call glint cannot resolve may be any member of its name.
+        for (self.facts.projection.calls) |call| {
+            if (call.unknown == null) continue;
+            var buffer: [1]Ast.Node.Index = undefined;
+            const callee = tree.fullCall(&buffer, nodeOf(call.node)).?.ast.fn_expr;
+            if (tree.nodeTag(callee) != .field_access) continue;
+            try self.named(tree.nodeData(callee).node_and_token[1], tree.nodeMainToken(nodeOf(call.node)), call.context == .@"test");
+        }
+        for (tree.nodes.items(.tag), 0..) |tag, index| {
+            const node: Ast.Node.Index = @fromBackingInt(@intCast(index)); // safe: a node index of this tree.
+            switch (tag) {
+                // A decl literal: `.name` takes the declaration of its result type.
+                .enum_literal => try self.named(tree.nodeMainToken(node), tree.nodeMainToken(node), try self.contextAt(node)),
+                // `test name {}` tests the declaration `name`.
+                .test_decl => if (tree.nodeData(node).opt_token_and_node[0].unwrap()) |token| {
+                    if (tree.tokenTag(token) == .identifier) try self.named(token, token, true);
+                },
+                .builtin_call_two, .builtin_call_two_comma, .builtin_call, .builtin_call_comma => {
+                    const builtin = tree.tokenSlice(tree.nodeMainToken(node));
+                    if (!std.mem.eql(u8, builtin, "@field") and !std.mem.eql(u8, builtin, "@hasDecl")) continue;
+                    var buffer: [2]Ast.Node.Index = undefined;
+                    const args = builtinArgs(tree, node, &buffer);
+                    if (args.len != 2 or tree.nodeTag(args[1]) != .string_literal) continue;
+                    const token = tree.nodeMainToken(args[1]);
+                    const text = std.zig.string_literal.parseAlloc(self.arena, tree.tokenSlice(token)) catch |err| switch (err) {
+                        error.OutOfMemory => return error.OutOfMemory,
+                        error.InvalidLiteral => continue,
+                    };
+                    if (self.by_name.get(text)) |target| try self.use(token, try self.contextAt(node), target);
+                },
+                else => {},
+            }
         }
     }
-    fn reachable(self: *Words, arena: std.mem.Allocator) ![]const Reach {
-        const n = self.members.len;
+
+    /// A use of the member named by `name_token`, made at `at`.
+    fn named(self: *Reading, name_token: Ast.TokenIndex, at: Ast.TokenIndex, in_test: bool) Allocator.Error!void {
+        const text = try self.identifier(name_token) orelse return;
+        if (self.by_name.get(text)) |target| try self.use(at, in_test, target);
+    }
+
+    /// The context of a node glint did not project.
+    fn contextAt(self: *const Reading, node: Ast.Node.Index) Allocator.Error!bool {
+        const ctx = Projection.context(self.facts.project, self.facts.file, self.facts.tree.nodeMainToken(node)) catch return false;
+        return ctx == .@"test";
+    }
+
+    /// Live from the roots, else test-only from tests and what they use, else dead.
+    fn reach(self: *Reading) Allocator.Error![]const Reach {
+        const n = self.list.len;
         // Edges grouped by source for the walk.
-        const starts = try arena.alloc(u32, n + 1);
+        const starts = try self.arena.alloc(u32, n + 1);
         @memset(starts, 0);
-        for (self.refs.items) |r| starts[r.from + 1] += 1;
+        for (self.edges.items) |e| starts[e.from + 1] += 1;
         for (1..starts.len) |i| starts[i] += starts[i - 1];
-        const targets = try arena.alloc(u32, self.refs.items.len);
-        const fill = try arena.dupe(u32, starts[0..n]);
-        for (self.refs.items) |r| {
-            targets[fill[r.from]] = r.to;
-            fill[r.from] += 1;
+        const targets = try self.arena.alloc(u32, self.edges.items.len);
+        const fill = try self.arena.dupe(u32, starts[0..n]);
+        for (self.edges.items) |e| {
+            targets[fill[e.from]] = e.to;
+            fill[e.from] += 1;
         }
-        const out = try arena.alloc(Reach, n);
+        const out = try self.arena.alloc(Reach, n);
         @memset(out, .dead);
         var stack: std.ArrayList(u32) = .empty;
         for ([_]Reach{ .live, .test_only }) |mark| {
-            for (self.members, 0..) |m, i| if (if (mark == .live) m.root else m.is_test) try stack.append(arena, @intCast(i));
-            if (mark == .test_only) try stack.appendSlice(arena, self.seeds.items);
+            for (self.list, 0..) |m, i| if (if (mark == .live) m.root else m.is_test) try stack.append(self.arena, @intCast(i)); // safe: bounded by the member count.
+            if (mark == .test_only) try stack.appendSlice(self.arena, self.seeds.items);
             while (stack.pop()) |i| {
                 if (out[i] != .dead) continue;
                 out[i] = mark;
-                for (targets[starts[i]..starts[i + 1]]) |j| if (out[j] == .dead) try stack.append(arena, j);
+                for (targets[starts[i]..starts[i + 1]]) |j| if (out[j] == .dead) try stack.append(self.arena, j);
             }
         }
         return out;
     }
+
+    /// `spec` read at `token`: a test when a test context holds it or only a
+    /// test build reaches its member, dead when no build analyses its member.
+    /// A dead import keeps its kind, since dead code is no evidence of a test.
+    fn classified(self: *const Reading, reach_of: []const Reach, spec: types.Spec, token: u32, context: Projection.Context) types.Spec {
+        var out = spec;
+        const member = reach_of[self.memberAt(token) orelse return out];
+        out.dead = member == .dead;
+        if (context == .@"test" or self.inTest(token) or member == .test_only) out.kind = .@"test";
+        return out;
+    }
 };
-fn reference(ts: []const Token, i: usize, names: *const Names) bool {
-    if (ts[i].kind == .string) return i >= 2 and ts[i - 1].is(",") and i + 1 < ts.len and ts[i + 1].is(")") and fieldOfThis(ts, i - 2, names);
-    const next_colon = i + 1 < ts.len and ts[i + 1].is(":");
-    if (i == 0) return !next_colon;
-    const prev = ts[i - 1];
-    // `.name` after an operand is a member of something else unless called,
-    // or of `@This()`; `..name` is a range bound.
-    if (prev.is(".") and !(i >= 2 and ts[i - 2].is("."))) {
-        if (i + 1 < ts.len and ts[i + 1].is("(")) return true;
-        if (i < 2) return true;
-        if (operand(ts, i - 2)) return containerThis(ts, i - 2, names);
-        // A decl or enum literal, unless it names a field it initialises:
-        // `.{ .name = x }`.
-        const field = (ts[i - 2].is("{") or ts[i - 2].is(",")) and i + 2 < ts.len and ts[i + 1].is("=") and !(ts[i + 2].is("=") or ts[i + 2].is(">"));
-        return !field;
-    }
-    // The label of `break :name` or `continue :name`.
-    if (prev.is(":") and i >= 2 and (ts[i - 2].is("break") or ts[i - 2].is("continue"))) return false;
-    // A field, parameter or label name, but not a sentinel `[n:0]` or `[a..n :0]`.
-    return !next_colon or prev.is("[") or prev.is(".");
-}
 
-/// Whether the expression ending at `k` is `@This()` or a name bound to it.
-fn containerThis(ts: []const Token, k: usize, names: *const Names) bool {
-    const owner = ts[k];
-    if (owner.kind == .word) {
-        for (names.this) |name| if (std.mem.eql(u8, name, owner.text)) return true;
-        return false;
-    }
-    return owner.is(")") and k >= 3 and ts[k - 1].is("(") and ts[k - 2].is("This") and ts[k - 3].is("@");
-}
-/// `@field(T, ` before the `,` that follows `k`, with `T` the container.
-fn fieldOfThis(ts: []const Token, k: usize, names: *const Names) bool {
-    if (!containerThis(ts, k, names)) return false;
-    const open = if (ts[k].kind == .word) k -| 1 else k -| 4;
-    return open >= 2 and ts[open].is("(") and ts[open - 1].is("field") and ts[open - 2].is("@");
-}
-/// Whether token `k` ends an operand, so a `.name` after it is a member:
-/// a name that is no keyword (`error` is one), a literal, a closer, or the
-/// `?` and `*` of `x.?` and `x.*`. A label (`break :blk .x`) is none.
-fn operand(ts: []const Token, k: usize) bool {
-    const t = ts[k];
-    return switch (t.kind) {
-        .word => (std.zig.Token.getKeyword(t.text) == null or t.is("error")) and !(k >= 2 and ts[k - 1].is(":") and (ts[k - 2].is("break") or ts[k - 2].is("continue"))),
-        .string, .template => true,
-        .punctuation => closer(t) or ((t.is("?") or t.is("*")) and k >= 1 and ts[k - 1].is(".")),
-        .newline => false,
+fn builtinArgs(tree: *const Ast, node: Ast.Node.Index, buffer: *[2]Ast.Node.Index) []const Ast.Node.Index {
+    return switch (tree.nodeTag(node)) {
+        .builtin_call_two, .builtin_call_two_comma => blk: {
+            var count: usize = 0;
+            inline for (tree.nodeData(node).opt_node_and_opt_node) |item| if (item.unwrap()) |arg| {
+                buffer[count] = arg;
+                count += 1;
+            };
+            break :blk buffer[0..count];
+        },
+        .builtin_call, .builtin_call_comma => tree.extraDataSlice(tree.nodeData(node).extra_range, Ast.Node.Index),
+        else => &.{},
     };
-}
-
-/// The member holding token `i`; members tile the stream.
-fn memberAt(members: []const Member, i: usize) usize {
-    var lo: usize = 0;
-    var hi: usize = members.len;
-    while (lo < hi) {
-        const mid = lo + (hi - lo) / 2;
-        if (members[mid].last < i) lo = mid + 1 else hi = mid;
-    }
-    return lo;
-}
-fn rangeAt(ranges: []const Range, i: usize) bool {
-    var lo: usize = 0;
-    var hi: usize = ranges.len;
-    while (lo < hi) {
-        const mid = lo + (hi - lo) / 2;
-        if (ranges[mid].last < i) lo = mid + 1 else hi = mid;
-    }
-    return lo < ranges.len and ranges[lo].first <= i;
 }

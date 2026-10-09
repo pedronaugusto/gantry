@@ -41,6 +41,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/code_kind.zig",
         "src/graph/Storage.zig",
         "src/lang/java/packages.zig",
+        "src/lang/zig/Recoveries.zig",
         "src/lang/go.zig",
         "src/lang/javascript.zig",
         "src/lang/python/exports.zig",
@@ -79,6 +80,7 @@ pub const modules: []const gantry.NamedModule = &.{};
 const package_references = [_]gantry.rules.ReferenceRule{
     .{ .name = "named dependencies", .unresolved_only = true, .except_targets = &.{
         "std",
+        "glint",
         "sweep",
         "shakedown",
     } },
@@ -122,6 +124,7 @@ pub const required = [_][]const u8{
     "src/code_kind.zig",
     "src/graph/Storage.zig",
     "src/lang/java/packages.zig",
+    "src/lang/zig/Recoveries.zig",
     "src/lang/go.zig",
     "src/lang/javascript.zig",
     "src/lang/python/exports.zig",

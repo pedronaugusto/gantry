@@ -21,12 +21,14 @@ test "Zig comments strings characters multiline strings and whitespace" {
         \\const multi =
         \\    \\@import("fake.zig")
         \\;
-        \\const real = @import /* invalid Zig comment: no such syntax */ ("bad.zig");
         \\const a = @import (
         \\    "a.zig"
         \\);
         \\const b = @import("b\x2ezig");
     , &.{ "a.zig", "b.zig" });
+}
+test "Zig has no comment between a builtin and its arguments" {
+    try std.testing.expectError(error.InvalidSource, g.imports(std.testing.allocator, .zig, "const real = @import /* no such syntax */ (\"bad.zig\");"));
 }
 test "Zig member references direct bound typed and multiline with no comments or strings" {
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
@@ -38,6 +40,7 @@ test "Zig member references direct bound typed and multiline with no comments or
         \\const x = @import("proto").mirror;
         \\// p.mirror
         \\const s = "p.mirror";
+        \\const other = struct { const p = 1; };
         \\const y = other.p.mirror;
     );
     defer parsed.deinit();
@@ -215,9 +218,10 @@ test "Rust mod use trees nested comments raw strings and lifetimes" {
     , &.{ "net", "crate::util::Thing", "super::shared", "self::local", "crate::alpha", "crate::beta::one", "crate::beta::two", "crate::gamma", "external::Thing" });
 }
 test "unterminated strings and comments do not invent imports" {
-    for ([_]g.Language{ .zig, .c, .javascript, .python, .go, .rust }) |language| {
+    for ([_]g.Language{ .c, .javascript, .python, .go, .rust }) |language| {
         try check(language, "\" unterminated @import(\"bad\")", &.{});
     }
+    try std.testing.expectError(error.InvalidSource, g.imports(std.testing.allocator, .zig, "const s = \" unterminated @import(\"bad\")"));
     try check(.rust, "/* mod bad;", &.{});
 }
 test "ordinary escapes decode unicode and reject malformed paths" {
@@ -293,7 +297,7 @@ test "an unclosed quote ends at its line where literals cannot span lines" {
     try check(.javascript, "const A = () => <p>Don't</p>;\nconst B = lazy(() => import('./B.jsx'));\n", &.{"./B.jsx"});
     try check(.c, "#include \"b.h\"\n#if 0\nthis won't build\n#endif\n#include \"c.h\"\n", &.{ "b.h", "c.h" });
     try check(.c, "#include \"b.h\"\n#error \"it's broken\n#include \"c.h\"\n", &.{ "b.h", "c.h" });
-    try check(.zig, "const c = 'x;\nconst d = @import(\"d.zig\");\n", &.{"d.zig"});
+    try std.testing.expectError(error.InvalidSource, g.imports(std.testing.allocator, .zig, "const c = 'x;\nconst d = @import(\"d.zig\");\n"));
     try check(.python, "s = 'it\nimport os\n", &.{"os"});
     try check(.go, "package a\nvar r = 'x\nimport \"fmt\"\n", &.{"fmt"});
     // A Rust string and a backquoted Go string do span lines.

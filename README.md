@@ -75,10 +75,15 @@ return gantry.scan(gpa, io, paths, Files{}, Files.read, .{ .diagnostics = &diagn
 
 See [design invariants](docs/design.md) for storage and indexing contracts.
 
-The library uses `std` and the `sweep` runtime dependency for glob matching.
+The library uses `std`, the `sweep` runtime dependency for glob matching and
+[glint](https://github.com/pedronaugusto/glint) for Zig, which itself needs only
+[aegis](https://github.com/pedronaugusto/aegis).
 Every public function returns a named error set. A call
 that can block takes an `std.Io`: `scan` passes its `io` to the reader, and `walk` lists
-a directory with it; nothing gantry returns keeps one. Scan scratch storage is released
+a directory with it; nothing gantry returns keeps one. A scan also runs the Zig front end
+of its files on the tasks `io` runs, ahead of the files it reads next, so a scan with a
+concurrent `io` needs a `gpa` that is safe to call from several tasks; with fewer than
+sixteen Zig files, or an `io` that runs no task at once, the calling task does it all. Scan scratch storage is released
 between files; reader bytes need to survive processing until the next read. Graph,
 analysis, import and path
 results retain their allocator and own their storage. Move these handles and call
@@ -105,7 +110,7 @@ scan nothing from that phase: a Go file with a bad constraint is in no package, 
 config is as if absent, and the scan goes on. A caller that wants such a scan to fail
 checks that list. A scan fails, with no partial graph, only with a `ScanError` (a selected
 path normalization refuses, `strict_imports` and an unsupported construct, a count
-overflow, memory) or one of the reader's own errors. `Options.diagnostics` additionally
+overflow, cancellation while Zig files are read, memory) or one of the reader's own errors. `Options.diagnostics` additionally
 retains the failed path, phase, optional byte offset and original cause in a
 caller-owned `Diagnostics`. Reporting preserves the cause even if copying the path
 fails. A leading UTF-8 byte order mark is no part of a file.
@@ -114,8 +119,9 @@ fails. A leading UTF-8 byte order mark is no part of a file.
 
 ### Recovery
 
-Import recovery uses byte lexers for Zig, C/C++, JavaScript/TypeScript, Python, Go,
-Rust, Nim and Java. Resolution stays within selected files. Zig named modules and C include roots are
+Import recovery uses byte lexers for C/C++, JavaScript/TypeScript, Python, Go,
+Rust, Nim and Java, and glint, which reads Zig with std's own parser and lowering, for Zig.
+Resolution stays within selected files. Zig named modules and C include roots are
 caller inputs; JS/TS aliases come from selected local configs; Python initializer and
 literal star-reexport handling are selectable; Go uses selected module/workspace routing
 and optional target constraints. Rust resolves file modules and crate-relative use paths
@@ -172,13 +178,20 @@ test path, named module `from` or token sweep refuses fails the scan with
 
 In Zig an import is also `test` inside a `test` declaration, in the taken branch of
 `if (builtin.is_test)`, and in a container-level declaration only tests reach. Zig
-analyses lazily from `pub`, `export` and `comptime` declarations, fields and `main`, and
-forbids a local that shadows a container-level name, so a name in code is that
-declaration; `x.name(`, `Self.name` (with `Self = @This()`), decl and enum literals
-(`return .default;`, `x = .empty`, but not a field initialiser `.{ .name = v }`) and
-`@field(Self, "name")` count too, so a doubtful case is live. `is_test` counts on
-`@import("builtin")` or a container-level `const` bound to it, never on another value. An
-import nothing reaches stays `import` and is `dead` on its reference: no build compiles it.
+analyses lazily from `pub`, `export` and `comptime` declarations, fields and `main`.
+Where a name in code is declared, and which declaration `x.name` or `x.name()` is on a
+receiver whose type the file shows, are glint's facts; a call it cannot resolve may be
+any declaration of that name, and so may a decl literal (`return .default;`, `x = .empty`,
+but not a field initialiser `.{ .name = v }`) and `@field(T, "name")`, so a doubtful case
+is live, never `test` or `dead`. `test name {}` reaches `name`. `is_test` counts on
+`@import("builtin")` or a `const` bound to it, never on another value. An import nothing
+reaches stays `import` and is `dead` on its reference: no build compiles it.
+
+A Zig file is read only as std reads it. One that std's parser or lowering rejects (a
+syntax error, an unused local, an `@import` of anything but a string literal, an
+expression of more than 1024 tokens or nesting past 256) is a record in `graph.invalid()`
+with `error.InvalidSource` and gives no references: its dependencies are unknown, not
+guessed.
 
 An edge's kind follows its importer, so a production file that imports a test file gives
 an `import` edge a rule can forbid. The target decides too only where an import names more

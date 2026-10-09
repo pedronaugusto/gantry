@@ -16,7 +16,7 @@
       "columnKind": "unicodeCodePoints",
       "results": [
         {"ruleId": "watcher owner", "ruleIndex": 1, "level": "error", "message": {"text": "src/app.zig names lookout"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "src/app.zig"}, "region": {"startLine": 3, "startColumn": 30}}}]},
-        {"ruleId": "os calls", "ruleIndex": 0, "level": "error", "message": {"text": "CreateFileW is spelled outside its owners"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "src/app.zig"}, "region": {"startLine": 4, "startColumn": 11}}}]}
+        {"ruleId": "os calls", "ruleIndex": 0, "level": "error", "message": {"text": "CreateFileW is spelled outside its owners"}, "locations": [{"physicalLocation": {"artifactLocation": {"uri": "src/app.zig"}, "region": {"startLine": 4, "startColumn": 15}}}]}
       ]
     }
   ]

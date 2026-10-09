@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Breaking
 
+- Zig is read by [glint](https://github.com/pedronaugusto/glint), with std's own parser and lowering, in place of gantry's byte lexer: gantry now depends on glint, and glint on aegis. A `.zig` file that std rejects (a syntax error, an unused local, an `@import` of anything but a string literal, an expression of more than 1024 tokens, nesting past 256, a file of more than 16 MiB) is a record in `Graph.invalid()` with `FileError.InvalidSource`, replacing `InvalidLiteral`, and gives no references; `imports` returns `InvalidSource` for it. `ImportExpression.zig_import` is gone, since std refuses what it named. Fixtures that were Zig only to a lexer must be valid Zig.
+- `ScanError` has `Canceled`: a scan runs the Zig front end of its files on the tasks the caller's `io` runs and waits for them. Their allocations come from `gpa`, which must be safe to call from several tasks when `io` runs some; fewer than sixteen Zig files, or an `io` that runs none at once, are recovered by the calling task alone.
 - `rules.matches`, `rules.matchesToken` and `TokenRule.names` return pattern errors instead of hiding them. Layer report patterns return errors too. `rules.patternOptions` is replaced by `rules.Globs`, `rules.Pattern`, `rules.CompileError`, `rules.anyOf` and `rules.literal`: callers compile and match in gantry's dialect without depending on sweep.
 - `Token.Kind` includes `sequence`; its evidence contains code tokens joined with spaces. `TokenRule.sequences` matches adjacent code token patterns, ignoring whitespace and comments, with each wildcard confined to one token, quoted Zig names decoded as identifiers and Zig operators kept whole.
 
@@ -77,18 +79,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- Zig declaration-reference scanning checks alias dots directly, keeping complete test/dead classification.
-
-- Zig scans collect test/import structure as tokens are emitted, keep bracket pairs in token padding and spill bounded scratch lists without limiting recovery.
-
-- Zig recovery keeps file-local name lookup and short-file reachability in caller-owned scratch. Short Zig files reserve at most 32 tokens before recovery. The 5,000-file `scan/memory` benchmark runs 26.8% faster; test-only and dead-import classification are unchanged.
-
 - CI pins the new preflight and adopts its shared durability, shakedown and no-async rule sets. File naming uses ziglint Z009; the empty preflight naming ledger is removed.
 
 - A check compiles each pattern once, finds each path's layer once, and a scan matches test paths once per file: `rules/forbidden` and `rules/nothing-imports` run 7.5 times faster, `rules/allowed` 6 times, transitive rules 2.5 times, ordered layers 1.8 times. `rules.matches` and `rules.matchesToken` match one pattern once, `rules.matches` in half the time it took and `rules.matchesToken` in no more; a caller matching one many times compiles it with `rules.Globs`.
 - Zig: `if (x.is_test)` is a test branch only when `x` is `@import("builtin")` or a container-level `const` bound to it, so `if (options.is_test)` keeps its imports `import`. Decl and enum literals (`return .default;`, `x = .empty`) and `@field(@This(), "name")` reach the declaration they name, where before such a declaration could be read as test-only or unreached. The label in `break :blk` is no reference.
 - Paths refuse only a drive spelling (`C:` at the start), not every colon; `walk` skips names a scan would refuse. `path.valid` says whether `normalize` takes a path.
-- Take a Zig import path as written when it has no escape, and look for alias members only in files that declare an alias.
 - Find Python loader calls across line breaks without copying the token stream.
 - Look up the JavaScript keywords that decide regular expressions in one table, and only when lexing JavaScript.
 - Grow token streams by the density of the text already read, so a long file's stream moves a few times instead of at every half again.
@@ -106,6 +101,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A member of a Zig import is read through its alias wherever the alias is bound: `pub const x = @import("x.zig");` and a use after a range (`b[0..std.mem.len(b)]`) were missed, so `references()` listed none of their members.
+- A private Zig declaration whose name a method shares is `test`-only or `dead` when its own callers say so: `s.apply()` on a `Session` is the method, not the file's `apply`.
+- Zig `test name {}` reaches the declaration `name`.
+- The `ops` benchmark's Zig source declared `f16` and `f32`, which Zig refuses; its functions are `f_N`.
 - A token pattern's `*` no longer matches a literal `*` in the text as one byte and stops there: `*a` matches `*ba`.
 - TOML array-of-tables headers (`[[bin]]`, `[[tool.mypy.overrides]]`) and dotted keys under a Cargo dependency table (`serde.features = [...]`, `local.path = "../x"`) are read instead of failing the manifest.
 - A dependency whose imports resolve to selected files (a Go `replace` or workspace member, a Zig path dependency under a named module) is used, not reported unused.

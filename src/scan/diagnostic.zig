@@ -80,8 +80,9 @@ pub const FileError = error{
     ConfigCycle,
     /// A string literal with an escape its language does not define.
     InvalidEscape,
-    /// A Zig string literal that does not parse.
-    InvalidLiteral,
+    /// Zig source that std's parser or lowering rejects, or that is past the
+    /// front end's size and nesting limits. It has no facts; none are guessed.
+    InvalidSource,
     /// A Go `//go:build` line that is not a constraint, or a second one.
     InvalidBuildConstraint,
     /// An import of a dependency that two Go workspace modules replace with
@@ -94,8 +95,9 @@ pub const FileError = error{
 /// (`InvalidPattern`, `PatternTooLong`: a test path, a named module's
 /// `from` or a token), a construct recovery cannot read under
 /// `Options.strict_imports`, more edges between two files than a count
-/// holds, or memory. Nothing a file's bytes hold is among them.
-pub const ScanError = error{ InvalidPath, InvalidPattern, PatternTooLong, UnsupportedImport, CountOverflow, OutOfMemory };
+/// holds, the scan being cancelled while its tasks run, or memory. Nothing a
+/// file's bytes hold is among them.
+pub const ScanError = error{ InvalidPath, InvalidPattern, PatternTooLong, UnsupportedImport, CountOverflow, Canceled, OutOfMemory };
 
 /// The errors a scan's `read` function returns, from its signature.
 pub fn ReadError(comptime read: anytype) type {

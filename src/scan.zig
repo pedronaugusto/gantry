@@ -7,6 +7,7 @@ const reader_module = @import("scan/reader.zig");
 const check_module = @import("rules/check.zig");
 const build_module = @import("lang/go/build.zig");
 const go_module = @import("lang/go.zig");
+const Recoveries = @import("lang/zig/Recoveries.zig");
 const config_module = @import("lang/go/config.zig");
 const tsconfig_module = @import("tsconfig.zig");
 const config_module_ = @import("lang/nim/config.zig");
@@ -41,25 +42,30 @@ pub const Paths = PathStore.Owner;
 /// allocator rather than staying resident for the rest of the scan.
 const scratch_kept = 1 << 20;
 
-/// What `imports` fails with: `InvalidEscape` or `InvalidLiteral` for a
-/// string literal recovery cannot decode, or memory.
-pub const ImportsError = error{ InvalidEscape, InvalidLiteral, OutOfMemory };
-/// `InvalidEscape` or `InvalidLiteral` for a string literal recovery cannot decode.
+/// What `imports` fails with: `InvalidEscape` for a string literal recovery
+/// cannot decode, `InvalidSource` for Zig that std rejects, or memory.
+pub const ImportsError = error{ InvalidEscape, InvalidSource, OutOfMemory };
+/// `InvalidEscape` for a string literal recovery cannot decode, `InvalidSource`
+/// for Zig that std's parser or lowering rejects.
 pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) ImportsError!Imports {
     const result = try ImportStore.create(gpa);
     errdefer result.deinit();
     const a = result.arena.allocator();
-    result.recovery = try extract(a, language, try a.dupe(u8, source), null, 0, "");
+    result.recovery = try extract(gpa, a, language, try a.dupe(u8, source), null, 0, "");
     return ImportStore.owner(Imports, result);
 }
 /// Recovery, handing the token stream to the token rules on the way when
 /// `recorder` still wants this file.
-fn extract(arena: std.mem.Allocator, language: Language, source: []const u8, recorder: ?*Recorder, index: usize, file: []const u8) !t.Recovery {
+fn extract(gpa: std.mem.Allocator, arena: std.mem.Allocator, language: Language, source: []const u8, recorder: ?*Recorder, index: usize, file: []const u8) !t.Recovery {
     return switch (language) {
         inline else => |lang| {
             const module = @field(languages, @tagName(lang));
             const seen = if (recorder) |r| r.observer(arena, index, file, lang, source) else null;
-            if (lang == .zig) return module.recoverSeen(arena, source, seen);
+            if (lang == .zig) {
+                // The token rules read the lexer's stream; the facts are glint's.
+                if (seen != null) _ = try module.lex(arena, source, seen);
+                return module.recover(gpa, arena, source);
+            }
             return module.recoverTokens(arena, source, try module.lex(arena, source, seen));
         },
     };
@@ -195,6 +201,9 @@ fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype
     };
     progress.at(.go_constraints, null);
     g.go_files = try go_files.toOwnedSlice(a);
+    var zig_recoveries = try Recoveries.init(gpa, reader.io, g.paths.len);
+    defer zig_recoveries.deinit();
+    if (code_enabled) try zig_recoveries.start(g.paths, reader, Reader.readFile, progress, &recorder);
     var packages: std.StringHashMapUnmanaged(std.ArrayList([]const u8)) = .empty;
     for (g.paths) |p| if (languageOf(p) == .go and !inactive.contains(p)) {
         progress.at(.resolution, p);
@@ -228,7 +237,7 @@ fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype
     var edges: std.ArrayList(Graph.Pending) = .empty;
     defer edges.deinit(gpa);
     var refs: std.ArrayList(Reference) = .empty;
-    try readSources(gpa, a, g, options, reader, scratch, progress, &recorder, cached, .{ .code_enabled = code_enabled, .inactive = inactive, .base_ctx = base_ctx, .test_files = test_files, .reexports = reexports, .java_packages = java_packages, .index = index, .position = position }, &edges, &refs, &unsupported);
+    try readSources(gpa, a, g, options, reader, scratch, progress, &recorder, cached, &zig_recoveries, .{ .code_enabled = code_enabled, .inactive = inactive, .base_ctx = base_ctx, .test_files = test_files, .reexports = reexports, .java_packages = java_packages, .index = index, .position = position }, &edges, &refs, &unsupported);
     return finish(a, g, options.manifests, reader, progress, &recorder, edges.items, &refs, &deps, &unsupported);
 }
 
@@ -315,7 +324,7 @@ fn readManifests(w: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
 }
 
 /// Recover sources after language indexes are complete; read buffers stay local.
-fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, options: Options, reader: anytype, scratch: *std.heap.ArenaAllocator, progress: *diagnostics.Progress, recorder: *Recorder, cached: []?t.Recovery, indexes: anytype, edges: *std.ArrayList(Graph.Pending), refs: *std.ArrayList(Reference), unsupported: *std.ArrayList(t.UnsupportedReference)) !void {
+fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, options: Options, reader: anytype, scratch: *std.heap.ArenaAllocator, progress: *diagnostics.Progress, recorder: *Recorder, cached: []?t.Recovery, zig_recoveries: *Recoveries, indexes: anytype, edges: *std.ArrayList(Graph.Pending), refs: *std.ArrayList(Reference), unsupported: *std.ArrayList(t.UnsupportedReference)) !void {
     std.debug.assert(cached.len == 0 or cached.len == g.paths.len);
     for (g.paths, 0..) |p, file_index| {
         if (indexes.inactive.contains(p)) continue;
@@ -327,7 +336,7 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
         const assets = enabled(options, .asset) and readable.contains(.asset);
         if (!code and !lexed and !links and !assets) continue;
         const s = scratch.allocator();
-        const prior = if (cached.len > 0) cached[file_index] else null;
+        const prior = (if (cached.len > 0) cached[file_index] else null) orelse try zig_recoveries.take(s, arena, file_index, progress);
         const text = (if (prior != null) "" else try @TypeOf(reader.*).readFile(reader, s, p)) orelse {
             _ = scratch.reset(.{ .retain_with_limit = scratch_kept });
             continue;
@@ -339,12 +348,15 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
         const from: u32 = @intCast(file_index);
         if (lexed and !code) {
             progress.at(.imports, p);
-            _ = extract(s, language.?, text, recorder, file_index, p) catch |err| try progress.tolerate(err);
+            if (language == .zig) {
+                // The token rules want this file; its facts are not wanted.
+                _ = languages.zig.lex(s, text, recorder.observer(s, file_index, p, .zig, text)) catch |err| try progress.tolerate(err);
+            } else _ = extract(gpa, s, language.?, text, recorder, file_index, p) catch |err| try progress.tolerate(err);
         }
         if (code) {
             var seen: std.AutoHashMapUnmanaged(struct { usize, u32 }, void) = .empty;
             progress.at(.imports, p);
-            const recovery = prior orelse extract(s, language.?, text, recorder, file_index, p) catch |err| empty: {
+            const recovery = prior orelse extract(gpa, s, language.?, text, recorder, file_index, p) catch |err| empty: {
                 try progress.tolerate(err);
                 break :empty t.Recovery{};
             };

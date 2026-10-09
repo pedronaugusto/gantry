@@ -83,8 +83,8 @@ test "json and sarif write the graph and findings as their goldens" {
 test "sarif with source places reference and token findings at a line and code point column" {
     const token: g.rules.TokenRule = .{ .name = "os calls", .tokens = &.{"CreateFileW"}, .owners = &.{"src/os/**"} };
     const fixture: f.Fixture = .{ .items = &.{
-        .{ .path = "src/app.zig", .text = "const std = @import(\"std\");\n\nconst s = \"héllo\"; const w = @import(\"lookout\");\nconst c = CreateFileW;\n" },
-        .{ .path = "src/os/win.zig", .text = "const c = CreateFileW;\n" },
+        .{ .path = "src/app.zig", .text = "const std = @import(\"std\");\n\nconst s = \"héllo\"; const w = @import(\"lookout\");\nconst c = std.CreateFileW;\n" },
+        .{ .path = "src/os/win.zig", .text = "const c = @import(\"std\").CreateFileW;\n" },
     } };
     var graph = try fixture.scan(a, .{ .tokens = &.{token} });
     defer graph.deinit();

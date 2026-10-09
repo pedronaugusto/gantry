@@ -11,8 +11,6 @@ pub const Token = struct {
     /// prefix, which can be a formatting call, or a Groovy or Kotlin string
     /// that interpolates `$name` or `${code}`).
     kind: enum { word, string, template, punctuation, newline },
-    /// Structural scratch fits beside the kind in the token's alignment padding.
-    partner: u32 = 0,
     text: []const u8,
     offset: usize,
     end: usize,
@@ -33,21 +31,15 @@ pub const Observer = struct {
 /// `lex`, telling `seen` of each code token and string as it is emitted. One
 /// lexer serves both, so a scan without observers runs the same code.
 pub fn lexSeen(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
-    return tokenize(void, lang, true, arena, text, seen, null);
+    return tokenize(lang, true, arena, text, seen);
 }
 /// `compact(lexSeen(…))`, without emitting the newlines it would drop.
 pub fn lexCompact(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
-    return tokenize(void, lang, false, arena, text, seen, null);
+    return tokenize(lang, false, arena, text, seen);
 }
-/// A language's structural work can follow emission without another walk
-/// over the full token records. `visitor` owns its state; observers keep
-/// seeing exactly the same stream as ordinary compact lexing.
-pub fn lexCompactWith(comptime lang: Syntax, comptime Visitor: type, arena: std.mem.Allocator, text: []const u8, seen: ?Observer, visitor: *Visitor) std.mem.Allocator.Error![]Token {
-    return tokenize(Visitor, lang, false, arena, text, seen, visitor);
-}
-fn tokenize(comptime Visitor: type, comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocator, text: []const u8, seen: ?Observer, visitor: ?*Visitor) std.mem.Allocator.Error![]Token {
-    var out: Stream(Visitor) = .{ .total = text.len, .visitor = visitor };
-    try out.reserve(gpa, tokenCapacity(lang, text.len));
+fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
+    var out: Stream = .{ .total = text.len };
+    try out.reserve(gpa, tokenCapacity(text.len));
     var i: usize = 0;
     var regex_allowed = true;
     var control_pending = false;
@@ -158,53 +150,41 @@ fn tokenize(comptime Visitor: type, comptime lang: Syntax, comptime newlines: bo
     }
     return out.list.toOwnedSlice(gpa);
 }
+// A sparse large file reserves at most a few hundred tokens.
+fn tokenCapacity(bytes: usize) usize {
+    return if (bytes >= 1024) @min(bytes / 4 + 4, 512) else 0;
+}
+
 /// A token stream as it is lexed. It grows by the density of the text read
 /// so far, so a long stream moves a few times rather than at every half
 /// again, and a sparse text never holds room for tokens it lacks.
-// A sparse large file reserves at most a few hundred tokens. Short Zig
-// files need a denser hint to avoid several buffers before liveness runs.
-fn tokenCapacity(comptime lang: Syntax, bytes: usize) usize {
-    if (bytes >= 1024) return @min(bytes / 4 + 4, 512);
-    if (lang == .zig and bytes >= 32) return @min(bytes / 2 + 4, 32);
-    return 0;
-}
-
-fn Stream(comptime Visitor: type) type {
-    return struct {
-        const Self = @This();
-        visitor: ?*Visitor,
-        list: std.ArrayList(Token) = .empty,
-        /// The length of the text.
-        total: usize,
-        fn reserve(s: *Self, arena: std.mem.Allocator, capacity: usize) std.mem.Allocator.Error!void {
-            if (capacity == 0) return;
-            try s.list.ensureTotalCapacityPrecise(arena, capacity);
-            if (Visitor != void) try s.visitor.?.reserve(arena, s.list.capacity);
-        }
-        inline fn push(s: *Self, arena: std.mem.Allocator, token: Token) !void {
-            std.debug.assert(token.offset < token.end);
-            std.debug.assert(token.end <= s.total);
-            if (s.list.items.len > 0) std.debug.assert(s.list.items[s.list.items.len - 1].end <= token.offset);
-            if (s.list.items.len == s.list.capacity) {
-                try s.grow(arena, token.end);
-                if (Visitor != void) try s.visitor.?.reserve(arena, s.list.capacity);
-            }
-            s.list.appendAssumeCapacity(token);
-            if (Visitor != void) try s.visitor.?.token(arena, token, s.list.items);
-        }
-        fn grow(s: *Self, arena: std.mem.Allocator, read: usize) !void {
-            @branchHint(.unlikely);
-            const n = s.list.items.len;
-            // A short stream has too little behind it to project from.
-            if (n < 512) return s.list.ensureUnusedCapacity(arena, 1);
-            const projected = @as(u128, n) * s.total / @max(read, 1);
-            // Between half again and four times what is held.
-            const least = n + n / 2 + 16;
-            const most = 4 * n + 16;
-            try s.list.ensureTotalCapacityPrecise(arena, @intCast(@min(@max(projected, least), most)));
-        }
-    };
-}
+const Stream = struct {
+    list: std.ArrayList(Token) = .empty,
+    /// The length of the text.
+    total: usize,
+    fn reserve(s: *Stream, arena: std.mem.Allocator, capacity: usize) std.mem.Allocator.Error!void {
+        if (capacity == 0) return;
+        try s.list.ensureTotalCapacityPrecise(arena, capacity);
+    }
+    inline fn push(s: *Stream, arena: std.mem.Allocator, token: Token) !void {
+        std.debug.assert(token.offset < token.end);
+        std.debug.assert(token.end <= s.total);
+        if (s.list.items.len > 0) std.debug.assert(s.list.items[s.list.items.len - 1].end <= token.offset);
+        if (s.list.items.len == s.list.capacity) try s.grow(arena, token.end);
+        s.list.appendAssumeCapacity(token);
+    }
+    fn grow(s: *Stream, arena: std.mem.Allocator, read: usize) !void {
+        @branchHint(.unlikely);
+        const n = s.list.items.len;
+        // A short stream has too little behind it to project from.
+        if (n < 512) return s.list.ensureUnusedCapacity(arena, 1);
+        const projected = @as(u128, n) * s.total / @max(read, 1);
+        // Between half again and four times what is held.
+        const least = n + n / 2 + 16;
+        const most = 4 * n + 16;
+        try s.list.ensureTotalCapacityPrecise(arena, @intCast(@min(@max(projected, least), most)));
+    }
+};
 /// The UTF-8 byte order mark, which editors on Windows put first.
 pub const bom = "\xEF\xBB\xBF";
 fn ident(c: u8) bool {

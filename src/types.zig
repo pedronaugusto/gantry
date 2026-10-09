@@ -67,7 +67,6 @@ pub const Token = struct {
 /// The lexical construct that recovery could not turn into a reference, or
 /// a manifest construct it could not turn into a declaration.
 pub const ImportExpression = enum {
-    zig_import,
     c_include,
     javascript_import,
     javascript_require,

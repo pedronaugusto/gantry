@@ -78,7 +78,7 @@ test "Zig method calls, Self members, fields and comptime blocks keep declaratio
     , &.{ .{ "io.zig", .import }, .{ "kind.zig", .import }, .{ "late.zig", .import }, .{ "table.zig", .import } });
 }
 
-test "Zig field names, labels and member access are not references; an enum literal is" {
+test "Zig field names, labels and member access are not references; an enum literal may be" {
     try expectKinds(
         \\const mem = @import("mem.zig");
         \\const len = @import("len.zig");
@@ -109,9 +109,10 @@ test "Zig recovers no import from a string and keeps unreached imports import" {
 
 test "Zig return types with braces and generic calls end a function at its body" {
     try expectKinds(
+        \\fn List(comptime T: type) type { return struct { items: []T }; }
         \\fn a() error{Bad}!void { _ = @import("a.zig"); }
-        \\fn b() List(u8) { _ = @import("b.zig"); }
-        \\fn c() union(enum) { x: u8 } { _ = @import("c.zig"); }
+        \\fn b() List(u8) { _ = @import("b.zig"); return .{ .items = &.{} }; }
+        \\fn c() union(enum) { x: u8 } { _ = @import("c.zig"); return .{ .x = 0 }; }
         \\extern "c" fn d() void;
         \\fn e() void { _ = @import("e.zig"); }
         \\pub fn run() void { e(); }
@@ -134,11 +135,52 @@ test "Zig member references through an alias take the kind of their use" {
     try std.testing.expectEqual(2, seen);
 }
 
-test "Zig source without tests is all import, whatever its shape" {
+test "Zig members are read through every alias, public ones and ones after a range" {
+    var imports = try g.imports(a, .zig,
+        \\const std = @import("std");
+        \\pub const util = @import("util.zig");
+        \\pub fn run(b: []const u8) []const u8 { return b[0..std.mem.len(b)]; }
+        \\pub const Temp = util.Temp;
+        \\pub fn spaced(b: []const u8) []const u8 { return b[0 .. std.mem.len(b)]; }
+    );
+    defer imports.deinit();
+    var members: usize = 0;
+    for (imports.items()) |spec| members += @intFromBool(spec.member != null);
+    try std.testing.expectEqual(3, members);
+}
+
+test "Zig source without tests is all import" {
     try expectKinds(
-        \\} ) ] const x = @import("x.zig"); fn ( { @import("y.zig")
+        \\const x = @import("x.zig");
+        \\pub fn f() void { _ = @import("y.zig"); }
     , &.{ .{ "x.zig", .import }, .{ "y.zig", .import } });
-    try expectKinds("test { const x = @import(\"x.zig\"); } } } test", &.{.{ "x.zig", .@"test" }});
+    try expectKinds("test { const x = @import(\"x.zig\"); _ = x; }", &.{.{ "x.zig", .@"test" }});
+}
+
+test "Zig source std rejects has no facts" {
+    for ([_][]const u8{
+        "} ) ] const x = @import(\"x.zig\"); fn ( { @import(\"y.zig\")",
+        "test { const x = @import(\"x.zig\"); } } } test",
+        "pub const T = if (true) struct { const x = @import(\"x.zig\");",
+        // Syntax std accepts but lowering rejects: an unused local.
+        "pub fn f() void { const unused = 1; }",
+        "pub const x = @import(\"\\q\");",
+    }) |source| try std.testing.expectError(error.InvalidSource, g.imports(a, .zig, source));
+    var deep: std.ArrayList(u8) = .empty;
+    defer deep.deinit(a);
+    try deep.appendSlice(a, "pub const v = ");
+    for (0..300) |_| try deep.append(a, '(');
+    try deep.append(a, '1');
+    for (0..300) |_| try deep.append(a, ')');
+    try deep.append(a, ';');
+    try std.testing.expectError(error.InvalidSource, g.imports(a, .zig, deep.items));
+}
+
+test "Zig computed imports are refused, not guessed" {
+    for ([_][]const u8{
+        "const name = \"x.zig\"; pub const a = @import(name);",
+        "pub const b = @import(\"b\" ++ \".zig\");",
+    }) |source| try std.testing.expectError(error.InvalidSource, g.imports(a, .zig, source));
 }
 
 test "Zig is_test is a test condition only on an alias of builtin or the literal form" {
@@ -181,13 +223,39 @@ test "Zig field initialisers and member access are not decl literals" {
     , &.{ .{ "items.zig", .@"test" }, .{ "len.zig", .@"test" } });
 }
 
+test "Zig calls resolve to the member their receiver has, not to one that shares the name" {
+    // Only tests call the file's `apply`; `s.apply()` is the method.
+    try expectKinds(
+        \\const config = @import("config.zig");
+        \\const Session = struct {
+        \\    fn apply(s: *const Session) void { _ = s; }
+        \\    pub fn run(s: *const Session) void { s.apply(); }
+        \\};
+        \\fn apply(c: *const config.Config) void { _ = c; }
+        \\pub fn start() void { const s: Session = .{}; s.run(); }
+        \\test { apply(undefined); }
+    , &.{.{ "config.zig", .@"test" }});
+}
+
+test "Zig calls on a receiver glint cannot resolve may call any member of that name" {
+    try expectKinds(
+        \\const util = @import("util.zig");
+        \\fn flush() void { util.go(); }
+        \\pub fn run(writer: anytype) void { writer.flush(); }
+        \\test { flush(); }
+    , &.{.{ "util.zig", .import }});
+}
+
 /// The `@import` names of `source` that no build analyses, in source order.
 fn expectDead(source: []const u8, expected: []const []const u8) !void {
     var imports = try g.imports(a, .zig, source);
     defer imports.deinit();
     var n: usize = 0;
     for (imports.items()) |spec| if (spec.member == null and spec.dead) {
-        if (n >= expected.len) return error.TestUnexpectedImport;
+        if (n >= expected.len) {
+            std.debug.print("dead: {s}\n{s}\n", .{ spec.name, source });
+            return error.TestUnexpectedImport;
+        }
         try std.testing.expectEqualStrings(expected[n], spec.name);
         n += 1;
     };
@@ -228,29 +296,11 @@ test "Zig imports a root, a test, a field, a call or a decl literal reaches are 
     }) |text| try expectDead(text, &.{});
 }
 
-test "Zig small-file liveness fits in an 8 KiB heap allocation budget" {
-    const shakedown = @import("shakedown");
-    var counted: shakedown.alloc.Counting = .init(a);
-    var imports = try g.imports(counted.allocator(), .zig,
-        \\const dep = @import("dep.zig");
-        \\pub fn f() void { _ = dep; }
-    );
-    defer imports.deinit();
-    try std.testing.expectEqual(@as(usize, 1), imports.items().len);
-    try std.testing.expect(!imports.items()[0].dead);
-    try std.testing.expectEqual(g.Kind.import, imports.items()[0].kind);
-    std.testing.expect(counted.total_bytes <= 8 * 1024) catch |err| {
-        std.debug.print("small-file heap: total {d}, peak {d}, allocations {d}\n", .{ counted.total_bytes, counted.peak_bytes, counted.allocations });
-        return err;
-    };
-}
-
 test "Zig liveness keeps colliding names distinct as a file grows" {
     for ([_]usize{ 3, 8, 12, 16, 30, 300, 3000 }) |n| {
         var source: std.ArrayList(u8) = .empty;
         defer source.deinit(a);
-        // These names have the same length and first and last byte. Some
-        // share every sampled byte too, so collision chains remain needed.
+        // These names have the same length and first and last byte.
         for (0..n) |i| try source.print(a, "const a{d:0>4}z = @import(\"{d}.zig\");\n", .{ i, i });
         try source.appendSlice(a, "pub fn f() void { _ = a0000z; }\ntest { _ = a0001z; }\n");
         var imports = try g.imports(a, .zig, source.items);
@@ -263,65 +313,76 @@ test "Zig liveness keeps colliding names distinct as a file grows" {
     }
 }
 
-test "Zig streamed recovery keeps deep nesting and truncated test branches classified" {
-    var source: std.ArrayList(u8) = .empty;
-    defer source.deinit(a);
-    try source.appendSlice(a, "const builtin = @import(\"builtin\"); pub const value = ");
-    for (0..768) |_| try source.append(a, '(');
-    try source.appendSlice(a, "if (builtin.is_test) @import(\"fixture.zig\") else @import(\"prod.zig\")");
-    for (0..768) |_| try source.append(a, ')');
-    try source.appendSlice(a, "; test { _ = @import(\"late.zig\"); }");
-    try expectKinds(source.items, &.{ .{ "builtin", .import }, .{ "fixture.zig", .@"test" }, .{ "prod.zig", .import }, .{ "late.zig", .@"test" } });
-    // The unfinished expression still ends at the stream's final token.
-    try expectKinds("const b = @import(\"builtin\"); pub const T = if (b.is_test) struct { const x = @import(\"x.zig\");", &.{ .{ "builtin", .import }, .{ "x.zig", .@"test" } });
+test "Zig recovery releases everything it took when an allocation fails" {
     const S = struct {
         fn run(allocator: std.mem.Allocator, text: []const u8) !void {
             var imports = try g.imports(allocator, .zig, text);
             defer imports.deinit();
+            // builtin, fixture, prod and late, and the member of builtin.
             try std.testing.expectEqual(@as(usize, 5), imports.items().len);
-            try std.testing.expectEqual(g.Kind.@"test", imports.items()[1].kind);
-            try std.testing.expectEqual(g.Kind.import, imports.items()[2].kind);
+            for (imports.items()) |spec| {
+                const want: g.Kind = if (std.mem.eql(u8, spec.name, "fixture.zig") or std.mem.eql(u8, spec.name, "late.zig")) .@"test" else .import;
+                try std.testing.expectEqual(want, spec.kind);
+            }
         }
     };
-    try support.checkAllAllocationFailures(S.run, .{source.items});
+    try support.checkAllAllocationFailures(S.run, .{
+        \\const builtin = @import("builtin");
+        \\pub const value = if (builtin.is_test) @import("fixture.zig") else @import("prod.zig");
+        \\test { _ = @import("late.zig"); }
+    });
 }
 
-test "Zig streamed recovery preserves const tokens and uses token padding" {
-    const lexer = @import("../lexer.zig");
-    const zig = @import("zig.zig");
-    const OriginalToken = struct { kind: @FieldType(lexer.Token, "kind"), text: []const u8, offset: usize, end: usize };
-    if (@bitSizeOf(usize) == 64) try std.testing.expectEqual(@sizeOf(OriginalToken), @sizeOf(lexer.Token));
-    for ([_][]const u8{
-        "",
-        "@as(u8, 1) @import(name) @import",
-        "const b = @import(\"builtin\"); const x = @import(\"x.zig\"); pub fn f() void { if (b.is_test) _ = x; }",
-        "const Self = @This(); const a = @import(\"a.zig\"); const x = a.v; pub fn f() void { _ = @field(Self, \"x\"); } test { a.check(); }",
-        "} ) ] test { _ = @import(\"t.zig\"); const nested = (((",
-        "pub const S = struct { test { _ = @import(\"s.zig\"); } }; pub const a = @import(\"a\\x2ezig\");",
-    }) |source| {
-        var arena: std.heap.ArenaAllocator = .init(a);
-        defer arena.deinit();
-        const work = arena.allocator();
-        const ts = try zig.lex(work, source, null);
-        const replay = try zig.recoverTokens(work, source, ts);
-        for (ts) |token| try std.testing.expectEqual(@as(u32, 0), token.partner);
-        const streamed = try zig.recoverSeen(work, source, null);
-        try std.testing.expectEqualDeep(replay, streamed);
-    }
-}
-
-test "Zig streamed structural spills retain every builtin alias and test mark" {
+test "Zig structural lists past their first allocation keep every builtin alias and test mark" {
     var source: std.Io.Writer.Allocating = .init(a);
     defer source.deinit();
-    for (0..6) |i| try source.writer.print("pub const b{d} = @import(\"builtin\"); ", .{i});
-    for (0..128) |_| try source.writer.writeAll("test { if (b5.is_test) { _ = @import(\"x.zig\"); } } ");
+    for (0..6) |i| try source.writer.print("pub const b{d} = @import(\"builtin\");\n", .{i});
+    for (0..128) |_| try source.writer.writeAll("test { if (b5.is_test) { _ = @import(\"x.zig\"); } }\n");
     var expected: [134]struct { []const u8, g.Kind } = undefined;
     for (expected[0..6]) |*entry| entry.* = .{ "builtin", .import };
     for (expected[6..]) |*entry| entry.* = .{ "x.zig", .@"test" };
     try expectKinds(source.written(), &expected);
-    source.clearRetainingCapacity();
-    for (0..12) |i| try source.writer.print("pub const x{d} = @import(\"x.zig\"); ", .{i});
-    const short_expected: [12]struct { []const u8, g.Kind } = @splat(.{ "x.zig", .import });
-    try std.testing.expect(source.written().len <= 1024);
-    try expectKinds(source.written(), &short_expected);
+}
+
+test "a scan of many Zig files agrees with the same files scanned alone" {
+    var items: std.ArrayList(support.Item) = .empty;
+    defer {
+        for (items.items) |item| {
+            a.free(item.path);
+            a.free(item.text.?);
+        }
+        items.deinit(a);
+    }
+    for (0..40) |i| {
+        try items.append(a, .{
+            .path = try a.print("z{d:0>2}.zig", .{i}),
+            .text = try a.print("const next = @import(\"z{d:0>2}.zig\");\nconst unused = @import(\"u.zig\");\npub fn f() void {{ _ = next; }}\ntest {{ _ = @import(\"t.zig\"); }}\n", .{(i + 1) % 40}),
+        });
+    }
+    var graph = try (support.Fixture{ .items = items.items }).scan(a, .{});
+    defer graph.deinit();
+    try std.testing.expectEqual(40, graph.edges().len);
+    for (graph.edges()) |edge| try std.testing.expectEqual(g.Kind.import, edge.kind);
+    var dead: usize = 0;
+    var tests: usize = 0;
+    for (graph.references()) |reference| {
+        dead += @intFromBool(reference.dead);
+        tests += @intFromBool(reference.kind == .@"test");
+    }
+    try std.testing.expectEqual(40, dead);
+    try std.testing.expectEqual(40, tests);
+    try std.testing.expectEqual(0, graph.invalid().len);
+}
+
+test "a scan records a Zig file std rejects and goes on" {
+    const items = [_]support.Item{
+        .{ .path = "ok.zig", .text = "pub const a = @import(\"b.zig\");" },
+        .{ .path = "b.zig", .text = "pub const x = 1;" },
+        .{ .path = "broken.zig", .text = "pub const a = @import(\"b.zig\")" },
+    };
+    var graph = try (support.Fixture{ .items = &items }).scan(a, .{});
+    defer graph.deinit();
+    try support.edge(&graph, "ok.zig", "b.zig", .import, 1);
+    try support.invalid(&graph, "broken.zig", error.InvalidSource);
+    try std.testing.expectEqual(.imports, graph.invalid()[0].phase);
 }

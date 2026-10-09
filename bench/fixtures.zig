@@ -129,7 +129,7 @@ pub fn source(a: Allocator, language: []const u8, n: usize) ![]const u8 {
     }
     for (0..n) |i| {
         if (is(language, "zig")) {
-            try out.print(a, "const m{d} = @import(\"m{d}.zig\");\n// @import(\"fake.zig\")\nconst s{d} = \"@import(\\\"x.zig\\\")\";\nfn f{d}() u32 {{\n    return {d};\n}}\n", .{ i, i, i, i, i });
+            try out.print(a, "const m{d} = @import(\"m{d}.zig\");\n// @import(\"fake.zig\")\nconst s{d} = \"@import(\\\"x.zig\\\")\";\nfn f_{d}() u32 {{\n    return {d};\n}}\n", .{ i, i, i, i, i });
         } else if (is(language, "c")) {
             try out.print(a, "#include \"m{d}.h\"\n/* #include \"fake.h\" */\nstatic const char *s{d} = \"#include \\\"x.h\\\"\";\nstatic int f{d}(void) {{ return {d}; }}\n", .{ i, i, i, i });
         } else if (is(language, "javascript")) {
@@ -410,4 +410,4 @@ test "the per-operation fixtures keep their bytes" {
 }
 
 const synthetic_digest = "b11cefcae9424790fd22c42b6c5e000c6addc0871d4df3bd31cfbc64883d13b6";
-const operations_digest = "1a94ef6d26b3b296c59a5c08f9bef9ef40c1c0be609092f3e0f0aa66137cd818";
+const operations_digest = "c50dc69f5ef10f80ec6063cd67cf5f92ed7f27482a4c02e56a5a0f181d173556";

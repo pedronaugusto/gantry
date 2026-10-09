@@ -119,7 +119,7 @@ test "scan diagnostics record import and preprocessing errors and keep reading o
     var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
     for ([_]struct { path: []const u8, text: []const u8, phase: g.Diagnostics.Phase, cause: g.FileError }{
-        .{ .path = "src/a.zig", .text = "const b = @import(\"\\q\");", .phase = .imports, .cause = error.InvalidLiteral },
+        .{ .path = "src/a.zig", .text = "const b = @import(\"\\q\");", .phase = .imports, .cause = error.InvalidSource },
         .{ .path = "src/a.js", .text = "import '\\x';", .phase = .imports, .cause = error.InvalidEscape },
         .{ .path = "testdata/bad.go", .text = "package bad\nimport \"\\q\"\n", .phase = .imports, .cause = error.InvalidEscape },
         .{ .path = "pkg/api.py", .text = "__all__ = ['\\q']", .phase = .python_exports, .cause = error.InvalidEscape },

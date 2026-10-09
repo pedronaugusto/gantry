@@ -1,6 +1,7 @@
 //! gantry reads caller-selected files and records their dependencies.
 //! Managed results own their allocator; slices belong to that result until
-//! deinit. There is no global state, git, compiler invocation or thread.
+//! deinit. There is no global state, git or compiler invocation, and no thread
+//! of its own: Zig files are recovered on the tasks the caller's `Io` runs.
 const graph_module = @import("graph.zig");
 const analysis_module = @import("analysis.zig");
 const build_module = @import("lang/go/build.zig");

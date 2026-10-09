@@ -18,6 +18,7 @@ const manifests_test_module = @import("manifests_test.zig");
 const nim_test_module = @import("lang/nim_test.zig");
 const java_test_module = @import("lang/java_test.zig");
 const zig_test_module = @import("lang/zig_test.zig");
+const recoveries_test_module = @import("lang/zig/Recoveries_test.zig");
 const recovery_test_module = @import("testing/recovery_test.zig");
 const properties_test_module = @import("testing/properties_test.zig");
 const memory_test_module = @import("testing/memory_test.zig");
@@ -60,6 +61,7 @@ test {
     _ = nim_test_module;
     _ = java_test_module;
     _ = zig_test_module;
+    _ = recoveries_test_module;
     _ = recovery_test_module;
     _ = properties_test_module;
     _ = memory_test_module;

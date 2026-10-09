@@ -5,9 +5,13 @@
     .fingerprint = 0xbcb052ec916b23d6,
     .paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "CHANGELOG.md", "LICENSE" },
     .dependencies = .{
+        .glint = .{
+            .url = "git+https://github.com/pedronaugusto/glint#fbe7bb7405c0164837258588c97a684329f13be6",
+            .hash = "glint-0.1.0-3jcpocSRBACxjLd-rm4jEV934XUaogS2tm1Isy4hG1Cv",
+        },
         .preflight = .{
-            .url = "git+https://github.com/pedronaugusto/preflight#9af905ed85cab6dbb19d9431c65ee3f41fbaa74d",
-            .hash = "preflight-0.1.0-LX1ZwsWpBgALd07i_vgcbSkkKQ71JAHcV3xcZN8SyG3r",
+            .url = "git+https://github.com/pedronaugusto/preflight#e80b9a631956b1b7b7a7c6ebc69ec7e495ad623d",
+            .hash = "preflight-0.1.0-LX1Zwv3_CACAF-_k51Z494nvVGgk4EPS1hfQCBVozPQo",
             .lazy = true,
         },
         .sweep = .{
@@ -15,8 +19,8 @@
             .hash = "sweep-0.1.0-6ErwaQuvBACNP7lt1wKOObc5VDVwOO1tNtLdLrfB02I_",
         },
         .shakedown = .{
-            .url = "git+https://github.com/pedronaugusto/shakedown#d5d19d39bc60cec59456aca947a3a7b484b87318",
-            .hash = "shakedown-0.1.0-BR8U4wgEDgAy2m7lSRtXgIZd_M19hPZ256UdmaPT_9Nj",
+            .url = "git+https://github.com/pedronaugusto/shakedown#b7458b6ec717dc190e0fd5b265b913ffb48a3569",
+            .hash = "shakedown-0.1.0-BR8U46GKEADNXxI8lxG6UzW_qse5oUklgt6adWzNSPDD",
             .lazy = true,
         },
     },

@@ -16,7 +16,6 @@ fn lexical(language: g.Language, source: []const u8, count: usize) !void {
         if (i > 0) try std.testing.expect(result.unsupported()[i - 1].offset < record.offset);
         const rest = source[record.offset..];
         const spelling: []const u8 = switch (record.expression) {
-            .zig_import => "@import",
             .c_include => "#include",
             .javascript_import => "import",
             .javascript_require => "require",
@@ -34,27 +33,6 @@ fn lexical(language: g.Language, source: []const u8, count: usize) !void {
         };
         try std.testing.expect(std.mem.startsWith(u8, rest, spelling));
     }
-}
-
-test "unsupported Zig imports retain every computed and malformed expression" {
-    try lexical(.zig,
-        \\const name = "a.zig";
-        \\const a = @import(name);
-        \\const b = @import("a" ++ ".zig");
-        \\const c = @import(("a.zig"));
-        \\const d = @import(if (true) "a.zig" else "b.zig");
-        \\const e = @import(makeName());
-        \\const f = @import();
-        \\const g = @import("a.zig",);
-        \\const h = @import
-    , 8);
-    try lexical(.zig,
-        \\// @import(name)
-        \\const text = "@import(name)";
-        \\const a = @import( // comment
-        \\    "a.zig"
-        \\);
-    , 0);
 }
 
 test "unsupported JavaScript imports distinguish calls from member access and template text" {
@@ -185,39 +163,39 @@ fn refuse(fixture: f.Fixture, paths: []const []const u8, diagnostic: ?*g.Diagnos
 
 test "unsupported strict scans refuse omitted imports before returning a graph" {
     const fixture: f.Fixture = .{ .items = &.{
-        .{ .path = "a.zig", .text = "const b = @import(\"b.zig\"); const c = @import(name);" },
-        .{ .path = "b.zig" },
+        .{ .path = "a.js", .text = "import('./b.js'); import(name);" },
+        .{ .path = "b.js" },
     } };
-    try refuse(fixture, &.{ "b.zig", "a.zig" }, null);
+    try refuse(fixture, &.{ "b.js", "a.js" }, null);
     var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
-    try refuse(fixture, &.{ "b.zig", "a.zig" }, &diagnostic);
+    try refuse(fixture, &.{ "b.js", "a.js" }, &diagnostic);
     const failure = diagnostic.failure orelse return error.TestExpectedDiagnostic;
-    try std.testing.expectEqualStrings("a.zig", failure.path.?);
+    try std.testing.expectEqualStrings("a.js", failure.path.?);
     try std.testing.expectEqual(g.Diagnostics.Phase.imports, failure.phase);
     try std.testing.expectEqual(error.UnsupportedImport, failure.cause);
-    try std.testing.expectEqual(@as(?usize, 38), failure.offset);
+    try std.testing.expectEqual(@as(?usize, 18), failure.offset);
 }
 
 test "unsupported tolerant scans own records in sorted source order" {
     const fixture: f.Fixture = .{ .items = &.{
         .{ .path = "b.js", .text = "import(name); require(other);" },
-        .{ .path = "a.zig", .text = "@import(name); @import(\"literal.zig\"); @import(next);" },
-        .{ .path = "literal.zig" },
+        .{ .path = "a.js", .text = "import(name); import('./literal.js'); import(next);" },
+        .{ .path = "literal.js" },
     } };
     var graph = try fixture.scan(a, .{ .manifests = false });
     defer graph.deinit();
     try std.testing.expectEqual(4, unsupportedCount(&graph));
     try std.testing.expectEqual(1, graph.references().len);
-    try f.edge(&graph, "a.zig", "literal.zig", .import, 1);
+    try f.edge(&graph, "a.js", "literal.js", .dynamic, 1);
     {
         const records = graph.unsupported();
-        try std.testing.expectEqualStrings("a.zig", records[0].from.?);
+        try std.testing.expectEqualStrings("a.js", records[0].from.?);
         try std.testing.expectEqual(@as(usize, 0), records[0].offset);
-        try std.testing.expectEqualStrings("a.zig", records[1].from.?);
+        try std.testing.expectEqualStrings("a.js", records[1].from.?);
         try std.testing.expectEqualStrings("b.js", records[2].from.?);
         try std.testing.expectEqualStrings("b.js", records[3].from.?);
-        try std.testing.expectEqual(g.ImportExpression.zig_import, records[0].expression);
+        try std.testing.expectEqual(g.ImportExpression.javascript_import, records[0].expression);
         try std.testing.expectEqual(g.ImportExpression.javascript_import, records[2].expression);
         try std.testing.expectEqual(g.ImportExpression.javascript_require, records[3].expression);
     }
@@ -253,7 +231,6 @@ test "unsupported strict diagnostics cover every detecting language and survive 
     var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
     for ([_]struct { path: []const u8, source: []const u8, offset: usize }{
-        .{ .path = "src/a.zig", .source = "\n@import(name)", .offset = 1 },
         .{ .path = "src/a.js", .source = "\nimport(name)", .offset = 1 },
         .{ .path = "src/a.ts", .source = "\nrequire(name)", .offset = 1 },
         .{ .path = "pkg/a.py", .source = "\nimportlib.import_module(name)", .offset = 1 },
@@ -281,7 +258,7 @@ test "unsupported strict diagnostics cover every detecting language and survive 
 }
 
 test "unsupported strict scans inspect code even when edge kinds are disabled" {
-    const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.zig", .text = "@import(name)" }} };
+    const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.js", .text = "import(name)" }} };
     var options = strictOptions(null);
     options.kinds = &.{};
     if (fixture.scan(a, options)) |value| {
@@ -296,39 +273,41 @@ test "unsupported diagnostic offsets survive failure to allocate a path" {
     var fixed: std.heap.FixedBufferAllocator = .init(&storage);
     var diagnostic = g.Diagnostics.init(fixed.allocator());
     defer diagnostic.deinit();
-    const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.zig", .text = " @import(name)" }} };
-    try refuse(fixture, &.{"a.zig"}, &diagnostic);
+    const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.js", .text = " import(name)" }} };
+    try refuse(fixture, &.{"a.js"}, &diagnostic);
     try std.testing.expectEqual(null, diagnostic.failure.?.path);
     try std.testing.expectEqual(@as(?usize, 1), diagnostic.failure.?.offset);
     try std.testing.expectEqual(error.UnsupportedImport, diagnostic.failure.?.cause);
 }
 
 test "unsupported lexical and graph owners retain records after their inputs are overwritten" {
-    const source = try a.dupe(u8, "@import(name); @import(\"b.zig\");");
+    const source = try a.dupe(u8, "import(name); import('./b.js');");
     defer a.free(source);
-    const path = try a.dupe(u8, "src/a.zig");
+    const path = try a.dupe(u8, "src/a.js");
     defer a.free(path);
-    var result = try g.imports(a, .zig, source);
+    var result = try g.imports(a, .javascript, source);
     defer result.deinit();
     const fixture: f.Fixture = .{ .items = &.{
         .{ .path = path, .text = source },
-        .{ .path = "src/b.zig" },
+        .{ .path = "src/b.js" },
     } };
     var graph = try fixture.scan(a, .{ .manifests = false });
     defer graph.deinit();
     @memset(source, 'x');
     @memset(path, 'x');
-    try std.testing.expectEqualStrings("b.zig", result.items()[0].name);
+    try std.testing.expectEqualStrings("./b.js", result.items()[0].name);
     try std.testing.expectEqual(null, result.unsupported()[0].from);
-    try std.testing.expectEqual(g.ImportExpression.zig_import, result.unsupported()[0].expression);
-    try std.testing.expectEqualStrings("src/a.zig", graph.unsupported()[0].from.?);
+    try std.testing.expectEqual(g.ImportExpression.javascript_import, result.unsupported()[0].expression);
+    try std.testing.expectEqualStrings("src/a.js", graph.unsupported()[0].from.?);
     try std.testing.expectEqual(@as(usize, 0), graph.unsupported()[0].offset);
 }
 
 fn lexicalAllocations(alloc: std.mem.Allocator) !void {
     inline for (comptime std.meta.tags(g.Language)) |language| {
+        // Zig has no omitted import: std refuses what it cannot read.
+        if (language == .zig) continue;
         const source = switch (language) {
-            .zig => "@import(name); @import(\"literal.zig\");",
+            .zig => unreachable,
             .c => "#include MACRO\n#include \"literal.h\"",
             .javascript => "import(name); import('./literal.js');",
             .python => "importlib.import_module(name)\nimport literal",
@@ -346,8 +325,8 @@ fn lexicalAllocations(alloc: std.mem.Allocator) !void {
 
 fn graphAllocations(alloc: std.mem.Allocator) !void {
     const fixture: f.Fixture = .{ .items = &.{
-        .{ .path = "a.zig", .text = "@import(name); @import(\"b.zig\");" },
-        .{ .path = "b.zig", .text = "@import(other);" },
+        .{ .path = "a.js", .text = "import(name); import('./b.js');" },
+        .{ .path = "b.js", .text = "import(other);" },
     } };
     var graph = try fixture.scan(alloc, .{ .manifests = false });
     defer graph.deinit();
@@ -364,7 +343,7 @@ test "unsupported recovery releases every lexical and graph allocation failure" 
 }
 
 test "unsupported directory graphs retain independent source evidence" {
-    const fixture: f.Fixture = .{ .items = &.{.{ .path = "src/a.zig", .text = " @import(name)" }} };
+    const fixture: f.Fixture = .{ .items = &.{.{ .path = "src/a.js", .text = " import(name)" }} };
     var graph = try fixture.scan(a, .{});
     var aggregate = graph.aggregate(a, 1) catch |cause| {
         graph.deinit();
@@ -372,9 +351,9 @@ test "unsupported directory graphs retain independent source evidence" {
     };
     defer aggregate.deinit();
     graph.deinit();
-    try std.testing.expectEqualStrings("src/a.zig", aggregate.unsupported()[0].from.?);
+    try std.testing.expectEqualStrings("src/a.js", aggregate.unsupported()[0].from.?);
     try std.testing.expectEqual(@as(usize, 1), aggregate.unsupported()[0].offset);
-    try std.testing.expectEqual(g.ImportExpression.zig_import, aggregate.unsupported()[0].expression);
+    try std.testing.expectEqual(g.ImportExpression.javascript_import, aggregate.unsupported()[0].expression);
 }
 
 test "unsupported Python loader detection follows implicit line continuation" {
@@ -397,15 +376,15 @@ test "unsupported Python loader detection follows implicit line continuation" {
 fn strictAllocations(alloc: std.mem.Allocator) !void {
     var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
-    const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.zig", .text = "@import(name);" }} };
-    if (g.scan(alloc, std.testing.io, &.{"a.zig"}, fixture, f.Fixture.read, strictOptions(&diagnostic))) |value| {
+    const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.js", .text = "import(name);" }} };
+    if (g.scan(alloc, std.testing.io, &.{"a.js"}, fixture, f.Fixture.read, strictOptions(&diagnostic))) |value| {
         var graph = value;
         defer graph.deinit();
         return error.TestExpectedUnsupportedImport;
     } else |cause| {
         if (cause == error.OutOfMemory) return cause;
         try std.testing.expectEqual(error.UnsupportedImport, cause);
-        try std.testing.expectEqualStrings("a.zig", diagnostic.failure.?.path.?);
+        try std.testing.expectEqualStrings("a.js", diagnostic.failure.?.path.?);
         try std.testing.expectEqual(@as(?usize, 0), diagnostic.failure.?.offset);
     }
 }
