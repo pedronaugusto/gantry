@@ -1,4 +1,11 @@
 const std = @import("std");
+const aegis = @import("aegis");
+/// Reference occurrences between two nodes, distinct from bytes and node positions.
+pub const ReferenceCount = aegis.units.Count(struct {}, usize);
+/// A node position in a graph's sorted paths; imports do not prove graph membership.
+pub const NodeId = aegis.id.Id(struct {}, u32);
+/// A byte position in diagnostic source, distinct from reference occurrences.
+pub const ByteOffset = aegis.id.Id(struct {}, usize);
 pub const Language = enum { zig, c, javascript, python, go, rust, nim, java };
 /// What an edge or reference is. A source import is `import`, `type_only`,
 /// `dynamic` or `test`; a test file's import, or an import of a test file,
@@ -24,7 +31,7 @@ pub const Kind = enum {
 /// What resolving one reference to selected files fails with: a spelling
 /// that is no path, two workspace replacements that disagree, or memory.
 pub const ResolveError = error{ InvalidPath, ConflictingReplacement, OutOfMemory };
-pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: usize = 1 };
+pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: ReferenceCount = .fromRaw(1) };
 pub const Form = enum {
     literal,
     python,
@@ -38,7 +45,9 @@ pub const Form = enum {
 };
 /// Raw references borrow the source or the allocator passed to the lexer.
 /// `dead` as on `Reference`.
+// aegis: no danger there; docs/design.md: lexical offsets are bounded positions in one source slice, with no domain conversion inside recovery.
 pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false, dead: bool = false };
+// aegis: no danger there; docs/design.md: raw lexical positions describe one bounded source slice and undergo no unit conversion.
 pub const Reference = struct {
     from: []const u8,
     name: []const u8,
@@ -51,6 +60,7 @@ pub const Reference = struct {
     dead: bool = false,
 };
 /// An identifier or string literal in a source file that a token rule names.
+// aegis: no danger there; docs/design.md: raw lexical positions describe one bounded source slice and undergo no unit conversion.
 pub const Token = struct {
     pub const Kind = enum { identifier, string, sequence };
     path: []const u8,
@@ -93,6 +103,7 @@ pub const ImportExpression = enum {
     gradle_dependency,
 };
 /// Owned by Imports or Graph, with a byte offset at the construct's start.
+// aegis: no danger there; docs/design.md: raw lexical positions describe one bounded source slice and undergo no unit conversion.
 pub const UnsupportedReference = struct {
     /// Null for anonymous source bytes passed to `imports`.
     from: ?[]const u8 = null,

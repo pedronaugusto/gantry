@@ -14,8 +14,8 @@ test "checked analysis rejects invalid paths and counts" {
     try std.testing.expectError(error.InvalidPath, g.Analysis.init(a, &.{"../a"}, &.{}));
     try std.testing.expectError(error.InvalidPath, g.Analysis.init(a, &.{"."}, &.{}));
     try std.testing.expectError(error.InvalidPath, g.Analysis.init(a, &.{"a"}, &.{.{ .from = "a", .to = "/a" }}));
-    try std.testing.expectError(error.InvalidCount, g.Analysis.init(a, &.{"a"}, &.{.{ .from = "a", .to = "a", .count = 0 }}));
-    try std.testing.expectError(error.CountOverflow, g.Analysis.init(a, &.{"a"}, &.{ .{ .from = "a", .to = "a", .count = std.math.maxInt(usize) }, .{ .from = "a", .to = "a" } }));
+    try std.testing.expectError(error.InvalidCount, g.Analysis.init(a, &.{"a"}, &.{.{ .from = "a", .to = "a", .count = .fromRaw(0) }}));
+    try std.testing.expectError(error.CountOverflow, g.Analysis.init(a, &.{"a"}, &.{ .{ .from = "a", .to = "a", .count = .fromRaw(std.math.maxInt(usize)) }, .{ .from = "a", .to = "a" } }));
 }
 test "checked analysis uses graph normalization and deterministic ordering" {
     const paths = &[_][]const u8{ "c", "b", "./a", "a" };
@@ -112,16 +112,16 @@ test "every node in a rootless cycle shares depth zero" {
     for (analysis.layers()) |layer| try eq(0, layer.depth);
 }
 test "file edge occurrence counts keep kinds separate and reject overflow" {
-    var graph = try g.Graph.fromEdges(a, &.{ "a", "b" }, &.{ .{ .from = "a", .to = "b" }, .{ .from = "a", .to = "b", .count = 2 }, .{ .from = "a", .to = "b", .kind = .link }, .{ .from = "a", .to = "b", .kind = .asset } });
+    var graph = try g.Graph.fromEdges(a, &.{ "a", "b" }, &.{ .{ .from = "a", .to = "b" }, .{ .from = "a", .to = "b", .count = .fromRaw(2) }, .{ .from = "a", .to = "b", .kind = .link }, .{ .from = "a", .to = "b", .kind = .asset } });
     defer graph.deinit();
     try eq(3, graph.edges().len);
     try f.edge(&graph, "a", "b", .import, 3);
-    try std.testing.expectError(error.InvalidCount, g.Graph.fromEdges(a, &.{ "a", "b" }, &.{.{ .from = "a", .to = "b", .count = 0 }}));
+    try std.testing.expectError(error.InvalidCount, g.Graph.fromEdges(a, &.{ "a", "b" }, &.{.{ .from = "a", .to = "b", .count = .fromRaw(0) }}));
     try std.testing.expectError(error.UnknownPath, g.Graph.fromEdges(a, &.{"a"}, &.{.{ .from = "a", .to = "missing" }}));
-    try std.testing.expectError(error.CountOverflow, g.Graph.fromEdges(a, &.{ "a", "b" }, &.{ .{ .from = "a", .to = "b", .count = std.math.maxInt(usize) }, .{ .from = "a", .to = "b" } }));
+    try std.testing.expectError(error.CountOverflow, g.Graph.fromEdges(a, &.{ "a", "b" }, &.{ .{ .from = "a", .to = "b", .count = .fromRaw(std.math.maxInt(usize)) }, .{ .from = "a", .to = "b" } }));
 }
 test "aggregation at every depth counts isolated directories and root files" {
-    var graph = try g.Graph.fromEdges(a, &.{ "main.zig", "src/a/x.zig", "src/b/y.zig", "alone/z.zig" }, &.{ .{ .from = "main.zig", .to = "src/a/x.zig" }, .{ .from = "src/a/x.zig", .to = "src/b/y.zig", .count = 2 } });
+    var graph = try g.Graph.fromEdges(a, &.{ "main.zig", "src/a/x.zig", "src/b/y.zig", "alone/z.zig" }, &.{ .{ .from = "main.zig", .to = "src/a/x.zig" }, .{ .from = "src/a/x.zig", .to = "src/b/y.zig", .count = .fromRaw(2) } });
     defer graph.deinit();
     var root = try graph.aggregate(a, 0);
     defer root.deinit();
@@ -254,18 +254,18 @@ test "graph construction owns edge normalization" {
     try expect(!@hasDecl(g.Graph, "coalesce"));
     var edges = [_]g.Edge{
         .{ .from = "./b", .to = "a" },
-        .{ .from = "a", .to = "./b", .count = 2 },
-        .{ .from = "./a", .to = "b", .count = 3 },
+        .{ .from = "a", .to = "./b", .count = .fromRaw(2) },
+        .{ .from = "./a", .to = "b", .count = .fromRaw(3) },
     };
     const original = edges;
     var graph = try g.Graph.fromEdges(a, &.{ "b", "./a" }, &edges);
     defer graph.deinit();
     try std.testing.expectEqualDeep(original, edges);
     try std.testing.expectEqualDeep(&[_]g.Edge{
-        .{ .from = "a", .to = "b", .count = 5 },
+        .{ .from = "a", .to = "b", .count = .fromRaw(5) },
         .{ .from = "b", .to = "a" },
     }, graph.edges());
-    edges[0].count = 99;
+    edges[0].count = .fromRaw(99);
     try f.edge(&graph, "b", "a", .import, 1);
 }
 

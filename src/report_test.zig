@@ -8,7 +8,7 @@ const report = g.report;
 
 const paths: []const []const u8 = &.{ "README.md", "assets/logo.svg", "docs/guide.md", "src/lang/c.zig", "src/lang/zig.zig", "src/main.zig", "src/model.zig", "src/store.zig", "tests/main_test.zig" };
 const edges: []const g.Edge = &.{
-    .{ .from = "src/main.zig", .to = "src/store.zig", .count = 2 },
+    .{ .from = "src/main.zig", .to = "src/store.zig", .count = .fromRaw(2) },
     .{ .from = "src/store.zig", .to = "src/model.zig" },
     .{ .from = "src/model.zig", .to = "src/store.zig", .kind = .type_only },
     .{ .from = "src/main.zig", .to = "src/lang/zig.zig", .kind = .dynamic },

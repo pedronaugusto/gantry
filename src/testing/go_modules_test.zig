@@ -1,3 +1,4 @@
+const g = @import("../gantry.zig");
 const config = @import("../lang/go/config.zig");
 const std = @import("std");
 const f = @import("support.zig");
@@ -70,7 +71,7 @@ test "conflicting workspace replacements leave the import unresolved and record 
     defer graph.deinit();
     try std.testing.expectEqual(0, graph.edges().len);
     try f.invalid(&graph, "app/a.go", error.ConflictingReplacement);
-    try std.testing.expectEqual(@as(?usize, std.mem.find(u8, text, "import")), graph.invalid()[0].offset);
+    try std.testing.expectEqual(@as(?g.ByteOffset, .fromRaw(std.mem.find(u8, text, "import").?)), graph.invalid()[0].offset);
     try std.testing.expectEqual(1, graph.references().len);
     try std.testing.expect(!graph.references()[0].resolved);
 }

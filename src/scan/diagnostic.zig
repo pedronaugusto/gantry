@@ -1,5 +1,6 @@
 //! Caller-owned scan failure output and borrowed pipeline progress.
 const std = @import("std");
+const t = @import("../types.zig");
 
 /// Initialize with `init` and release with `deinit`. Each diagnostic scan
 /// clears this output. Failure text survives scan cleanup and remains valid
@@ -45,7 +46,7 @@ pub const Diagnostics = struct {
         path: ?[]const u8,
         phase: Phase,
         /// Start of an unsupported import expression; null for other failures.
-        offset: ?usize = null,
+        offset: ?t.ByteOffset = null,
         /// The error the scan returned: a `ScanError` or one of the reader's.
         cause: anyerror,
     };
@@ -111,7 +112,7 @@ pub const InvalidFile = struct {
     path: []const u8,
     phase: Diagnostics.Phase,
     /// The import a `ConflictingReplacement` is about; null otherwise.
-    offset: ?usize = null,
+    offset: ?t.ByteOffset = null,
     cause: FileError,
 };
 
@@ -129,11 +130,12 @@ pub fn reset(diagnostic: ?*Diagnostics) void {
 
 /// Progress borrows the current path; only Diagnostics owns output.
 /// Capture failure before releasing graph and resolution workspace storage.
+// aegis: no danger there; docs/design.md: progress is borrowed by one synchronous scan and failure paths are copied before cleanup.
 pub const Progress = struct {
     diagnostic: ?*Diagnostics,
     phase: Diagnostics.Phase = .paths,
     path: ?[]const u8 = null,
-    offset: ?usize = null,
+    offset: ?t.ByteOffset = null,
     /// The graph's allocator, which owns `invalid` and its paths; set once
     /// the graph exists.
     records: ?std.mem.Allocator = null,
@@ -153,7 +155,7 @@ pub const Progress = struct {
     fn record(progress: *Progress, cause: FileError) error{OutOfMemory}!void {
         const a = progress.records.?;
         const path = progress.path.?;
-        const key = try a.print("{s}\x00{s}\x00{?d}", .{ path, @errorName(cause), progress.offset });
+        const key = try a.print("{s}\x00{s}\x00{?d}", .{ path, @errorName(cause), if (progress.offset) |offset| offset.raw() else null });
         if ((try progress.recorded.getOrPut(a, key)).found_existing) return;
         try progress.invalid.append(a, .{ .path = try a.dupe(u8, path), .phase = progress.phase, .offset = progress.offset, .cause = cause });
     }

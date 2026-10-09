@@ -2,9 +2,11 @@
 const reach_module = @import("reach.zig");
 const State_module = @import("State.zig");
 const std = @import("std");
+const aegis = @import("aegis");
 const t = @import("../types.zig");
 const Graph = @import("../graph/Storage.zig");
 const Adjacency = reach_module.Adjacency;
+// aegis: measured hot loop validated at its boundary; docs/design.md: traversal indexes share validated adjacency bounds; component and directory indexes stay within their own arrays.
 const Frame = struct { node: usize, next: usize };
 /// The graph supplies unique sorted paths and validated, coalesced edges.
 pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*State_module {
@@ -122,13 +124,13 @@ fn directoryCoupling(arena: std.mem.Allocator, s: std.mem.Allocator, paths: []co
                 continue;
             }
             stack.shrinkRetainingCapacity(depth);
-            try stack.append(s, @intCast(names.items.len));
+            try stack.append(s, aegis.int.cast(u32, names.items.len) catch return error.OutOfMemory);
             try names.append(s, name);
             depth += 1;
         }
         stack.shrinkRetainingCapacity(depth);
         try chains.appendSlice(s, stack.items);
-        offsets[v + 1] = @intCast(chains.items.len);
+        offsets[v + 1] = aegis.int.cast(u32, chains.items.len) catch return error.OutOfMemory;
     }
     const counts = try s.alloc(t.Coupling, names.items.len);
     for (names.items, counts) |name, *c| c.* = .{ .path = name, .files = 0, .fan_in = 0, .fan_out = 0 };

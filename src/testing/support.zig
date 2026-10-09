@@ -25,7 +25,7 @@ pub fn invalid(graph: *const g.Graph, path: []const u8, cause: g.FileError) !voi
 }
 pub fn edge(graph: *const g.Graph, from: []const u8, to: []const u8, kind: g.Kind, count: usize) !void {
     for (graph.edges()) |e| if (std.mem.eql(u8, e.from, from) and std.mem.eql(u8, e.to, to) and e.kind == kind) {
-        try std.testing.expectEqual(count, e.count);
+        try std.testing.expectEqual(count, e.count.raw());
         return;
     };
     std.debug.print("missing {s} -> {s}\n", .{ from, to });

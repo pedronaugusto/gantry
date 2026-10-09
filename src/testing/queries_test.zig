@@ -20,7 +20,7 @@ const files = &[_][]const u8{ "a/w.zig", "a/x.zig", "b/y.zig", "b/z.zig", "b/c/q
 const edges = &[_]g.Edge{
     .{ .from = "a/x.zig", .to = "b/y.zig" },
     .{ .from = "a/x.zig", .to = "b/z.zig" },
-    .{ .from = "a/x.zig", .to = "b/z.zig", .kind = .type_only, .count = 3 },
+    .{ .from = "a/x.zig", .to = "b/z.zig", .kind = .type_only, .count = .fromRaw(3) },
     .{ .from = "a/w.zig", .to = "a/x.zig" },
     .{ .from = "r.zig", .to = "a/x.zig" },
     .{ .from = "b/c/q.zig", .to = "b/y.zig" },

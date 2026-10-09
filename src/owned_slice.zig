@@ -14,6 +14,7 @@ pub fn Store(comptime T: type) type {
                 gpa.destroy(state);
             }
         };
+        // aegis: safe-type internals; docs/design.md: each immutable result has one opaque allocation owner, not a copyable ID.
         /// Move this owner; do not copy it and deinitialize it twice.
         pub const Owner = enum(usize) {
             _,

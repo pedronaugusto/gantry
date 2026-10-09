@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Breaking
 
+- `Edge.count` is `ReferenceCount` (aegis's tagged occurrence count): construct with `ReferenceCount.fromRaw`, extract with `raw`, and add with checked `add`. `Diagnostics.Failure.offset` and `InvalidFile.offset` are optional `ByteOffset` IDs; construct and extract explicitly.
+
 - `rules.matches`, `rules.matchesToken` and `TokenRule.names` return pattern errors instead of hiding them. Layer report patterns return errors too. `rules.patternOptions` is replaced by `rules.Globs`, `rules.Pattern`, `rules.CompileError`, `rules.anyOf` and `rules.literal`: callers compile and match in gantry's dialect without depending on sweep.
 - `Token.Kind` includes `sequence`; its evidence contains code tokens joined with spaces. `TokenRule.sequences` matches adjacent code token patterns, ignoring whitespace and comments, with each wildcard confined to one token, quoted Zig names decoded as identifiers and Zig operators kept whole.
 
@@ -33,6 +35,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Analysis.init` now validates and orders inputs through `Graph.fromEdges`, returning explicit path and count errors.
 
 ### Added
+
+- Separate build modules for graph, analysis, scan, imports, rules, manifests, path and report, sharing the root facade's declaration identities.
 
 - `match/path-compiled` benchmarks repeated matching in gantry's path dialect, with compilation outside the clock, alongside the one-shot path row.
 

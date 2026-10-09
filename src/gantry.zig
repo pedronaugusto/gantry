@@ -20,6 +20,10 @@ pub const Language = t.Language;
 pub const Kind = t.Kind;
 /// A dependency between two files, with its kind and reference count.
 pub const Edge = t.Edge;
+/// Reference occurrences, with checked addition and explicit raw extraction.
+pub const ReferenceCount = t.ReferenceCount;
+/// A diagnostic byte position, explicitly imported from or extracted to usize.
+pub const ByteOffset = t.ByteOffset;
 /// One recovered import spelling, its offset, kind and resolution status.
 pub const Reference = t.Reference;
 /// An identifier or string literal that a token rule names.
@@ -87,6 +91,7 @@ pub const InvalidFile = diagnostic_module.InvalidFile;
 pub const FileError = diagnostic_module.FileError;
 /// Reader over an already-open directory; directory ownership stays with caller.
 /// The byte limit is caller policy. A missing selected file is an I/O error.
+// aegis: C or OS boundary; docs/design.md: the std Io reader limit is passed unchanged to the directory read call.
 pub const DirReader = struct {
     dir: std.Io.Dir,
     limit: std.Io.Limit = .unlimited,

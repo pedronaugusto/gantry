@@ -141,7 +141,8 @@ fn edge(w: *Writer, e: t.Edge) Writer.Error!void {
     try string(w, e.from);
     try w.writeAll(", \"to\": ");
     try string(w, e.to);
-    try w.print(", \"kind\": \"{s}\", \"count\": {d}}}", .{ @tagName(e.kind), e.count });
+    // aegis: no danger there; docs/design.md: serialization observes one reference-count domain.
+    try w.print(", \"kind\": \"{s}\", \"count\": {d}}}", .{ @tagName(e.kind), e.count.raw() });
 }
 
 pub const SarifOptions = struct {

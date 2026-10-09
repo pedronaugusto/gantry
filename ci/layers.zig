@@ -67,18 +67,31 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/report.zig",
         "src/report/**",
     } },
-    .{ .name = "public", .patterns = &.{
+    .{ .name = "package vocabulary", .patterns = &.{
         "src/gantry.zig",
     } },
+    .{ .name = "public concerns", .patterns = &.{"src/public/**"} },
+    .{ .name = "public root", .patterns = &.{"src/public.zig"} },
 };
 
 pub const entries: []const []const u8 = &.{};
 
-pub const modules: []const gantry.NamedModule = &.{};
+pub const modules: []const gantry.NamedModule = &.{
+    .{ .name = "implementation", .path = "src/gantry.zig", .from = "src/public/**" },
+    .{ .name = "gantry.graph", .path = "src/public/graph.zig", .from = "src/public.zig" },
+    .{ .name = "gantry.analysis", .path = "src/public/analysis.zig", .from = "src/public.zig" },
+    .{ .name = "gantry.scan", .path = "src/public/scan.zig", .from = "src/public.zig" },
+    .{ .name = "gantry.imports", .path = "src/public/imports.zig", .from = "src/public.zig" },
+    .{ .name = "gantry.rules", .path = "src/public/rules.zig", .from = "src/public.zig" },
+    .{ .name = "gantry.manifests", .path = "src/public/manifests.zig", .from = "src/public.zig" },
+    .{ .name = "gantry.path", .path = "src/public/path.zig", .from = "src/public.zig" },
+    .{ .name = "gantry.report", .path = "src/public/report.zig", .from = "src/public.zig" },
+};
 
 const package_references = [_]gantry.rules.ReferenceRule{
     .{ .name = "named dependencies", .unresolved_only = true, .except_targets = &.{
         "std",
+        "aegis",
         "sweep",
         "shakedown",
     } },
@@ -138,5 +151,14 @@ pub const required = [_][]const u8{
     "src/report.zig",
     "src/report/json.zig",
     "src/gantry.zig",
+    "src/public.zig",
+    "src/public/graph.zig",
+    "src/public/analysis.zig",
+    "src/public/scan.zig",
+    "src/public/imports.zig",
+    "src/public/rules.zig",
+    "src/public/manifests.zig",
+    "src/public/path.zig",
+    "src/public/report.zig",
     "src/tests.zig",
 };

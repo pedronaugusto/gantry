@@ -305,7 +305,7 @@ fn readManifests(w: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
                 continue;
             };
             if (options.strict_imports and declared.unsupported.len > 0) {
-                progress.offset = declared.unsupported[0].offset;
+                progress.offset = .fromRaw(declared.unsupported[0].offset);
                 return error.UnsupportedImport;
             }
             for (declared.unsupported) |record| try unsupported.append(arena, .{ .from = p, .offset = record.offset, .expression = record.expression });
@@ -336,20 +336,20 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
         ctx.allocator = s;
         ctx.python_reexports = &indexes.reexports;
         ctx.java_packages = &indexes.java_packages;
-        const from: u32 = @intCast(file_index);
+        const from: t.NodeId = .fromRaw(@intCast(file_index)); // safe: positions validates g.paths.len fits u32.
         if (lexed and !code) {
             progress.at(.imports, p);
             _ = extract(s, language.?, text, recorder, file_index, p) catch |err| try progress.tolerate(err);
         }
         if (code) {
-            var seen: std.AutoHashMapUnmanaged(struct { usize, u32 }, void) = .empty;
+            var seen: std.AutoHashMapUnmanaged(struct { usize, t.NodeId }, void) = .empty;
             progress.at(.imports, p);
             const recovery = prior orelse extract(s, language.?, text, recorder, file_index, p) catch |err| empty: {
                 try progress.tolerate(err);
                 break :empty t.Recovery{};
             };
             if (options.strict_imports and recovery.unsupported.len > 0) {
-                progress.offset = recovery.unsupported[0].offset;
+                progress.offset = .fromRaw(recovery.unsupported[0].offset);
                 return error.UnsupportedImport;
             }
             for (recovery.unsupported) |record| try unsupported.append(arena, .{
@@ -362,7 +362,7 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
                 progress.at(.resolution, p);
                 const kind: Kind = if (spec.kind == .@"test" or testFile(indexes.test_files, language.?, p)) .@"test" else spec.kind;
                 const targets = ctx.targets(p, language.?, spec) catch |err| unresolved: {
-                    progress.offset = spec.offset;
+                    progress.offset = .fromRaw(spec.offset);
                     try progress.tolerate(err);
                     break :unresolved &.{};
                 };
@@ -452,7 +452,7 @@ fn finish(arena: std.mem.Allocator, g: *Graph, manifests_enabled: bool, reader: 
     std.mem.sort(diagnostics.InvalidFile, progress.invalid.items, {}, struct {
         fn less(_: void, x: diagnostics.InvalidFile, y: diagnostics.InvalidFile) bool {
             const order = std.mem.order(u8, x.path, y.path);
-            return order == .lt or (order == .eq and (x.offset orelse 0) < (y.offset orelse 0));
+            return order == .lt or (order == .eq and (if (x.offset) |offset| offset.raw() else 0) < (if (y.offset) |offset| offset.raw() else 0));
         }
     }.less);
     g.invalid = progress.invalid.items;

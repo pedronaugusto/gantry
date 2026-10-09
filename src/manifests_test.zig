@@ -739,7 +739,7 @@ test "Nimble requirements that are not string literals declare nothing and are k
     options.kinds = &.{};
     try std.testing.expectError(error.UnsupportedImport, g.scan(a, std.testing.io, &.{"x.nimble"}, fixture, f.Fixture.read, options));
     try std.testing.expectEqual(g.Diagnostics.Phase.manifests, diagnostic.failure.?.phase);
-    try std.testing.expectEqual(@as(?usize, std.mem.find(u8, text, "requires \"a\"")), diagnostic.failure.?.offset);
+    try std.testing.expectEqual(@as(?g.ByteOffset, .fromRaw(std.mem.find(u8, text, "requires \"a\"").?)), diagnostic.failure.?.offset);
 }
 test "TOML array-of-tables headers and dotted dependency keys" {
     var arena: std.heap.ArenaAllocator = .init(a);

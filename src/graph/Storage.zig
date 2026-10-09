@@ -4,6 +4,7 @@ const build_module = @import("../lang/go/build.zig");
 const diagnostic_module = @import("../scan/diagnostic.zig");
 const path_module = @import("../path.zig");
 const std = @import("std");
+const aegis = @import("aegis");
 const t = @import("../types.zig");
 const Storage = @This();
 allocator: std.mem.Allocator,
@@ -86,15 +87,16 @@ pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []con
     const a = g.arena.allocator();
     const owned = try a.alloc(t.Edge, edges.len);
     for (edges, owned) |edge, *dest| {
-        if (edge.count == 0) return error.InvalidCount;
+        if (edge.count == t.ReferenceCount.fromRaw(0)) return error.InvalidCount;
         const from = try path_module.normalize(a, edge.from);
         const to = try path_module.normalize(a, edge.to);
         if (!g.files.contains(from) or !g.files.contains(to)) return error.UnknownPath;
         dest.* = .{ .from = from, .to = to, .kind = edge.kind, .count = edge.count };
     }
     g.edges = try coalesce(owned);
+    // aegis: no danger there; docs/design.md: positive-count checks observe a single occurrence domain.
     for (g.edges) |edge| {
-        std.debug.assert(edge.count > 0);
+        std.debug.assert(edge.count.raw() > 0);
         std.debug.assert(g.files.contains(edge.from));
         std.debug.assert(g.files.contains(edge.to));
     }
@@ -145,7 +147,7 @@ pub fn coalesce(edges: []t.Edge) error{CountOverflow}![]const t.Edge {
     var n: usize = 0;
     for (edges) |edge| {
         if (n > 0 and std.mem.eql(u8, edges[n - 1].from, edge.from) and std.mem.eql(u8, edges[n - 1].to, edge.to) and edges[n - 1].kind == edge.kind) {
-            edges[n - 1].count = std.math.add(usize, edges[n - 1].count, edge.count) catch return error.CountOverflow;
+            edges[n - 1].count = edges[n - 1].count.add(edge.count) catch return error.CountOverflow;
         } else {
             edges[n] = edge;
             n += 1;
@@ -155,30 +157,31 @@ pub fn coalesce(edges: []t.Edge) error{CountOverflow}![]const t.Edge {
 }
 
 /// An edge between positions in sorted `paths`, before it is coalesced.
-pub const Pending = struct { from: u32, to: u32, kind: t.Kind };
+pub const Pending = struct { from: t.NodeId, to: t.NodeId, kind: t.Kind };
 /// Each path's position, for `Pending` edges. Paths are sorted, so position
 /// order is the path order `edgesLess` sorts by.
-pub fn positions(arena: std.mem.Allocator, paths: []const []const u8) std.mem.Allocator.Error!std.StringHashMapUnmanaged(u32) {
+pub fn positions(arena: std.mem.Allocator, paths: []const []const u8) std.mem.Allocator.Error!std.StringHashMapUnmanaged(t.NodeId) {
     if (paths.len > std.math.maxInt(u32)) return error.OutOfMemory;
-    var result: std.StringHashMapUnmanaged(u32) = .empty;
-    try result.ensureTotalCapacity(arena, @intCast(paths.len));
+    var result: std.StringHashMapUnmanaged(t.NodeId) = .empty;
+    try result.ensureTotalCapacity(arena, aegis.int.cast(u32, paths.len) catch return error.OutOfMemory);
     for (paths, 0..) |path, i| {
         if (i > 0) std.debug.assert(t.stringsLess({}, paths[i - 1], path));
-        result.putAssumeCapacity(path, @intCast(i));
-        std.debug.assert(result.get(path).? == i);
+        result.putAssumeCapacity(path, .fromRaw(@intCast(i))); // safe: paths.len fits u32 at entry.
+        std.debug.assert(result.get(path).?.raw() == i);
     }
     return result;
 }
 /// `coalesce` for pending edges, into exactly the storage the result needs.
+// aegis: measured hot loop validated at its boundary; docs/design.md: typed endpoints import only validated path positions and pending.len bounds every count.
 pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pending: []Pending) std.mem.Allocator.Error![]const t.Edge {
     for (pending) |edge| {
-        std.debug.assert(edge.from < paths.len);
-        std.debug.assert(edge.to < paths.len);
+        std.debug.assert(edge.from.raw() < paths.len);
+        std.debug.assert(edge.to.raw() < paths.len);
     }
     std.mem.sort(Pending, pending, {}, struct {
         fn less(_: void, x: Pending, y: Pending) bool {
-            if (x.from != y.from) return x.from < y.from;
-            if (x.to != y.to) return x.to < y.to;
+            if (x.from != y.from) return x.from.compare(y.from) == .lt;
+            if (x.to != y.to) return x.to.compare(y.to) == .lt;
             return @backingInt(x.kind) < @backingInt(y.kind);
         }
     }.less);
@@ -190,14 +193,15 @@ pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pend
     n = 0;
     for (pending, 0..) |edge, i| {
         if (i > 0 and std.meta.eql(edge, pending[i - 1])) {
-            edges[n - 1].count += 1;
+            // aegis: measured hot loop validated at its boundary; pending.len bounds the total occurrences (docs/design.md).
+            edges[n - 1].count = .fromRaw(edges[n - 1].count.raw() + 1);
         } else {
-            edges[n] = .{ .from = paths[edge.from], .to = paths[edge.to], .kind = edge.kind };
+            edges[n] = .{ .from = paths[edge.from.raw()], .to = paths[edge.to.raw()], .kind = edge.kind };
             n += 1;
         }
     }
     std.debug.assert(n == edges.len);
-    for (edges) |edge| std.debug.assert(edge.count > 0);
+    for (edges) |edge| std.debug.assert(edge.count.raw() > 0);
     return edges;
 }
 
@@ -210,6 +214,6 @@ pub fn get(g: anytype) *Storage {
 
 comptime {
     std.debug.assert(@sizeOf(Pending) == 12);
-    std.debug.assert(@bitSizeOf(@FieldType(Pending, "from")) == 32);
-    std.debug.assert(@bitSizeOf(@FieldType(Pending, "to")) == 32);
+    std.debug.assert(@sizeOf(@FieldType(Pending, "from")) == @sizeOf(u32));
+    std.debug.assert(@sizeOf(@FieldType(Pending, "to")) == @sizeOf(u32));
 }

@@ -3,10 +3,12 @@ const std = @import("std");
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    // gantry's only dependency: the glob engine its path rules read.
+    const aegis_package = b.dependency("aegis", .{ .target = target, .optimize = optimize });
+    const aegis = aegis_package.module("aegis");
+    // Path rules use sweep; semantic scalar domains use aegis.
     const sweep_package = b.dependency("sweep", .{ .target = target, .optimize = optimize });
     const sweep = sweep_package.module("sweep");
-    const module = b.addModule("gantry", .{ .root_source_file = b.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "sweep", .module = sweep }} });
+    const module = publicModules(b, target, optimize, sweep, aegis, true);
     const library = b.addLibrary(.{ .name = "gantry", .root_module = module });
     b.installArtifact(library);
     // Everything below is this repository's own: a project depending on
@@ -20,10 +22,17 @@ pub fn build(b: *std.Build) !void {
             .root_source_file = b.path("src/tests.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = "sweep", .module = sweep }},
+            .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis } },
         }),
     });
+    const domains = b.step("check-domains", "Reject raw counts and mixed diagnostic domains");
+    for ([_][]const u8{ "raw_count", "mixed_offset" }) |name| {
+        const negative = b.addObject(.{ .name = name, .root_module = b.createModule(.{ .root_source_file = b.path(b.fmt("ci/domains/{s}.zig", .{name})), .target = target, .optimize = optimize, .imports = &.{.{ .name = "gantry", .module = module }} }) });
+        negative.expect_errors = .{ .contains = if (std.mem.eql(u8, name, "raw_count")) "ci/domains/raw_count.zig:3:67: error: expected type 'units.Count(types.ReferenceCount__struct_/?/,usize)', found 'usize'" else "ci/domains/mixed_offset.zig:3:158: error: expected type '?id.Identity(types.ByteOffset__struct_/?/,usize)'" };
+        domains.dependOn(&negative.step);
+    }
     const test_step = b.step("test", "Run the tests and example");
+    test_step.dependOn(domains);
     test_step.dependOn(&b.addRunArtifact(tests).step);
     // The benchmarks' inputs keep their bytes, so a change to them is seen
     // before it moves a measurement.
@@ -65,23 +74,9 @@ pub fn build(b: *std.Build) !void {
                 .optimize = optimize,
             },
         });
-        // The hosted matrices come from preflight's planner, with the same
-        // repository configuration as the source gate.
-        const tooling = try b.dependencyLazy("preflight", .{});
-        const tool_target = b.resolveTargetQuery(.{ .cpu_arch = b.graph.host.result.cpu.arch, .cpu_model = .baseline, .os_tag = b.graph.host.result.os.tag, .abi = b.graph.host.result.abi });
-        const tool_gantry = try tooling.builder.dependencyLazy("gantry", .{ .target = tool_target, .optimize = .debug });
-        const planner = b.addExecutable(.{
-            .name = "preflight-checks",
-            .root_module = b.createModule(.{ .root_source_file = tooling.path("src/main.zig"), .target = tool_target, .optimize = .safe, .imports = &.{.{ .name = "gantry", .module = tool_gantry.module("gantry") }} }),
-        });
-        const plan = b.addRunArtifact(planner);
-        plan.setCwd(b.path("."));
-        plan.addArgs(&.{ "plan", "--config", "ci/workflow.json" });
-        plan.addPassthruArgs();
-        b.step("plan", "Print the hosted CI plan from preflight").dependOn(&plan.step);
         // A project that depends on gantry by path, with no packages to
         // fetch: the build a consumer gets.
-        preflight.addConsumerCheck(b, .{ .package = "gantry", .program = b.path("ci/consumer.zig"), .packages = &.{sweep_package} });
+        preflight.addConsumerCheck(b, .{ .package = "gantry", .program = b.path("ci/consumer.zig"), .modules = &.{ "gantry", "gantry.graph", "gantry.analysis", "gantry.scan", "gantry.imports", "gantry.rules", "gantry.manifests", "gantry.path", "gantry.report" }, .packages = &.{ sweep_package, aegis_package } });
         // Validates the report goldens with their downstream tools.
         check.dependOn(&preflight.addCheck(b, "check-reports", "ci/reports.zig").step);
     }
@@ -92,11 +87,26 @@ pub fn build(b: *std.Build) !void {
 /// module would time the Debug module.
 fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) []const std.Build.Module.Import {
     const sweep = b.dependency("sweep", .{ .target = target, .optimize = optimize }).module("sweep");
-    const gantry = b.createModule(.{ .root_source_file = b.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "sweep", .module = sweep }} });
+    const aegis = b.dependency("aegis", .{ .target = target, .optimize = optimize }).module("aegis");
+    const gantry = publicModules(b, target, optimize, sweep, aegis, false);
     // unreachable: `build` returns before `addCi` while shakedown is missing.
     const shakedown = (b.dependencyLazy("shakedown", .{ .target = target, .optimize = optimize }) catch unreachable).module("shakedown");
     return b.allocator.dupe(std.Build.Module.Import, &.{
         .{ .name = "gantry", .module = gantry },
         .{ .name = "shakedown", .module = shakedown },
     }) catch @panic("OOM");
+}
+
+/// Public concerns share one private source module so imports keep declaration identities.
+fn publicModules(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize, sweep: *std.Build.Module, aegis: *std.Build.Module, publish: bool) *std.Build.Module {
+    const implementation = b.createModule(.{ .root_source_file = b.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis } } });
+    const root = b.createModule(.{ .root_source_file = b.path("src/public.zig"), .target = target, .optimize = optimize });
+    for ([_][]const u8{ "graph", "analysis", "scan", "imports", "rules", "manifests", "path", "report" }) |name| {
+        const concern = b.createModule(.{ .root_source_file = b.path(b.fmt("src/public/{s}.zig", .{name})), .target = target, .optimize = optimize, .imports = &.{.{ .name = "implementation", .module = implementation }} });
+        const module_name = b.fmt("gantry.{s}", .{name});
+        root.addImport(module_name, concern);
+        if (publish) b.modules.put(b.allocator, b.dupe(module_name), concern) catch @panic("OOM");
+    }
+    if (publish) b.modules.put(b.allocator, "gantry", root) catch @panic("OOM");
+    return root;
 }

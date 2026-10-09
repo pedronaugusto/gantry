@@ -402,14 +402,14 @@ test "fuzz: Zig test context changes kinds only" {
             // Coalesced by kind, so one plain edge is up to two classified ones.
             var total: usize = 0;
             for (classified.edges()) |e| {
-                total += e.count;
+                total += e.count.raw();
                 var found = false;
                 for (plain.edges()) |p| found = found or (std.mem.eql(u8, p.from, e.from) and std.mem.eql(u8, p.to, e.to));
                 try testing.expect(found);
             }
             for (plain.edges()) |p| {
                 try testing.expectEqual(g.Kind.@"test", p.kind);
-                total -= p.count;
+                total -= p.count.raw();
             }
             try testing.expectEqual(0, total);
         }

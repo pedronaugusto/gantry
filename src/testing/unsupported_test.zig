@@ -196,7 +196,7 @@ test "unsupported strict scans refuse omitted imports before returning a graph" 
     try std.testing.expectEqualStrings("a.zig", failure.path.?);
     try std.testing.expectEqual(g.Diagnostics.Phase.imports, failure.phase);
     try std.testing.expectEqual(error.UnsupportedImport, failure.cause);
-    try std.testing.expectEqual(@as(?usize, 38), failure.offset);
+    try std.testing.expectEqual(@as(?g.ByteOffset, .fromRaw(38)), failure.offset);
 }
 
 test "unsupported tolerant scans own records in sorted source order" {
@@ -272,7 +272,7 @@ test "unsupported strict diagnostics cover every detecting language and survive 
         };
         inputs.deinit();
         try std.testing.expectEqualStrings(case.path, diagnostic.failure.?.path.?);
-        try std.testing.expectEqual(@as(?usize, case.offset), diagnostic.failure.?.offset);
+        try std.testing.expectEqual(@as(?g.ByteOffset, .fromRaw(case.offset)), diagnostic.failure.?.offset);
         try std.testing.expectEqual(g.Diagnostics.Phase.imports, diagnostic.failure.?.phase);
     }
     var empty = try g.scan(a, std.testing.io, &.{}, f.Fixture{ .items = &.{} }, f.Fixture.read, strictOptions(&diagnostic));
@@ -299,7 +299,7 @@ test "unsupported diagnostic offsets survive failure to allocate a path" {
     const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.zig", .text = " @import(name)" }} };
     try refuse(fixture, &.{"a.zig"}, &diagnostic);
     try std.testing.expectEqual(null, diagnostic.failure.?.path);
-    try std.testing.expectEqual(@as(?usize, 1), diagnostic.failure.?.offset);
+    try std.testing.expectEqual(@as(?g.ByteOffset, .fromRaw(1)), diagnostic.failure.?.offset);
     try std.testing.expectEqual(error.UnsupportedImport, diagnostic.failure.?.cause);
 }
 
@@ -406,7 +406,7 @@ fn strictAllocations(alloc: std.mem.Allocator) !void {
         if (cause == error.OutOfMemory) return cause;
         try std.testing.expectEqual(error.UnsupportedImport, cause);
         try std.testing.expectEqualStrings("a.zig", diagnostic.failure.?.path.?);
-        try std.testing.expectEqual(@as(?usize, 0), diagnostic.failure.?.offset);
+        try std.testing.expectEqual(@as(?g.ByteOffset, .fromRaw(0)), diagnostic.failure.?.offset);
     }
 }
 

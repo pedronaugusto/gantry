@@ -10,7 +10,7 @@ pub fn main(init: std.process.Init) !void {
     defer graph.deinit();
 
     for (graph.edges()) |edge| {
-        std.log.info("{s} -> {s} ({d})", .{ edge.from, edge.to, edge.count });
+        std.log.info("{s} -> {s} ({d})", .{ edge.from, edge.to, edge.count.raw() });
     }
     var analysis = try graph.analyze(gpa);
     defer analysis.deinit();

@@ -28,7 +28,7 @@ var graph = try gantry.scan(gpa, io, paths, Files{}, Files.read, .{});
 defer graph.deinit();
 
 for (graph.edges()) |edge| {
-    std.log.info("{s} -> {s} ({d})", .{ edge.from, edge.to, edge.count });
+    std.log.info("{s} -> {s} ({d})", .{ edge.from, edge.to, edge.count.raw() });
 }
 var analysis = try graph.analyze(gpa);
 defer analysis.deinit();
@@ -202,7 +202,7 @@ declaration readers do not validate their entire formats.
 
 ### Graphs and rules
 
-Edges point from an importer to its dependency and count reference occurrences.
+Edges point from an importer to its dependency. `Edge.count` is a `ReferenceCount`: use `.fromRaw(n)` to construct it, `.raw()` to print it, and checked `.add` to combine counts. Diagnostic failure and invalid-file offsets use `ByteOffset`, distinct from occurrence counts.
 Construction sorts and coalesces them; caller edges go through `Graph.fromEdges`.
 Aggregation keeps self edges within directories. Analysis collapses strongly connected
 components for layer calculation; depth is the longest path from a root, and each cycle
@@ -323,6 +323,13 @@ DOT quotes escape `"` and `\`, write a newline as `\n` and other control bytes a
 that are not UTF-8 as `\xNN`, so distinct paths stay distinct IDs. Mermaid nodes are numbered and labels use entity
 codes. JSON writes a byte that is not UTF-8 as U+FFFD; SARIF URIs percent-encode
 every byte outside the unreserved set and `/`.
+
+The root also has separate build modules for its existing concerns:
+`gantry.graph`, `gantry.analysis`, `gantry.scan`, `gantry.imports`,
+`gantry.rules`, `gantry.manifests`, `gantry.path` and `gantry.report`.
+They share declaration identities and can be imported together.
+Runtime dependencies are commit-pinned aegis and sweep; CI and test dependencies
+remain lazy.
 
 ## Scope
 
