@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) !void {
     const domains = b.step("check-domains", "Reject raw counts and mixed diagnostic domains");
     for ([_][]const u8{ "raw_count", "mixed_offset" }) |name| {
         const negative = b.addObject(.{ .name = name, .root_module = b.createModule(.{ .root_source_file = b.path(b.fmt("ci/domains/{s}.zig", .{name})), .target = target, .optimize = optimize, .imports = &.{.{ .name = "gantry", .module = module }} }) });
-        negative.expect_errors = .{ .contains = if (std.mem.eql(u8, name, "raw_count")) "ci/domains/raw_count.zig:3:67: error: expected type 'units.Count(types.ReferenceCount__struct_/?/,usize)', found 'usize'" else "ci/domains/mixed_offset.zig:3:158: error: expected type '?id.Identity(types.ByteOffset__struct_/?/,usize)'" };
+        negative.expect_errors = .{ .contains = if (std.mem.eql(u8, name, "raw_count")) "error: expected type 'units.Count(types.ReferenceCountTag,usize)', found 'usize'" else "error: expected type '?id.Identity(types.ByteOffsetTag,usize,false)', found 'units.Count(types.ReferenceCountTag,usize)'" };
         domains.dependOn(&negative.step);
     }
     const test_step = b.step("test", "Run the tests and example");

@@ -1,11 +1,14 @@
 const std = @import("std");
 const aegis = @import("aegis");
+const ReferenceCountTag = struct {};
+const NodeIdTag = struct {};
+const ByteOffsetTag = struct {};
 /// Reference occurrences between two nodes, distinct from bytes and node positions.
-pub const ReferenceCount = aegis.units.Count(struct {}, usize);
+pub const ReferenceCount = aegis.units.Count(ReferenceCountTag, usize);
 /// A node position in a graph's sorted paths; imports do not prove graph membership.
-pub const NodeId = aegis.id.Id(struct {}, u32);
+pub const NodeId = aegis.id.Id(NodeIdTag, u32);
 /// A byte position in diagnostic source, distinct from reference occurrences.
-pub const ByteOffset = aegis.id.Id(struct {}, usize);
+pub const ByteOffset = aegis.id.Id(ByteOffsetTag, usize);
 pub const Language = enum { zig, c, javascript, python, go, rust, nim, java };
 /// What an edge or reference is. A source import is `import`, `type_only`,
 /// `dynamic` or `test`; a test file's import, or an import of a test file,

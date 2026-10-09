@@ -27,7 +27,9 @@ domain. Importing a node ID does not prove membership in a particular graph:
 construction validates sorted paths and coalescing checks endpoint bounds.
 Diagnostic progress and output use `ByteOffset`, distinct from occurrence
 counts. Recovery offsets remain source-local until explicitly imported into
-progress. IDs and counts retain the original scalar layout.
+progress. IDs and counts retain the original scalar layout. Named domain markers keep
+compiler diagnostics stable; compile-fail checks match semantic type errors
+without host paths or generated anonymous-struct numbers.
 
 The build exports `gantry.graph`, `gantry.analysis`, `gantry.scan`,
 `gantry.imports`, `gantry.rules`, `gantry.manifests`, `gantry.path` and
