@@ -344,7 +344,8 @@ test "Zig structural lists past their first allocation keep every builtin alias 
     try expectKinds(source.written(), &expected);
 }
 
-test "a scan of many Zig files agrees with the same files scanned alone" {
+/// Forty Zig files scanned on `io`: each says what it says alone, in path order.
+fn scanMany(io: std.Io) !void {
     var items: std.ArrayList(support.Item) = .empty;
     defer {
         for (items.items) |item| {
@@ -359,7 +360,11 @@ test "a scan of many Zig files agrees with the same files scanned alone" {
             .text = try a.print("const next = @import(\"z{d:0>2}.zig\");\nconst unused = @import(\"u.zig\");\npub fn f() void {{ _ = next; }}\ntest {{ _ = @import(\"t.zig\"); }}\n", .{(i + 1) % 40}),
         });
     }
-    var graph = try (support.Fixture{ .items = items.items }).scan(a, .{});
+    const paths = try a.alloc([]const u8, items.items.len);
+    defer a.free(paths);
+    for (items.items, paths) |item, *path| path.* = item.path;
+    const fixture: support.Fixture = .{ .items = items.items };
+    var graph = try g.scan(a, io, paths, fixture, support.Fixture.read, .{});
     defer graph.deinit();
     try std.testing.expectEqual(40, graph.edges().len);
     for (graph.edges()) |edge| try std.testing.expectEqual(g.Kind.import, edge.kind);
@@ -372,6 +377,15 @@ test "a scan of many Zig files agrees with the same files scanned alone" {
     try std.testing.expectEqual(40, dead);
     try std.testing.expectEqual(40, tests);
     try std.testing.expectEqual(0, graph.invalid().len);
+}
+
+test "a scan of many Zig files recovers them on the tasks its io runs" {
+    try scanMany(std.testing.io);
+}
+
+test "a scan of many Zig files gives the same graph when its io runs no task at once" {
+    var threaded: std.Io.Threaded = .init_single_threaded;
+    try scanMany(threaded.io());
 }
 
 test "a scan records a Zig file std rejects and goes on" {
