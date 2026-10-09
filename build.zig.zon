@@ -19,8 +19,8 @@
             .hash = "sweep-0.1.0-6Erwaaw5OwBJqKlJUwn1uRwGg5O7npXywhcNWQmYVCaB",
         },
         .shakedown = .{
-            .url = "git+https://github.com/pedronaugusto/shakedown#b7458b6ec717dc190e0fd5b265b913ffb48a3569",
-            .hash = "shakedown-0.1.0-BR8U46GKEADNXxI8lxG6UzW_qse5oUklgt6adWzNSPDD",
+            .url = "git+https://github.com/pedronaugusto/shakedown#e99eccb269dfeeb4569bce843743ec80c6e094c3",
+            .hash = "shakedown-0.1.0-BR8U4-XJEAB46Facu1RERO-yErm9BwNcJGUxxk9vMLQv",
             .lazy = true,
         },
     },
