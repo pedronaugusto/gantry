@@ -187,9 +187,9 @@ is live, never `test` or `dead`. `test name {}` reaches `name`. `is_test` counts
 `@import("builtin")` or a `const` bound to it, never on another value. An import nothing
 reaches stays `import` and is `dead` on its reference: no build compiles it.
 
-A Zig file is read only as std reads it. One that std's parser or lowering rejects (a
-syntax error, an unused local, an `@import` of anything but a string literal, an
-expression of more than 1024 tokens or nesting past 256) is a record in `graph.invalid()`
+A Zig file is read only as Zig defines it. One whose bytes are not UTF-8, or that std's parser or
+lowering rejects (a syntax error, an unused local, an `@import` of anything but a string literal, an
+expression of more than 1024 tokens or nesting past 256), is a record in `graph.invalid()`
 with `error.InvalidSource` and gives no references: its dependencies are unknown, not
 guessed.
 

@@ -21,6 +21,10 @@ pub const RecoverError = error{ InvalidSource, OutOfMemory };
 /// has and whether any build analyses it. `gpa` holds the front end while it
 /// runs; the result is in `arena`.
 pub fn recover(gpa: std.mem.Allocator, arena: std.mem.Allocator, source: []const u8) RecoverError!types.Recovery {
+    // Zig source is UTF-8, and std's lowering of a character literal that ends in
+    // a cut sequence (`'\xf0'`) indexes past it: a panic with safety checks.
+    // Bytes that are not UTF-8 are not Zig.
+    if (!std.unicode.utf8ValidateSlice(source)) return error.InvalidSource;
     var project = glint.Project.init(gpa, &.{.{ .name = "", .bytes = source }}, &.{}, .{}) catch |err| return switch (err) {
         error.OutOfMemory => error.OutOfMemory,
         error.SourceTooLarge, error.SourceTooComplex, error.InvalidIdentifier, error.ProjectBudgetExceeded, error.SnapshotLimit => error.InvalidSource,

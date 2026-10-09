@@ -165,6 +165,9 @@ test "Zig source std rejects has no facts" {
         // Syntax std accepts but lowering rejects: an unused local.
         "pub fn f() void { const unused = 1; }",
         "pub const x = @import(\"\\q\");",
+        // Bytes that are not UTF-8: std's lowering would read past a cut character literal.
+        "pub const c = '\xf0';",
+        "// caf\xe9\npub const x = 1;",
     }) |source| try std.testing.expectError(error.InvalidSource, g.imports(a, .zig, source));
     var deep: std.ArrayList(u8) = .empty;
     defer deep.deinit(a);
