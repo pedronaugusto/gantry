@@ -36,6 +36,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Package Glint configuration requires the adopted scalar rule A004 in gate mode, including tests and benchmarks; enforcement awaits the preflight G4 integration.
+
 - Separate build modules for graph, analysis, scan, imports, rules, manifests, path and report, sharing the root facade's declaration identities.
 
 - `match/path-compiled` benchmarks repeated matching in gantry's path dialect, with compilation outside the clock, alongside the one-shot path row.

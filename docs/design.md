@@ -59,3 +59,16 @@ concern does not compile every operation in the private vocabulary.
 - Raw extraction for formatting and constant/bounds comparisons is a scalar
   observation; no different domain participates. The std Io directory limit
   and reader API remain the OS boundary vocabulary.
+
+## Adoption gate
+
+`ci/preflight.json` selects `ci/glint.json` through `glint_config` and lists
+all Zig source roots through `glint_paths`, including tests, benchmarks,
+examples and CI programs. The package requires A004 in gate mode for its
+adopted ID, count and checked-integer domains; there are no test or benchmark
+exclusions. The family profile retains the other reviewed rule selections.
+
+The pinned published preflight still runs ziglint and does not consume these
+Glint settings. They become active with G4 integration. Published Glint G3
+also rejects A004 gate selection as report-only; that restriction must be
+reconciled with the package gate contract before enforcement is claimed.
