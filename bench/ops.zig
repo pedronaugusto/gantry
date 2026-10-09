@@ -421,9 +421,12 @@ fn scanWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u8, 
     var ctx: Ctx = .{ .gpa = gpa, .io = io, .corpus = &corpus, .options = options, .diagnostic = std.mem.eql(u8, mode, "diagnostic") };
     try repeat(io, out, &ctx, Ctx.op);
     // One untimed pass profiles allocation without charging the counter to
-    // the operation above. Corpus construction stays outside this too.
+    // the operation above. Corpus construction stays outside this too. The
+    // counter is not thread safe, so the pass runs on an `Io` that runs one task.
+    var single: std.Io.Threaded = .init_single_threaded;
     var allocations: shakedown.alloc.Counting = .init(gpa);
     ctx.gpa = allocations.allocator();
+    ctx.io = single.io();
     try Ctx.op(&ctx);
     try out.row("allocated_bytes", allocations.total_bytes, "bytes");
     try out.row("allocations", allocations.allocations, "count");
