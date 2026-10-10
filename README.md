@@ -368,9 +368,9 @@ Generated graphs are checked against independent reachability, depth, closure,
 shortest-chain, coupling and nearest-target calculations; allocation-failure tests check
 cleanup, and a 50,000-file graph bounds a query's memory. Every lexer, every manifest and
 config reader, and the package names dependency rules read from import spellings have a
-`std.testing.fuzz` property (no panic or leak, only documented errors, output bounded
-by the input, the same result twice): `zig build test` runs their seeds and `zig build test
---fuzz` searches from them. `zig build examples` runs the example
+shakedown `check` property (no panic or leak, only documented errors, output bounded
+by the input, the same result twice): `zig build test` runs their examples and then seeded
+cases, and `zig build test --fuzz` searches. `zig build examples` runs the example
 separately; `zig build check` compiles the tests only. CI also runs `zig build lint`.
 Reports are compared with golden files in `src/testing/golden`, which CI reads with Graphviz's
 `dot`, Mermaid's CLI and the SARIF 2.1.0 schema.

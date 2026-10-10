@@ -84,6 +84,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The Smith fuzz tests are shakedown `check` properties.
 - Zig declaration-reference scanning checks alias dots directly, keeping complete test/dead classification.
 
 - Zig scans collect test/import structure as tokens are emitted, keep bracket pairs in token padding and spill bounded scratch lists without limiting recovery.
