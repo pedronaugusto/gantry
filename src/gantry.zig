@@ -98,7 +98,6 @@ pub const InvalidFile = diagnostic_module.InvalidFile;
 pub const FileError = diagnostic_module.FileError;
 /// Reader over an already-open directory; directory ownership stays with caller.
 /// The byte limit is caller policy. A missing selected file is an I/O error.
-// aegis: C or OS boundary; docs/design.md: the std Io reader limit is passed unchanged to the directory read call.
 pub const DirReader = struct {
     dir: std.Io.Dir,
     limit: std.Io.Limit = .unlimited,

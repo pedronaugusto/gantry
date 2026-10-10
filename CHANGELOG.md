@@ -39,7 +39,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Package Glint configuration requires the adopted scalar rule A004 in gate mode, including tests and benchmarks; enforcement awaits the preflight G4 integration.
+- CI gates glint's A004 (raw aegis scalar operations) and Z026 (a discarded error) through the `glint` object of `ci/preflight.json`, over tests, benchmarks, examples and CI programs.
 
 - `match/path-compiled` benchmarks repeated matching in gantry's path dialect, with compilation outside the clock, alongside the one-shot path row.
 

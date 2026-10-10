@@ -4,7 +4,7 @@ const std = @import("std");
 pub fn Store(comptime T: type) type {
     return struct {
         const Self = @This();
-        const State = struct {
+        pub const State = struct {
             arena: std.heap.ArenaAllocator,
             items: []const T = &.{},
 
@@ -14,7 +14,6 @@ pub fn Store(comptime T: type) type {
                 gpa.destroy(state);
             }
         };
-        // aegis: safe-type internals; docs/design.md: each immutable result has one opaque allocation owner, not a copyable ID.
         /// Move this owner; do not copy it and deinitialize it twice.
         pub const Owner = enum(usize) {
             _,

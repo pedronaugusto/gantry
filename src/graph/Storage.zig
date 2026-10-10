@@ -33,6 +33,8 @@ pub const InitError = error{ InvalidPath, OutOfMemory };
 pub const FromEdgesError = error{ InvalidPath, UnknownPath, InvalidCount, CountOverflow, OutOfMemory };
 /// What aggregating a graph into directories fails with.
 pub const AggregateError = error{ InvalidPath, CountOverflow, OutOfMemory };
+/// What coalescing pending scan edges fails with: more paths than a node position holds, or a count past `usize`.
+pub const CoalesceError = error{ CountOverflow, OutOfMemory };
 pub fn init(gpa: std.mem.Allocator, paths: []const []const u8) InitError!*Storage {
     return initTracked(gpa, paths, null);
 }
@@ -94,9 +96,8 @@ pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []con
         dest.* = .{ .from = from, .to = to, .kind = edge.kind, .count = edge.count };
     }
     g.edges = try coalesce(owned);
-    // aegis: no danger there; docs/design.md: positive-count checks observe a single occurrence domain.
     for (g.edges) |edge| {
-        std.debug.assert(edge.count.raw() > 0);
+        std.debug.assert(edge.count != t.ReferenceCount.fromRaw(0));
         std.debug.assert(g.files.contains(edge.from));
         std.debug.assert(g.files.contains(edge.to));
     }
@@ -167,16 +168,16 @@ pub fn positions(arena: std.mem.Allocator, paths: []const []const u8) std.mem.Al
     for (paths, 0..) |path, i| {
         if (i > 0) std.debug.assert(t.stringsLess({}, paths[i - 1], path));
         result.putAssumeCapacity(path, .fromRaw(@intCast(i))); // safe: paths.len fits u32 at entry.
-        std.debug.assert(result.get(path).?.raw() == i);
+        std.debug.assert(result.count() == i + 1);
     }
     return result;
 }
 /// `coalesce` for pending edges, into exactly the storage the result needs.
-// aegis: measured hot loop validated at its boundary; docs/design.md: typed endpoints import only validated path positions and pending.len bounds every count.
-pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pending: []Pending) std.mem.Allocator.Error![]const t.Edge {
+pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pending: []Pending) CoalesceError![]const t.Edge {
+    const end: t.NodeId = .fromRaw(aegis.int.cast(u32, paths.len) catch return error.OutOfMemory);
     for (pending) |edge| {
-        std.debug.assert(edge.from.raw() < paths.len);
-        std.debug.assert(edge.to.raw() < paths.len);
+        std.debug.assert(edge.from.compare(end) == .lt);
+        std.debug.assert(edge.to.compare(end) == .lt);
     }
     std.mem.sort(Pending, pending, {}, struct {
         fn less(_: void, x: Pending, y: Pending) bool {
@@ -193,15 +194,14 @@ pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pend
     n = 0;
     for (pending, 0..) |edge, i| {
         if (i > 0 and std.meta.eql(edge, pending[i - 1])) {
-            // aegis: measured hot loop validated at its boundary; pending.len bounds the total occurrences (docs/design.md).
-            edges[n - 1].count = .fromRaw(edges[n - 1].count.raw() + 1);
+            edges[n - 1].count = edges[n - 1].count.add(.fromRaw(1)) catch return error.CountOverflow;
         } else {
             edges[n] = .{ .from = paths[edge.from.raw()], .to = paths[edge.to.raw()], .kind = edge.kind };
             n += 1;
         }
     }
     std.debug.assert(n == edges.len);
-    for (edges) |edge| std.debug.assert(edge.count.raw() > 0);
+    for (edges) |edge| std.debug.assert(edge.count != t.ReferenceCount.fromRaw(0));
     return edges;
 }
 

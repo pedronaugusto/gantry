@@ -37,7 +37,15 @@ pub fn main(init: std.process.Init) !void {
     var buffer: [16384]u8 = undefined;
     var stdout = std.Io.File.stdout().writerStreaming(io, &buffer);
     const w = &stdout.interface;
-    defer w.flush() catch {};
+    run(gpa, io, w, args) catch |err| {
+        // glint-ignore: Z026 -- the run already failed; its error is the one reported
+        w.flush() catch {};
+        return err;
+    };
+    try w.flush();
+}
+
+fn run(gpa: std.mem.Allocator, io: std.Io, w: *std.Io.Writer, args: []const [:0]const u8) !void {
     if (args.len == 2 and std.mem.eql(u8, args[1], "--list")) return list(w);
     if (args.len == 1 or (args.len == 2 and std.mem.eql(u8, args[1], "--smoke"))) {
         smoke = args.len == 2;

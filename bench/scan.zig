@@ -17,14 +17,22 @@ pub fn main(init: std.process.Init) !void {
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.stdout().writerStreaming(io, &buffer);
     const w = &stdout.interface;
-    defer w.flush() catch {};
+    run(gpa, io, init.arena.allocator(), w, args) catch |err| {
+        // glint-ignore: Z026 -- the run already failed; its error is the one reported
+        w.flush() catch {};
+        return err;
+    };
+    try w.flush();
+}
+
+fn run(gpa: std.mem.Allocator, io: std.Io, arena: std.mem.Allocator, w: *std.Io.Writer, args: []const [:0]const u8) !void {
     if (args.len > 3) return error.ExpectedCorpusDirectory;
     smoke = args.len == 2 and std.mem.eql(u8, args[1], "--smoke");
     const generated = args.len == 1 or smoke;
     if (generated) {
-        const root = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", init.arena.allocator());
-        const corpus = try std.Io.Dir.path.join(init.arena.allocator(), &.{ root, "corpus" });
-        _ = try fixtures.synthetic(.{ .io = io, .a = init.arena.allocator(), .root = corpus }, if (smoke) 10 else 5000);
+        const root = try std.Io.Dir.cwd().realPathFileAlloc(io, ".", arena);
+        const corpus = try std.Io.Dir.path.join(arena, &.{ root, "corpus" });
+        _ = try fixtures.synthetic(.{ .io = io, .a = arena, .root = corpus }, if (smoke) 10 else 5000);
     }
     var dir = try std.Io.Dir.cwd().openDir(io, if (generated) "corpus" else args[1], .{ .iterate = true });
     defer dir.close(io);

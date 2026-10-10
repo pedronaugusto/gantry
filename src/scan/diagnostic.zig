@@ -134,7 +134,6 @@ pub fn reset(diagnostic: ?*Diagnostics) void {
 
 /// Progress borrows the current path; only Diagnostics owns output.
 /// Capture failure before releasing graph and resolution workspace storage.
-// aegis: no danger there; docs/design.md: progress is borrowed by one synchronous scan and failure paths are copied before cleanup.
 pub const Progress = struct {
     diagnostic: ?*Diagnostics,
     phase: Diagnostics.Phase = .paths,

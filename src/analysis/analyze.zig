@@ -6,7 +6,6 @@ const aegis = @import("aegis");
 const t = @import("../types.zig");
 const Graph = @import("../graph/Storage.zig");
 const Adjacency = reach_module.Adjacency;
-// aegis: measured hot loop validated at its boundary; docs/design.md: traversal indexes share validated adjacency bounds; component and directory indexes stay within their own arrays.
 const Frame = struct { node: usize, next: usize };
 /// The graph supplies unique sorted paths and validated, coalesced edges.
 pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!*State_module {

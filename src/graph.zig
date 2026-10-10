@@ -10,7 +10,6 @@ const t = @import("types.zig");
 const store = @import("graph/Storage.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
-// aegis: safe-type internals; docs/design.md: opaque graph allocation ownership is not a copyable ID.
 pub const Graph = enum(usize) {
     _,
 

@@ -42,7 +42,6 @@ pub const Form = enum {
 
 /// Raw references borrow the source or the allocator passed to the lexer.
 /// `dead` as on `Reference`.
-// aegis: no danger there; docs/design.md: lexical offsets are bounded positions in one source slice, with no domain conversion inside recovery.
 pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false, dead: bool = false };
 
 /// The lexical construct that recovery could not turn into a reference, or
@@ -75,7 +74,6 @@ pub const ImportExpression = enum {
 };
 
 /// Owned by Imports or Graph, with a byte offset at the construct's start.
-// aegis: no danger there; docs/design.md: raw lexical positions describe one bounded source slice and undergo no unit conversion.
 pub const UnsupportedReference = struct {
     /// Null for anonymous source bytes passed to `imports`.
     from: ?[]const u8 = null,

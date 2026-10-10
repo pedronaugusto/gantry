@@ -1,9 +1,0 @@
-{
-  "profile": "family",
-  "rules": [
-    {
-      "id": "A004",
-      "level": "gate"
-    }
-  ]
-}

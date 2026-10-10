@@ -3,7 +3,6 @@ const t = @import("types.zig");
 const store = @import("imports/State.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
-// aegis: safe-type internals; docs/design.md: opaque source/result allocation ownership is not a copyable ID.
 pub const Imports = enum(usize) {
     _,
     /// Borrows read-only recovered references until deinit.

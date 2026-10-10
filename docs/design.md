@@ -65,9 +65,9 @@ own is what keeps glint from being fetched by a user who never reads Zig.
 
 ## Raw-site decisions
 
-- Pending coalescing retains the native occurrence increment after its input
-  slice bounds the total count by `pending.len`. The paired scan workload
-  covers this loop; count overflow is impossible within that bound.
+- Pending coalescing adds occurrences with the count's checked `add`; overflow
+  is impossible within the bound `pending.len` puts on the total, and the
+  paired scan workload covers the loop.
 - Adjacency and SCC/directory traversal keep raw array indexes in measured
   loops. Construction checks node/target representation limits; offsets,
   targets, labels, marks and distances follow the invariants above.
@@ -87,13 +87,11 @@ own is what keeps glint from being fetched by a user who never reads Zig.
 
 ## Adoption gate
 
-`ci/preflight.json` selects `ci/glint.json` through `glint_config` and lists
-all Zig source roots through `glint_paths`, including tests, benchmarks,
-examples and CI programs. The package requires A004 in gate mode for its
-adopted ID, count and checked-integer domains; there are no test or benchmark
-exclusions. The family profile retains the other reviewed rule selections.
-
-The pinned published preflight still runs ziglint and does not consume these
-Glint settings. They become active with G4 integration. Published Glint G3
-also rejects A004 gate selection as report-only; that restriction must be
-reconciled with the package gate contract before enforcement is claimed.
+`ci/preflight.json` lists all Zig source roots through `glint_paths`, including
+benchmarks, examples and CI programs, and sets the package's amendments in its
+`glint` object: A004 and Z026 gate. A004 holds the adopted ID, count and
+checked-integer domains; there are no test or benchmark exclusions. A site
+glint cannot resolve is not a pass, so a raw extraction a gating rule cannot
+see through is written as the domain's own operation (`compare`, `add`,
+`!= .fromRaw(0)`) rather than suppressed. Every other rule keeps preflight's
+family weight.

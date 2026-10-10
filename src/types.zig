@@ -21,7 +21,6 @@ pub const Recovery = frontend.Recovery;
 /// that is no path, two workspace replacements that disagree, or memory.
 pub const ResolveError = error{ InvalidPath, ConflictingReplacement, OutOfMemory };
 pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: ReferenceCount = .fromRaw(1) };
-// aegis: no danger there; docs/design.md: raw lexical positions describe one bounded source slice and undergo no unit conversion.
 pub const Reference = struct {
     from: []const u8,
     name: []const u8,
@@ -34,7 +33,6 @@ pub const Reference = struct {
     dead: bool = false,
 };
 /// An identifier or string literal in a source file that a token rule names.
-// aegis: no danger there; docs/design.md: raw lexical positions describe one bounded source slice and undergo no unit conversion.
 pub const Token = struct {
     pub const Kind = enum { identifier, string, sequence };
     path: []const u8,

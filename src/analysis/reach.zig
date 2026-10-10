@@ -7,7 +7,6 @@ const std = @import("std");
 /// Node v's neighbours are `targets[offsets[v]..offsets[v + 1]]`, in the
 /// order the builder listed them; `labels` (empty, or one per target)
 /// carries what the builder attached to each, such as an edge's index.
-// aegis: measured hot loop validated at its boundary; docs/design.md: adjacency construction bounds nodes, targets and labels before raw traversal.
 pub const Adjacency = struct {
     offsets: []u32,
     targets: []u32,
