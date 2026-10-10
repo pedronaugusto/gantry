@@ -80,6 +80,11 @@ pub fn build(b: *std.Build) !void {
         preflight.addConsumerCheck(b, .{ .package = "gantry", .program = b.path("ci/consumer.zig"), .modules = &.{"gantry"}, .packages = &.{ sweep_package, aegis_package } });
         // Validates the report goldens with their downstream tools.
         check.dependOn(&preflight.addCheck(b, "check-reports", "ci/reports.zig").step);
+        // Those tools on the Ubuntu runner, which has node: the report job's setup.
+        const update = b.addSystemCommand(&.{ "sudo", "apt-get", "update", "-q" });
+        const install = b.addSystemCommand(&.{ "sudo", "apt-get", "install", "-y", "-q", "graphviz", "python3-jsonschema" });
+        install.step.dependOn(&update.step);
+        b.step("reports-setup", "Install the tools check-reports runs, on an Ubuntu runner").dependOn(&install.step);
     }
 }
 
