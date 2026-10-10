@@ -56,7 +56,9 @@ pub fn build(b: *std.Build) !void {
     // CI wiring, and the test doubles: preflight and shakedown are lazy and
     // only the root build asks for them, both in one configure pass.
     const ci = b.lazyImport(@This(), "preflight");
-    const shakedown = (try b.dependencyLazy("shakedown", .{ .target = target, .optimize = optimize })).module("shakedown");
+    const shakedown_package = try b.dependencyLazy("shakedown", .{ .target = target, .optimize = optimize, .aegis = .consumer });
+    if (b.lazyImport(@This(), "shakedown")) |shakedown_build| shakedown_build.useAegis(shakedown_package, aegis);
+    const shakedown = shakedown_package.module("shakedown");
     module.addImport("shakedown", shakedown);
     fixtures.root_module.addImport("shakedown", shakedown);
     if (ci) |preflight| {
@@ -93,7 +95,9 @@ fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.l
     const glint = (b.dependencyLazy("glint", .{ .target = target, .optimize = optimize }) catch unreachable).module("glint");
     const gantry = publicModules(b, target, optimize, sweep, aegis, glint, false);
     // unreachable: `build` returns before `addCi` while shakedown is missing.
-    const shakedown = (b.dependencyLazy("shakedown", .{ .target = target, .optimize = optimize }) catch unreachable).module("shakedown");
+    const shakedown_package = b.dependencyLazy("shakedown", .{ .target = target, .optimize = optimize, .aegis = .consumer }) catch unreachable;
+    if (b.lazyImport(@This(), "shakedown")) |shakedown_build| shakedown_build.useAegis(shakedown_package, aegis);
+    const shakedown = shakedown_package.module("shakedown");
     return b.allocator.dupe(std.Build.Module.Import, &.{
         .{ .name = "gantry", .module = gantry.root },
         .{ .name = "gantry.zig", .module = gantry.zig.? },

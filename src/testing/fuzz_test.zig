@@ -1,6 +1,6 @@
-//! Properties that hold for any bytes, checked by `std.testing.fuzz` for every
+//! Properties that hold for any bytes, checked by shakedown's `check` for every
 //! lexer and every manifest and config reader. `zig build test` runs each over
-//! its seeds; `zig build test --fuzz` searches from them. Dependency rules
+//! its examples and then seeded cases; `zig build test --fuzz` searches. Dependency rules
 //! run over every manifest graph, and import spellings give package names.
 //!
 //! For each input: nothing panics or leaks, a scan fails only with an error a
@@ -18,11 +18,23 @@ const manifests = @import("../manifests.zig");
 /// The longest input a property reads.
 const most = 4096;
 
-/// Corpus entries for `Smith.sliceWithHash`: each a little-endian `u32`
-/// length before the bytes.
-const seeds = @import("shakedown").corpus.entries;
-fn bytesOf(smith: *testing.Smith, buffer: *[most]u8) []const u8 {
-    return buffer[0..smith.sliceWithHash(buffer, 0)];
+const shakedown = @import("shakedown");
+
+/// Bytes of any kind, up to `most`.
+fn bytesOf(c: *shakedown.Case) error{OutOfMemory}![]u8 {
+    return shakedown.gen.string(c.source, c.gpa, .{ .kind = .bytes, .max_len = most, .average = 256 });
+}
+
+/// `run` over each example, which is an input worth keeping as one, and then
+/// over any bytes.
+fn property(comptime run: fn ([]const u8) anyerror!void, examples: []const []const u8) !void {
+    const Any = struct {
+        fn body(_: void, c: *shakedown.Case) anyerror!void {
+            try run(try bytesOf(c));
+        }
+    };
+    for (examples) |text| try run(text);
+    try shakedown.check(testing.allocator, {}, Any.body, .{});
 }
 
 /// One file read from memory.
@@ -192,9 +204,7 @@ fn checkLexer(comptime syntax: lexer.Syntax, language: ?g.Language, text: []cons
 /// Lexing, import recovery and a scan recording every name and string.
 fn source(comptime language: g.Language, comptime path: []const u8, comptime corpus: []const []const u8) !void {
     const Property = struct {
-        fn one(_: void, smith: *testing.Smith) anyerror!void {
-            var buffer: [most]u8 = undefined;
-            const text = bytesOf(smith, &buffer);
+        fn one(text: []const u8) anyerror!void {
             // Zig is read by glint, whose tokenizer is not this package's to fuzz.
             if (comptime language != .zig) try checkLexer(@field(lexer.Syntax, @tagName(language)), language, text);
             if (f.imports(testing.allocator, language, text)) |recovered| {
@@ -206,15 +216,13 @@ fn source(comptime language: g.Language, comptime path: []const u8, comptime cor
             try scanTwice(&.{path}, text, .{ .manifests = false, .tokens = everything });
         }
     };
-    try testing.fuzz({}, Property.one, .{ .corpus = seeds(corpus) });
+    try property(Property.one, corpus);
 }
 
 /// A manifest or config read through a scan, beside a source that can use it.
 fn manifest(comptime paths: []const []const u8, comptime syntax: ?lexer.Syntax, comptime corpus: []const []const u8) !void {
     const Property = struct {
-        fn one(_: void, smith: *testing.Smith) anyerror!void {
-            var buffer: [most]u8 = undefined;
-            const text = bytesOf(smith, &buffer);
+        fn one(text: []const u8) anyerror!void {
             if (syntax) |s| try checkLexer(s, null, text);
             if (manifests.supported(paths[0])) {
                 var arena: std.heap.ArenaAllocator = .init(testing.allocator);
@@ -227,7 +235,7 @@ fn manifest(comptime paths: []const []const u8, comptime syntax: ?lexer.Syntax, 
             try scanTwice(paths, text, .{});
         }
     };
-    try testing.fuzz({}, Property.one, .{ .corpus = seeds(corpus) });
+    try property(Property.one, corpus);
 }
 
 // Seeds follow the bench corpus: an import, a long comment and a string
@@ -368,9 +376,7 @@ test "fuzz: jsconfig.json" {
 test "fuzz: package names in import spellings" {
     const dependencies = dependency_check_module;
     const Property = struct {
-        fn one(_: void, smith: *testing.Smith) anyerror!void {
-            var buffer: [most]u8 = undefined;
-            const text = bytesOf(smith, &buffer);
+        fn one(text: []const u8) anyerror!void {
             for (std.enums.values(dependencies.Ecosystem)) |e| {
                 // A package is a slice of the spelling, never more.
                 const package = dependencies.packageOf(e, text) orelse continue;
@@ -379,14 +385,13 @@ test "fuzz: package names in import spellings" {
             }
         }
     };
-    try testing.fuzz({}, Property.one, .{ .corpus = seeds(&.{ "@scope/pkg/sub", "node:fs", "requests.adapters.X", "::serde::de", "github.com/x/y/v2/pkg", "pkg/foo/bar", "com.google.common.collect.List", "" }) });
+    try property(Property.one, &.{ "@scope/pkg/sub", "node:fs", "requests.adapters.X", "::serde::de", "github.com/x/y/v2/pkg", "pkg/foo/bar", "com.google.common.collect.List", "" });
 }
 
 test "fuzz: Zig test context changes kinds only" {
     const Property = struct {
-        fn one(_: void, smith: *testing.Smith) anyerror!void {
-            var buffer: [most]u8 = undefined;
-            const one_file: One = .{ .path = "src/a.zig", .text = bytesOf(smith, &buffer) };
+        fn one(text: []const u8) anyerror!void {
+            const one_file: One = .{ .path = "src/a.zig", .text = text };
             const paths: []const []const u8 = &.{ "src/a.zig", "src/b.zig", "src/c.zig" };
             var classified = try scanOnce(paths, one_file, .{ .manifests = false });
             defer classified.deinit();
@@ -416,9 +421,9 @@ test "fuzz: Zig test context changes kinds only" {
             try testing.expectEqual(0, total);
         }
     };
-    try testing.fuzz({}, Property.one, .{ .corpus = seeds(&.{
+    try property(Property.one, &.{
         "const b = @import(\"b.zig\");\npub fn run() void { b.go(); }\ntest { _ = @import(\"c.zig\"); }\n",
         "const builtin = @import(\"builtin\");\nconst c = @import(\"c.zig\");\nfn helper() void { _ = c; }\npub const T = if (builtin.is_test) @import(\"b.zig\") else struct {};\ntest { helper(); }\n",
         "const Self = @This();\nconst b = @import(\"b.zig\");\nx: u8,\npub fn f(s: Self) void { s.g(); }\nfn g(_: Self) void { _ = b; }\ntest \"g\" { _ = @import(\"b.zig\").T; }\n",
-    }) });
+    });
 }
