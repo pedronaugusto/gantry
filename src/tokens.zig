@@ -106,7 +106,7 @@ const File = struct {
         var kind: t.Token.Kind = undefined;
         var text: []const u8 = undefined;
         if (current.kind == .word) {
-            if (!r.filters[@backingInt(t.Token.Kind.identifier)].admits(current.text) or std.ascii.isDigit(current.text[0])) return;
+            if (!r.filters[@backingInt(t.Token.Kind.identifier)].admits(current.text) or number(current)) return;
             kind = .identifier;
             text = current.text;
         } else {
@@ -200,6 +200,12 @@ const File = struct {
         }
     }
 };
+
+/// A word that is a numeric literal. A word spelled other than it reads (a
+/// Zig `@"64"`) is a quoted identifier, whatever its first byte.
+fn number(word: l.Token) bool {
+    return word.text.len > 0 and std.ascii.isDigit(word.text[0]) and word.end - word.offset == word.text.len;
+}
 
 /// Rejects most tokens by first byte and length before any pattern runs.
 const Filter = struct {

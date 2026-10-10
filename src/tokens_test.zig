@@ -124,6 +124,24 @@ test "numbers are not names and Zig quoted names are" {
     for (graph.tokens()) |token| try eqs("kill", token.text);
 }
 
+test "a Zig quoted name that reads as a number is still a name, an empty one too" {
+    const fixture: f.Fixture = .{ .items = &.{
+        .{ .path = "a.zig", .text = "const a = 64; const b = @\"64\"; const c = @\"\"; const d = @\"2BIG\"; const e = 0x40;" },
+    } };
+    const owned: []const g.rules.TokenRule = &.{.{ .name = "all", .tokens = &.{"*"} }};
+    var graph = try fixture.scan(a, .{ .tokens = owned });
+    defer graph.deinit();
+    var names: std.ArrayList([]const u8) = .empty;
+    defer names.deinit(a);
+    for (graph.tokens()) |token| if (!std.mem.eql(u8, token.text, "const") and (token.text.len != 1 or token.text[0] < 'a' or token.text[0] > 'e')) try names.append(a, token.text);
+    try eq(3, names.items.len);
+    try eqs("64", names.items[0]);
+    try eqs("", names.items[1]);
+    try eqs("2BIG", names.items[2]);
+    // Each starts at its `@`.
+    for (graph.tokens()) |token| if (std.mem.eql(u8, token.text, "64")) try eq(@as(usize, 24), token.offset);
+}
+
 test "token rules read sources when no reference kind would" {
     const fixture: f.Fixture = .{ .items = &.{
         .{ .path = "a.zig", .text = "const x = waitpid;" },

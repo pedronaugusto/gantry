@@ -12,7 +12,7 @@ pub const frontend: seam.Frontend = .{ .language = .zig, .recover = recover };
 /// A file's `@import`s with their member spellings, test kinds and liveness,
 /// and the operands of any `@import` that is not a string literal.
 fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?seam.Observer) seam.RecoverError!seam.Recovery {
-    var bridge: Bridge = .{ .arena = arena, .source = source };
+    var bridge: Bridge = .{ .source = source };
     const facts = if (seen) |observer| watched: {
         bridge.seen = observer;
         break :watched try glint.scan(arena, source, .{
@@ -42,18 +42,17 @@ fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?seam.Observer) s
 /// frontend gives: a word is a name, keyword or number, an `@"name"` is one
 /// word, and punctuation is a byte unless it is part of a longer operator.
 const Bridge = struct {
-    arena: std.mem.Allocator,
     source: []const u8,
     /// Set before glint reads, whenever glint is given the bridge at all.
     seen: ?seam.Observer = null,
-    /// Every unit handed over, which the observer reads from the end.
-    stream: std.ArrayList(seam.Lexeme) = .empty,
+    /// The last two units handed over: an observer reads no further back.
+    window: [2]seam.Lexeme = @splat(.{ .kind = .word, .text = "", .offset = 0, .end = 0 }),
+    delivered: usize = 0,
     /// The operator whose last byte has not yet arrived.
     operator: ?seam.Lexeme = null,
 
-    fn token(context: *anyopaque, tokens: []const glint.Token) error{OutOfMemory}!void {
+    fn token(context: *anyopaque, current: glint.Token) error{OutOfMemory}!void {
         const b: *Bridge = @ptrCast(@alignCast(context)); // safe: `recover` passes its own bridge as the context.
-        const current = tokens[tokens.len - 1];
         const unit: seam.Lexeme = .{
             .kind = switch (current.kind()) {
                 .word, .keyword, .literal => .word,
@@ -76,9 +75,11 @@ const Bridge = struct {
     }
 
     fn deliver(b: *Bridge, unit: seam.Lexeme) error{OutOfMemory}!void {
-        try b.stream.append(b.arena, unit);
+        b.window[0] = b.window[1];
+        b.window[1] = unit;
+        b.delivered += 1;
         const observer = b.seen.?;
-        try observer.token(observer.context, b.stream.items);
+        try observer.token(observer.context, if (b.delivered == 1) b.window[1..] else &b.window);
     }
 
     fn boundary(context: *anyopaque) void {

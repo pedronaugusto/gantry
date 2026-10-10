@@ -13,6 +13,14 @@ git+https://github.com/pedronaugusto/gantry`, then obtain the `gantry` module th
 `b.dependency` and add it to your executable's imports. Forward your target and optimize
 settings.
 
+Zig is read by a module of its own, `gantry.zig`, built on [glint](https://github.com/pedronaugusto/glint)'s
+token tier. A project that never analyses Zig builds gantry without it and fetches nothing
+for it. To scan Zig files, ask for it with `b.dependency("gantry", .{ .target = target,
+.optimize = optimize, .zig = true })`, import `gantry.zig` and list its `frontend` in
+`Options.frontends`, as the usage example does. A scan that reaches a `.zig` path without
+it fails with `error.FrontendMissing` before it reads anything, and `gantry.imports`
+reads the byte-lexer languages only: `importsWith` reads one frontend's.
+
 ## Usage
 
 [examples/usage.zig](examples/usage.zig) supplies `Files.read` from an in-memory file store.
@@ -116,8 +124,10 @@ fails. A leading UTF-8 byte order mark is no part of a file.
 
 ### Recovery
 
-Import recovery uses byte lexers for Zig, C/C++, JavaScript/TypeScript, Python, Go,
-Rust, Nim and Java. Resolution stays within selected files. Zig named modules and C include roots are
+Import recovery uses byte lexers for C/C++, JavaScript/TypeScript, Python, Go, Rust, Nim
+and Java, and glint's token tier, through the `gantry.zig` frontend, for Zig. A frontend
+(`gantry.frontend`) yields a file's references, test contexts and liveness; resolution
+stays in the core and within selected files. Zig named modules and C include roots are
 caller inputs; JS/TS aliases come from selected local configs; Python initializer and
 literal star-reexport handling are selectable; Go uses selected module/workspace routing
 and optional target constraints. Rust resolves file modules and crate-relative use paths
@@ -285,7 +295,7 @@ in `Options.tokens` and `Rules.tokens`: the scan records their occurrences from 
 streams it lexes for imports (`graph.tokens()`, with path, line and byte column), and
 `check` reports those outside the owners, or `error.UnscannedToken` for a rule the scan
 did not record. Comments, character literals, numbers, raw strings and multi-line strings
-never match.
+never match. A Zig `@"name"` is one identifier, at the offset of its `@`.
 
 
 ### Reports

@@ -120,10 +120,12 @@ pub const Lexeme = struct {
     }
 };
 
-/// Called as each code unit or string joins a stream, with the stream so far.
-/// A frontend that is asked for one yields exactly the units it recovers
-/// from: words (a keyword or a number is one), strings, and punctuation, one
-/// byte of it at a time unless the language's own operators are longer.
+/// Called as each code unit or string joins a stream. `stream` ends with that
+/// unit and holds the one before it too when there is one; an observer reads
+/// no further back, so a frontend needs to keep no more. A frontend yields
+/// exactly the units it recovers from: words (a keyword or a number is one),
+/// strings, and punctuation, one byte of it at a time unless the language's
+/// own operators are longer.
 pub const Observer = struct {
     context: *anyopaque,
     /// Whether punctuation joins the calls.

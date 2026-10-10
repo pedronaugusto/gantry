@@ -19,6 +19,28 @@
 - JSON/report escaping validates UTF-8 before emitting text. Report node
   positions refer to the graph's sorted paths; findings borrow live graph data.
 
+## Frontends
+
+A language gantry's byte lexers do not read is read by a frontend, a module
+that yields a file's `Recovery` (references with kind and liveness, and the
+constructs it cannot read) and, when token rules ask, the units of its tokens
+to an `Observer`. The vocabulary (`src/frontend.zig`, published as
+`gantry.frontend`) is below everything else and imports only std, so the core
+and a frontend module share its types without importing each other. Resolution
+of a reference to files stays in the core, which knows the selected paths. A
+scan lists its frontends in `Options.frontends`; a path in a language that
+needs one without it is `FrontendMissing`, decided before any file is read, so
+an unread language is an error and never an empty file.
+
+`gantry.zig` is the Zig frontend on glint's token tier (std's tokenizer, no
+parse tree). It is built only when `zig` is set on the dependency, so a project
+that never analyses Zig fetches no glint. A semantic tier (resolved calls, for
+an ownership policy that lexing cannot give) would be a second use of glint
+behind the same seam, asked for only by the policy that needs it. The observer
+of a token rule gets a Zig stream of words (a name, keyword or number), strings
+and punctuation, with an `@"name"` as one word and an operator whole; the
+bridge keeps the last two units only, which is all an observer reads.
+
 ## Semantic domains and public modules
 
 `Edge.count` is an aegis `ReferenceCount`; checked addition maps overflow to
