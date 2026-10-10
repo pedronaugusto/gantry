@@ -15,8 +15,8 @@
             .lazy = true,
         },
         .sweep = .{
-            .url = "git+https://github.com/pedronaugusto/sweep#0d50ab1ba413cbc52edadc62ffc1da20da477ac7",
-            .hash = "sweep-0.1.0-6ErwaT7WOwBL11GvSql0AyZtFYCjJwHNyLeCiLFSGxtR",
+            .url = "git+https://github.com/pedronaugusto/sweep#b1211f3b3b04465bbf0572435aacf73464c39b8d",
+            .hash = "sweep-0.1.0-6ErwaXvZOwCYVwscGZUXmCi99N4ucHK1cMVbCW7hZ63-",
         },
         .shakedown = .{
             .url = "git+https://github.com/pedronaugusto/shakedown#caf380381a49ace7c13beba70dd512c4faf24ce7",
