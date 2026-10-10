@@ -29,7 +29,7 @@ pub fn recoverTokens(arena: std.mem.Allocator, _: []const u8, ts: []const l.Toke
         const t = ts[i];
         // A word before `:` may start a crate path; `extern` before `crate`
         // names one. Other tokens skip both.
-        if (t.kind == .word and i + 2 < ts.len and (ts[i + 1].text[0] == ':' or t.text.len == "extern".len)) {
+        if (t.kind == .word and i + 2 < ts.len and ((ts[i + 1].text.len != 0 and ts[i + 1].text[0] == ':') or t.text.len == "extern".len)) {
             const testing = current.test_item or pending_test;
             const seen = if (testing) &test_crates else &crates;
             const like: Spec = .{ .name = "", .offset = 0, .kind = if (testing) .@"test" else .import, .scope = current.scope };
