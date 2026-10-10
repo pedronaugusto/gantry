@@ -6,26 +6,26 @@
     .paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "CHANGELOG.md", "LICENSE" },
     .dependencies = .{
         .aegis = .{
-            .url = "git+https://github.com/pedronaugusto/aegis#28e8df5b3fde1fca2d5b61f6ab110c4acac2f688",
-            .hash = "aegis-0.0.0-rsxougITBwB_VYWvOCMfzQ4ra79s9U5QTAiuKH6ZWOl5",
+            .url = "git+https://github.com/pedronaugusto/aegis#39d3bea8da17f1094ee85577e636b127f93e0973",
+            .hash = "aegis-0.0.0-rsxouiIXBwCCAncc-oK7MrA3OcZBLFlIBm1d0K9ME3uR",
         },
         .preflight = .{
-            .url = "git+https://github.com/pedronaugusto/preflight#cb348117bc08b298276d51a00dbbfe83e79570a7",
-            .hash = "preflight-0.1.0-LX1ZwtKECgCyqcfgCDqfVAt-b2a1rEXMuKMEXzv4a0up",
+            .url = "git+https://github.com/pedronaugusto/preflight#5a2d7c3f8efb70ead532a923ebb411a6324f2581",
+            .hash = "preflight-0.1.0-LX1Zwtq3CgC2_Gb44-qgEk3AqRQAMkx9dZbsdp_GTx4T",
             .lazy = true,
         },
         .sweep = .{
-            .url = "git+https://github.com/pedronaugusto/sweep#7cfdcf1f2153067e9bcad4dce053cf748c35f624",
-            .hash = "sweep-0.1.0-6ErwabHZOwC2QPGX6v8mZ5G7hc2IqZWgUqgdBWJh9SC7",
+            .url = "git+https://github.com/pedronaugusto/sweep#e24630adbbd695ba034d5f7dd53263bada94794a",
+            .hash = "sweep-0.1.0-6ErwaeDZOwARwvP6ycJMhox0ED7T2G4RnQ_2Cb1lhjS_",
         },
         .shakedown = .{
-            .url = "git+https://github.com/pedronaugusto/shakedown#18445cd52dc898766310a609db652eb0a1647f58",
-            .hash = "shakedown-0.1.0-BR8U43ozFQD8gJV56m19Dvgj99tRNxyD_vmnKNzssMVy",
+            .url = "git+https://github.com/pedronaugusto/shakedown#8a544acff51a2cdc5c503d30e9d0b6f2afa2dfef",
+            .hash = "shakedown-0.1.0-BR8U4xnCFQBUli1AvIQJV1HetPmNZP7jzafAWM5oEAed",
             .lazy = true,
         },
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint#fb28f6dfcba36fc6edb21ea1591e5d7c1bffaa88",
-            .hash = "glint-0.1.0-3jcpoTNvBgBRF7ZXRxot751NdsILX21h_IJP-4ohOBSN",
+            .url = "git+https://github.com/pedronaugusto/glint#10114ae7cc1448cbe8a6cfb30d2d4be55a635612",
+            .hash = "glint-0.1.0-3jcpoS1xBgCF6r6TbU9gwVgs6lipJnOPvuYCPnwWq978",
             .lazy = true,
         },
     },
