@@ -427,3 +427,11 @@ test "fuzz: Zig test context changes kinds only" {
         "const Self = @This();\nconst b = @import(\"b.zig\");\nx: u8,\npub fn f(s: Self) void { s.g(); }\nfn g(_: Self) void { _ = b; }\ntest \"g\" { _ = @import(\"b.zig\").T; }\n",
     });
 }
+
+// A word followed by an empty string and one more token read the string's
+// first byte, which is not there: a failing input the properties found.
+test "Rust recovery reads a word before an empty string" {
+    var found = try f.imports(testing.allocator, .rust, "a \"\" b");
+    defer found.deinit();
+    try testing.expectEqual(0, found.items().len);
+}

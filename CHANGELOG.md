@@ -114,6 +114,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Reading Rust recovered a word before an empty string by indexing the string's missing first byte, and panicked; it no longer does.
 - A token pattern's `*` no longer matches a literal `*` in the text as one byte and stops there: `*a` matches `*ba`.
 - TOML array-of-tables headers (`[[bin]]`, `[[tool.mypy.overrides]]`) and dotted keys under a Cargo dependency table (`serde.features = [...]`, `local.path = "../x"`) are read instead of failing the manifest.
 - A dependency whose imports resolve to selected files (a Go `replace` or workspace member, a Zig path dependency under a named module) is used, not reported unused.
