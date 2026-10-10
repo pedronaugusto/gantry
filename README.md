@@ -22,9 +22,10 @@ reads from an open directory.
 <!-- BEGIN GENERATED zig build docs -- usage -->
 ```zig
 const gantry = @import("gantry");
+const zig = @import("gantry.zig");
 
 const paths = &.{ "src/main.zig", "src/store.zig", "src/model.zig" };
-var graph = try gantry.scan(gpa, io, paths, Files{}, Files.read, .{});
+var graph = try gantry.scan(gpa, io, paths, Files{}, Files.read, .{ .frontends = &.{zig.frontend} });
 defer graph.deinit();
 
 for (graph.edges()) |edge| {
@@ -55,10 +56,11 @@ A failed scan says where it failed through `Options.diagnostics`:
 <!-- BEGIN GENERATED zig build docs -- diagnostic -->
 ```zig
 const gantry = @import("gantry");
+const zig = @import("gantry.zig");
 
 var diagnostic = gantry.Diagnostics.init(gpa);
 defer diagnostic.deinit();
-return gantry.scan(gpa, io, paths, Files{}, Files.read, .{ .diagnostics = &diagnostic }) catch |cause| {
+return gantry.scan(gpa, io, paths, Files{}, Files.read, .{ .frontends = &.{zig.frontend}, .diagnostics = &diagnostic }) catch |cause| {
     if (diagnostic.failure) |failure| {
         std.log.info("{s}: {s}: {s}", .{
             failure.path orelse "<scan>",

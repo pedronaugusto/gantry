@@ -23,5 +23,10 @@
             .hash = "shakedown-0.1.0-BR8U4-XJEAB46Facu1RERO-yErm9BwNcJGUxxk9vMLQv",
             .lazy = true,
         },
+        .glint = .{
+            .url = "git+https://github.com/pedronaugusto/glint#8c544377b97ca8199030739d87f3c01d8da76ba5",
+            .hash = "glint-0.1.0-3jcpobXZBQC5U1BtnYyucCLDiP1hl75Q1G93nWdLdtOD",
+            .lazy = true,
+        },
     },
 }

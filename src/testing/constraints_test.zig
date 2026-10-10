@@ -1,6 +1,5 @@
 const build = @import("../lang/go/build.zig");
 const std = @import("std");
-const g = @import("../gantry.zig");
 const f = @import("support.zig");
 const a = std.testing.allocator;
 const fixture: f.Fixture = .{ .items = &.{
@@ -53,7 +52,7 @@ test "Go constraints and imports share one source read" {
         }
     };
     var reader: Reader = .{};
-    var graph = try g.scan(a, std.testing.io, &.{ "go.mod", "main.go", "lib/a.go" }, &reader, Reader.read, .{ .manifests = false, .go_target = .{ .os = "linux", .arch = "amd64" } });
+    var graph = try f.scan(a, std.testing.io, &.{ "go.mod", "main.go", "lib/a.go" }, &reader, Reader.read, .{ .manifests = false, .go_target = .{ .os = "linux", .arch = "amd64" } });
     defer graph.deinit();
     try f.edge(&graph, "main.go", "lib/a.go", .import, 1);
     try std.testing.expectEqualStrings("app", graph.goFiles()[1].package);

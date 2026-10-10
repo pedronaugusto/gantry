@@ -97,7 +97,6 @@ const File = struct {
     window: []l.Token = &.{},
     used: usize = 0,
     next: usize = 0,
-    operator: ?l.Token = null,
 
     fn token(context: *anyopaque, tokens: []const l.Token) error{OutOfMemory}!void {
         const f: *File = @ptrCast(@alignCast(context)); // safe: `observer` hands the lexer the recorder's own File as the context.
@@ -111,7 +110,7 @@ const File = struct {
             kind = .identifier;
             text = current.text;
         } else {
-            kind = if (f.language == .zig and quoted(tokens, i)) .identifier else .string;
+            kind = .string;
             const filter = &r.filters[@backingInt(kind)];
             if (filter.empty()) return;
             // Go runes are not strings.
@@ -141,29 +140,8 @@ const File = struct {
         const current = stream[stream.len - 1];
         switch (current.kind) {
             .word => try f.sequence(current),
-            .punctuation => {
-                if (f.operator) |op| {
-                    if (current.end == op.end) {
-                        f.operator = null;
-                        try f.sequence(op);
-                    }
-                } else {
-                    const length = if (f.language == .zig) l.zigOperatorLength(f.source[current.offset..]) else 1;
-                    if (length > 1) {
-                        f.operator = .{ .kind = .punctuation, .text = f.source[current.offset..][0..length], .offset = current.offset, .end = current.offset + length };
-                    } else try f.sequence(current);
-                }
-            },
-            .string => {
-                if (f.language == .zig and quoted(stream, stream.len - 1)) {
-                    // @"name" is code. Replace its @ marker with the decoded
-                    // identifier, retaining the start of the whole spelling.
-                    const marker = f.back(1);
-                    f.next = (f.next + f.window.len - 1) % f.window.len;
-                    f.used -= 1;
-                    try f.sequence(.{ .kind = .word, .text = try value(f.scratch, .zig, current.text, false), .offset = marker.offset, .end = current.end });
-                } else f.used = 0;
-            },
+            .punctuation => try f.sequence(current),
+            .string => f.used = 0,
             .template => f.used = 0,
             .newline => {},
         }
@@ -173,7 +151,6 @@ const File = struct {
     fn boundary(context: *anyopaque) void {
         const f: *File = @ptrCast(@alignCast(context)); // safe: observer supplies the recorder's own File
         f.used = 0;
-        f.operator = null;
     }
 
     /// The nth code token back from the end of the bounded sequence window.
@@ -250,11 +227,6 @@ const Filter = struct {
         return f.any_first or (text.len > 0 and f.first[text[0]]);
     }
 };
-
-/// A Zig `@"name"` is an identifier.
-fn quoted(tokens: []const l.Token, i: usize) bool {
-    return i > 0 and tokens[i - 1].is("@") and tokens[i - 1].end == tokens[i].offset;
-}
 
 /// A Go backquoted string or a Python string with an `r` prefix keeps its
 /// backslashes.

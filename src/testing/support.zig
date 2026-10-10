@@ -1,6 +1,21 @@
 const std = @import("std");
 const shakedown = @import("shakedown");
 const g = @import("../gantry.zig");
+/// The Zig frontend the scans below read `.zig` files with.
+pub const zig = @import("zig_frontend");
+/// A scan that reads Zig, as every consumer of the Zig files lists it.
+pub inline fn scan(gpa: std.mem.Allocator, io: std.Io, paths: []const []const u8, context: anytype, comptime read: anytype, options: g.Options) @TypeOf(g.scan(gpa, io, paths, context, read, options)) {
+    return g.scan(gpa, io, paths, context, read, withZig(options));
+}
+fn withZig(options: g.Options) g.Options {
+    var with = options;
+    with.frontends = &.{zig.frontend};
+    return with;
+}
+/// `g.imports`, with Zig read by its frontend.
+pub fn imports(gpa: std.mem.Allocator, language: g.Language, source: []const u8) g.ImportsError!g.Imports {
+    return if (language == .zig) g.importsWith(gpa, zig.frontend, source) else g.imports(gpa, language, source);
+}
 pub const Item = struct { path: []const u8, text: ?[]const u8 = "" };
 pub const Fixture = struct {
     items: []const Item,
@@ -14,7 +29,7 @@ pub const Fixture = struct {
         const paths = try a.alloc([]const u8, self.items.len);
         defer a.free(paths);
         for (self.items, paths) |item, *p| p.* = item.path;
-        return g.scan(a, std.testing.io, paths, self, read, options);
+        return g.scan(a, std.testing.io, paths, self, read, withZig(options));
     }
 };
 /// `graph` has one invalid file, `path`, for `cause`.

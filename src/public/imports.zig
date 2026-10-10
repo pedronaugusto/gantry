@@ -8,6 +8,8 @@ pub const Spec = implementation.Spec;
 pub const Imports = implementation.Imports;
 /// See the package contract for `imports`.
 pub const imports = implementation.imports;
+/// See the package contract for `importsWith`.
+pub const importsWith = implementation.importsWith;
 /// See the package contract for `ImportsError`.
 pub const ImportsError = implementation.ImportsError;
 /// See the package contract for `languageOf`.

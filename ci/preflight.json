@@ -18,14 +18,16 @@
       "source": "examples/usage.zig",
       "region": "usage",
       "imports": [
-        "gantry"
+        "gantry",
+        "zig"
       ]
     },
     "zig build docs -- diagnostic": {
       "source": "examples/usage.zig",
       "region": "diagnostic",
       "imports": [
-        "gantry"
+        "gantry",
+        "zig"
       ]
     }
   },

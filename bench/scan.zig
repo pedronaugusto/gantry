@@ -4,6 +4,7 @@
 //! directory first; `--smoke` scans a small one once.
 const std = @import("std");
 const gantry = @import("gantry");
+const zig = @import("gantry.zig");
 const fixtures = @import("fixtures.zig");
 
 /// One round and no clock.
@@ -37,7 +38,7 @@ pub fn main(init: std.process.Init) !void {
     // the scan measurement; file opens and reads are inside it.
     for (0..rounds) |round| {
         const start = benchmarkNow(io);
-        var graph = try gantry.scan(gpa, io, paths.items(), gantry.DirReader{ .dir = dir }, gantry.DirReader.read, .{ .python_roots = &.{"py"} });
+        var graph = try gantry.scan(gpa, io, paths.items(), gantry.DirReader{ .dir = dir }, gantry.DirReader.read, .{ .python_roots = &.{"py"}, .frontends = &.{zig.frontend} });
         defer graph.deinit();
         const scanned = benchmarkNow(io);
         var analysis = try graph.analyze(gpa);
@@ -60,7 +61,7 @@ pub fn main(init: std.process.Init) !void {
     for (paths.items()) |p| try store.put(ma, p, try dir.readFileAlloc(io, p, ma, .unlimited));
     for (0..rounds) |round| {
         const start = benchmarkNow(io);
-        var graph = try gantry.scan(gpa, io, paths.items(), &store, readMemory, .{ .python_roots = &.{"py"} });
+        var graph = try gantry.scan(gpa, io, paths.items(), &store, readMemory, .{ .python_roots = &.{"py"}, .frontends = &.{zig.frontend} });
         defer graph.deinit();
         const end = benchmarkNow(io);
         try w.print("memory round {d}: scan {d:.3} ms; edges {d}\n", .{ round, ms(start, end), graph.edges().len });
@@ -70,7 +71,7 @@ pub fn main(init: std.process.Init) !void {
 /// Untimed, including every reference's classification and dead flag.
 fn evidence(gpa: std.mem.Allocator, io: std.Io, paths: []const []const u8, store: *const std.StringHashMapUnmanaged([]const u8), w: *std.Io.Writer) !void {
     var meter: @import("shakedown").alloc.Counting = .init(gpa);
-    var graph = try gantry.scan(meter.allocator(), io, paths, store, readMemory, .{ .python_roots = &.{"py"} });
+    var graph = try gantry.scan(meter.allocator(), io, paths, store, readMemory, .{ .python_roots = &.{"py"}, .frontends = &.{zig.frontend} });
     defer graph.deinit();
     const bytes = try std.json.Stringify.valueAlloc(gpa, .{
         .paths = graph.paths(),

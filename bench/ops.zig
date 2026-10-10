@@ -12,6 +12,7 @@
 var smoke = false;
 const std = @import("std");
 const gantry = @import("gantry");
+const zig = @import("gantry.zig");
 const fixtures = @import("fixtures.zig");
 const shakedown = @import("shakedown");
 
@@ -177,7 +178,7 @@ fn importsWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, language: gantr
         source: []const u8,
         specs: usize = 0,
         fn op(c: *@This()) !void {
-            var found = try gantry.imports(c.gpa, c.language, c.source);
+            var found = try if (c.language == .zig) gantry.importsWith(c.gpa, zig.frontend, c.source) else gantry.imports(c.gpa, c.language, c.source);
             defer found.deinit();
             c.specs = found.items().len;
         }
@@ -305,7 +306,9 @@ fn tokenOptions() gantry.Options {
 }
 
 fn scanCorpus(gpa: std.mem.Allocator, io: std.Io, c: *const Corpus, options: gantry.Options) !gantry.Graph {
-    return gantry.scan(gpa, io, c.paths, &c.store, Corpus.read, options);
+    var read = options;
+    read.frontends = &.{zig.frontend};
+    return gantry.scan(gpa, io, c.paths, &c.store, Corpus.read, read);
 }
 
 fn rulesWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, family: []const u8, n: usize) !void {
@@ -636,6 +639,7 @@ fn processWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u
     } else if (std.mem.eql(u8, mode, "type-checking-python")) {
         // Below: static and type-only edges between modules, not initializers.
     } else if (!(std.mem.eql(u8, mode, "metrics-js"))) return error.UnknownProcessWorkload;
+    options.frontends = &.{zig.frontend};
     var graph = try gantry.scan(gpa, io, paths.items(), gantry.DirReader{ .dir = dir }, gantry.DirReader.read, options);
     defer graph.deinit();
     const scanned = now(io);

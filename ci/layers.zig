@@ -5,6 +5,7 @@ const family = @import("preflight_rules");
 pub const layers: []const gantry.rules.Layer = &.{
     .{ .name = "primitives", .patterns = &.{
         "src/builtins.zig",
+        "src/frontend.zig",
         "src/jsonc.zig",
         "src/owned_slice.zig",
         "src/path.zig",
@@ -31,7 +32,6 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/lang/python.zig",
         "src/lang/rust.zig",
         "src/lang/zig.zig",
-        "src/lang/zig/liveness.zig",
         "src/manifests.zig",
         "src/lang/nim/config.zig",
         "src/tokens.zig",
@@ -67,6 +67,7 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/report.zig",
         "src/report/**",
     } },
+    .{ .name = "frontends", .patterns = &.{"src/frontends/**"} },
     .{ .name = "package vocabulary", .patterns = &.{
         "src/gantry.zig",
     } },
@@ -77,6 +78,8 @@ pub const layers: []const gantry.rules.Layer = &.{
 pub const entries: []const []const u8 = &.{};
 
 pub const modules: []const gantry.NamedModule = &.{
+    .{ .name = "frontend", .path = "src/frontend.zig", .from = "src/**" },
+    .{ .name = "zig_frontend", .path = "src/frontends/zig.zig", .from = "src/testing/**" },
     .{ .name = "implementation", .path = "src/gantry.zig", .from = "src/public/**" },
     .{ .name = "gantry.graph", .path = "src/public/graph.zig", .from = "src/public.zig" },
     .{ .name = "gantry.analysis", .path = "src/public/analysis.zig", .from = "src/public.zig" },
@@ -93,6 +96,7 @@ const package_references = [_]gantry.rules.ReferenceRule{
         "std",
         "aegis",
         "sweep",
+        "glint_token",
         "shakedown",
     } },
     .{ .name = "source siblings", .suffix = ".zig", .relative = true, .except_targets = &.{"src/**"} },
@@ -103,6 +107,7 @@ pub const owned: []const gantry.rules.TokenRule = &(family.durability ++ family.
 
 pub const required = [_][]const u8{
     "src/builtins.zig",
+    "src/frontend.zig",
     "src/jsonc.zig",
     "src/owned_slice.zig",
     "src/path.zig",
@@ -125,7 +130,6 @@ pub const required = [_][]const u8{
     "src/lang/python.zig",
     "src/lang/rust.zig",
     "src/lang/zig.zig",
-    "src/lang/zig/liveness.zig",
     "src/manifests.zig",
     "src/manifests/maven.zig",
     "src/lang/nim/config.zig",
@@ -150,6 +154,7 @@ pub const required = [_][]const u8{
     "src/scan.zig",
     "src/report.zig",
     "src/report/json.zig",
+    "src/frontends/zig.zig",
     "src/gantry.zig",
     "src/public.zig",
     "src/public/graph.zig",

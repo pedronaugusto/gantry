@@ -41,6 +41,8 @@ pub const Cycle = analysis_module.Cycle;
 pub const Options = scan_module.Options;
 /// See `gantry.scan.scan`.
 pub const scan = scan_module.scan;
+/// See `gantry.scan.Frontend`.
+pub const Frontend = scan_module.Frontend;
 /// See `gantry.scan.kindsOf`.
 pub const kindsOf = scan_module.kindsOf;
 /// See `gantry.scan.Diagnostics`.
@@ -75,6 +77,8 @@ pub const Spec = imports_module.Spec;
 pub const Imports = imports_module.Imports;
 /// See `gantry.imports.imports`.
 pub const imports = imports_module.imports;
+/// See `gantry.imports.importsWith`.
+pub const importsWith = imports_module.importsWith;
 /// See `gantry.imports.ImportsError`.
 pub const ImportsError = imports_module.ImportsError;
 /// See `gantry.imports.languageOf`.

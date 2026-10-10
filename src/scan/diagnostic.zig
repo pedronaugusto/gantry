@@ -83,6 +83,8 @@ pub const FileError = error{
     InvalidEscape,
     /// A Zig string literal that does not parse.
     InvalidLiteral,
+    /// A source file past the size its language's frontend reads.
+    SourceTooLarge,
     /// A Go `//go:build` line that is not a constraint, or a second one.
     InvalidBuildConstraint,
     /// An import of a dependency that two Go workspace modules replace with
@@ -94,9 +96,11 @@ pub const FileError = error{
 /// `path.normalize` refuses, a pattern in the options sweep refuses
 /// (`InvalidPattern`, `PatternTooLong`: a test path, a named module's
 /// `from` or a token), a construct recovery cannot read under
-/// `Options.strict_imports`, more edges between two files than a count
-/// holds, or memory. Nothing a file's bytes hold is among them.
-pub const ScanError = error{ InvalidPath, InvalidPattern, PatternTooLong, UnsupportedImport, CountOverflow, OutOfMemory };
+/// `Options.strict_imports`, a selected path in a language whose frontend
+/// `Options.frontends` lacks (`FrontendMissing`), more edges between two
+/// files than a count holds, or memory. Nothing a file's bytes hold is
+/// among them.
+pub const ScanError = error{ InvalidPath, InvalidPattern, PatternTooLong, UnsupportedImport, FrontendMissing, CountOverflow, OutOfMemory };
 
 /// The errors a scan's `read` function returns, from its signature.
 pub fn ReadError(comptime read: anytype) type {

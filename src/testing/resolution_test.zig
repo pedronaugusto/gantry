@@ -143,7 +143,7 @@ test "path normalization stays inside root and input aliases coalesce" {
     try std.testing.expectEqualStrings("lib/x.zig", norm);
     for ([_][]const u8{ "../x", "/x", "C:/x", "c:x", "a\\b", "a/../../x" }) |p| try std.testing.expectError(error.InvalidPath, g.Graph.init(a, &.{p}));
     // A colon past a drive's place is a byte of the name.
-    var colons = try g.scan(a, std.testing.io, &.{ "docs/a:b.md", "ab:c", "a.zig" }, f.Fixture{ .items = &.{
+    var colons = try f.scan(a, std.testing.io, &.{ "docs/a:b.md", "ab:c", "a.zig" }, f.Fixture{ .items = &.{
         .{ .path = "docs/a:b.md", .text = "" },
         .{ .path = "ab:c", .text = "" },
         .{ .path = "a.zig", .text = "" },
@@ -157,7 +157,7 @@ test "null reads are reported and errors do not return a partial graph" {
     var graph = try (f.Fixture{ .items = &.{ .{ .path = "a.zig", .text = null }, .{ .path = "package.json", .text = null }, .{ .path = "data.bin", .text = null } } }).scan(a, .{});
     defer graph.deinit();
     try eq(2, graph.unread().len);
-    try std.testing.expectError(error.MissingFixture, g.scan(a, std.testing.io, &.{"a.zig"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{}));
+    try std.testing.expectError(error.MissingFixture, f.scan(a, std.testing.io, &.{"a.zig"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{}));
 }
 test "unread paths include every null read when manifest declarations are disabled" {
     var graph = try (f.Fixture{ .items = &.{
@@ -224,7 +224,7 @@ fn boundedScratch(suffix: []const u8, config: bool) !void {
     var accounting: std.testing.FailingAllocator = .init(a, .{});
     var reader: ScratchReader = .{ .accounting = &accounting, .config = config };
     {
-        var graph = try g.scan(accounting.allocator(), std.testing.io, &paths, &reader, ScratchReader.read, .{ .kinds = &.{} });
+        var graph = try f.scan(accounting.allocator(), std.testing.io, &paths, &reader, ScratchReader.read, .{ .kinds = &.{} });
         defer graph.deinit();
         try eq(64, reader.calls);
         try eq(if (config) @as(usize, 0) else 64, graph.unread().len);
@@ -286,10 +286,10 @@ test "DirReader and walk use a temp directory and caller pruning" {
     }.keep);
     defer paths.deinit();
     try eq(2, paths.items().len);
-    var graph = try g.scan(a, io, paths.items(), g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try f.scan(a, io, paths.items(), g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
     defer graph.deinit();
     try eq(1, graph.edges().len);
-    try std.testing.expectError(error.StreamTooLong, g.scan(a, io, paths.items(), g.DirReader{ .dir = tmp.dir, .limit = .limited(4) }, g.DirReader.read, .{}));
+    try std.testing.expectError(error.StreamTooLong, f.scan(a, io, paths.items(), g.DirReader{ .dir = tmp.dir, .limit = .limited(4) }, g.DirReader.read, .{}));
 }
 test "walk lists a colon in a name and skips what a scan would refuse" {
     // Windows file names hold neither byte.
@@ -309,7 +309,7 @@ test "walk lists a colon in a name and skips what a scan would refuse" {
     defer paths.deinit();
     try eq(1, paths.items().len);
     try std.testing.expectEqualStrings("docs/a:b.md", paths.items()[0]);
-    var graph = try g.scan(a, io, paths.items(), g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try f.scan(a, io, paths.items(), g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
     defer graph.deinit();
 }
 
@@ -321,7 +321,7 @@ test "language extensions are explicit and unsupported files stay unread" {
     try expect(g.languageOf("a.kt") == null);
     try expect(g.languageOf("config.nims") == null);
     try expect(g.languageOf("a.php") == null);
-    var graph = try g.scan(a, std.testing.io, &.{"a.bin"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{});
+    var graph = try f.scan(a, std.testing.io, &.{"a.bin"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{});
     defer graph.deinit();
     try eq(1, graph.paths().len);
 }

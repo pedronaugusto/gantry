@@ -10,6 +10,7 @@ const dependency_check_module = @import("../rules/dependency_check.zig");
 const std = @import("std");
 const testing = std.testing;
 const g = @import("../gantry.zig");
+const f = @import("support.zig");
 const lexer = @import("../lexer.zig");
 const tokens = @import("../tokens.zig");
 const manifests = @import("../manifests.zig");
@@ -53,7 +54,7 @@ const everything: []const g.rules.TokenRule = &.{
 
 /// A scan fails only for its reader; bytes it cannot read are records.
 fn scanOnce(paths: []const []const u8, one: One, options: g.Options) !g.Graph {
-    return g.scan(testing.allocator, std.testing.io, paths, one, One.read, options) catch |err| {
+    return f.scan(testing.allocator, std.testing.io, paths, one, One.read, options) catch |err| {
         std.debug.print("scan of {s} failed: {s}\n", .{ one.path, @errorName(err) });
         return err;
     };
@@ -138,8 +139,8 @@ fn checkTokens(graph: *const g.Graph, text: []const u8) !void {
         try testing.expectEqual(line, token.line);
         try testing.expectEqual(token.offset - start + 1, token.column);
         try testing.expect(token.text.len <= text.len - token.offset);
-        // A Zig `@"name"` starts at its quote.
-        if (token.kind == .identifier and text[token.offset] != '"') try testing.expectEqualStrings(token.text, text[token.offset..][0..token.text.len]);
+        // A Zig `@"name"` starts at its `@` and is spelled otherwise than it reads.
+        if (token.kind == .identifier and text[token.offset] != '@') try testing.expectEqualStrings(token.text, text[token.offset..][0..token.text.len]);
     }
 }
 
@@ -194,8 +195,9 @@ fn source(comptime language: g.Language, comptime path: []const u8, comptime cor
         fn one(_: void, smith: *testing.Smith) anyerror!void {
             var buffer: [most]u8 = undefined;
             const text = bytesOf(smith, &buffer);
-            try checkLexer(@field(lexer.Syntax, @tagName(language)), language, text);
-            if (g.imports(testing.allocator, language, text)) |recovered| {
+            // Zig is read by glint, whose tokenizer is not this package's to fuzz.
+            if (comptime language != .zig) try checkLexer(@field(lexer.Syntax, @tagName(language)), language, text);
+            if (f.imports(testing.allocator, language, text)) |recovered| {
                 var imports = recovered;
                 defer imports.deinit();
                 try testing.expect(imports.items().len <= text.len);

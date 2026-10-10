@@ -12,6 +12,7 @@ const GoTarget = build_module.Target;
 pub const GoFile = build_module.File;
 const PythonInitializers = resolver.PythonInitializers;
 const languages = @import("../lang.zig");
+const frontend_module = @import("frontend");
 
 pub const Options = struct {
     /// The edge kinds to record. References are recorded whatever their kind.
@@ -35,6 +36,10 @@ pub const Options = struct {
     /// source files in a supported language, for `graph.tokens()` and the
     /// same rules in `rules.Rules.tokens`. Only `kind` and `token` are read.
     tokens: []const check_module.TokenRule = &.{},
+    /// The modules that read the languages the byte lexers do not: `gantry.zig`
+    /// reads Zig. A scan of a path in a language that needs one, without it
+    /// in this list, fails with `FrontendMissing` before it reads anything.
+    frontends: []const frontend_module.Frontend = &.{},
     /// Caller-owned output for a failed scan: the failed path, phase,
     /// optional byte offset and cause. `scan` clears it on entry.
     diagnostics: ?*diagnostic_module.Diagnostics = null,

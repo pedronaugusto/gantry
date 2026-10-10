@@ -1,6 +1,7 @@
 //! Build all public concerns together, with no CI dependencies fetched.
 const std = @import("std");
 const gantry = @import("gantry");
+const frontend = @import("gantry.frontend");
 const graph = @import("gantry.graph");
 const analysis = @import("gantry.analysis");
 const scan = @import("gantry.scan");
@@ -15,6 +16,8 @@ pub fn main() void {
         std.debug.assert(@sizeOf(gantry.ReferenceCount) == @sizeOf(usize));
         std.debug.assert(@sizeOf(gantry.ByteOffset) == @sizeOf(usize));
         std.debug.assert(gantry.ReferenceCount != gantry.ByteOffset);
+        std.debug.assert(gantry.Frontend == frontend.Frontend);
+        std.debug.assert(scan.Frontend == frontend.Frontend);
         std.debug.assert(gantry.Graph == graph.Graph);
         std.debug.assert(gantry.Analysis == analysis.Analysis);
         std.debug.assert(gantry.Options == scan.Options);

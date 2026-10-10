@@ -66,7 +66,7 @@ test "TS config reads stay in a temporary repository and own reader scratch byte
     try tmp.dir.writeFile(io, .{ .sub_path = "base.json", .data = "{\"compilerOptions\": {\"baseUrl\": \"src\"}}" });
     try tmp.dir.writeFile(io, .{ .sub_path = "src/app.ts", .data = "import 'util';" });
     try tmp.dir.writeFile(io, .{ .sub_path = "src/util.d.ts", .data = "" });
-    var graph = try g.scan(a, io, &.{ "tsconfig.json", "base.json", "src/app.ts", "src/util.d.ts" }, g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try f.scan(a, io, &.{ "tsconfig.json", "base.json", "src/app.ts", "src/util.d.ts" }, g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
     defer graph.deinit();
     try f.edge(&graph, "src/app.ts", "src/util.d.ts", .import, 1);
 }

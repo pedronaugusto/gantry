@@ -4,6 +4,8 @@ const implementation = @import("implementation");
 pub const Options = implementation.Options;
 /// See the package contract for `scan`.
 pub const scan = implementation.scan;
+/// See the package contract for `Frontend`.
+pub const Frontend = implementation.Frontend;
 /// See the package contract for `kindsOf`.
 pub const kindsOf = implementation.kindsOf;
 /// See the package contract for `Diagnostics`.

@@ -35,7 +35,7 @@ test "scan diagnostics retain reader causes through every read pass" {
         .{ .path = "pkg/a.py" },
     }) |case| {
         var reader: Reader = .{ .fail_on = case.pass };
-        try std.testing.expectError(error.ReaderRefused, g.scan(a, std.testing.io, &.{case.path}, &reader, Reader.read, .{ .diagnostics = &diagnostic }));
+        try std.testing.expectError(error.ReaderRefused, f.scan(a, std.testing.io, &.{case.path}, &reader, Reader.read, .{ .diagnostics = &diagnostic }));
         try failed(&diagnostic, case.path, .read, error.ReaderRefused);
     }
 }
@@ -53,7 +53,7 @@ test "scan diagnostics identify invalid paths; invalid manifests and Go constrai
     var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
     const empty: f.Fixture = .{ .items = &.{} };
-    try std.testing.expectError(error.InvalidPath, g.scan(a, std.testing.io, &.{ "ok.zig", "../outside.zig" }, empty, f.Fixture.read, .{ .diagnostics = &diagnostic }));
+    try std.testing.expectError(error.InvalidPath, f.scan(a, std.testing.io, &.{ "ok.zig", "../outside.zig" }, empty, f.Fixture.read, .{ .diagnostics = &diagnostic }));
     try failed(&diagnostic, "../outside.zig", .paths, error.InvalidPath);
     const manifest: f.Fixture = .{ .items = &.{
         .{ .path = "sub/build.zig.zon", .text = ".{ .dependencies = .{ .x = .{ .path = \"x\" } }, .tail = }" },
@@ -61,7 +61,7 @@ test "scan diagnostics identify invalid paths; invalid manifests and Go constrai
         .{ .path = "b.zig" },
         .{ .path = "package.json", .text = "{\"dependencies\":{\"kept\":\"1\"}}" },
     } };
-    var declared = try g.scan(a, std.testing.io, &.{ "sub/build.zig.zon", "a.zig", "b.zig", "package.json" }, manifest, f.Fixture.read, .{ .diagnostics = &diagnostic });
+    var declared = try f.scan(a, std.testing.io, &.{ "sub/build.zig.zon", "a.zig", "b.zig", "package.json" }, manifest, f.Fixture.read, .{ .diagnostics = &diagnostic });
     defer declared.deinit();
     try std.testing.expectEqual(null, diagnostic.failure);
     try invalid(&declared, "sub/build.zig.zon", .manifests, error.InvalidManifest);
@@ -74,7 +74,7 @@ test "scan diagnostics identify invalid paths; invalid manifests and Go constrai
         .{ .path = "go.mod", .text = "module example.com/m\n" },
         .{ .path = "b/b.go", .text = "package b\n" },
     } };
-    var constrained = try g.scan(a, std.testing.io, &.{ "src/a.go", "src/c.go", "go.mod", "b/b.go" }, go, f.Fixture.read, .{ .go_target = .{ .os = "linux", .arch = "amd64" }, .diagnostics = &diagnostic });
+    var constrained = try f.scan(a, std.testing.io, &.{ "src/a.go", "src/c.go", "go.mod", "b/b.go" }, go, f.Fixture.read, .{ .go_target = .{ .os = "linux", .arch = "amd64" }, .diagnostics = &diagnostic });
     defer constrained.deinit();
     try invalid(&constrained, "src/a.go", .go_constraints, error.InvalidBuildConstraint);
     try std.testing.expectEqual(2, constrained.goFiles().len);
@@ -93,20 +93,20 @@ test "scan diagnostics record extended config parsing and inheritance failures" 
             .{ .path = "pkg/a.ts", .text = "import '@/b';" },
             .{ .path = "pkg/src/b.ts" },
         } };
-        var graph = try g.scan(a, std.testing.io, &.{ "pkg/tsconfig.json", "pkg/base.json", "pkg/a.ts", "pkg/src/b.ts" }, fixture, f.Fixture.read, .{ .diagnostics = &diagnostic });
+        var graph = try f.scan(a, std.testing.io, &.{ "pkg/tsconfig.json", "pkg/base.json", "pkg/a.ts", "pkg/src/b.ts" }, fixture, f.Fixture.read, .{ .diagnostics = &diagnostic });
         defer graph.deinit();
         try invalid(&graph, "pkg/base.json", .configs, error.InvalidConfig);
         try f.edge(&graph, "pkg/a.ts", "pkg/src/b.ts", .import, 1);
     }
     const unread: f.Fixture = .{ .items = &.{.{ .path = "tsconfig.json", .text = "{\"extends\":\"./base.json\"}" }} };
-    try std.testing.expectError(error.MissingFixture, g.scan(a, std.testing.io, &.{ "tsconfig.json", "base.json" }, unread, f.Fixture.read, .{ .diagnostics = &diagnostic }));
+    try std.testing.expectError(error.MissingFixture, f.scan(a, std.testing.io, &.{ "tsconfig.json", "base.json" }, unread, f.Fixture.read, .{ .diagnostics = &diagnostic }));
     try failed(&diagnostic, "base.json", .read, error.MissingFixture);
     const cycle: f.Fixture = .{ .items = &.{
         .{ .path = "a/tsconfig.json", .text = "{\"extends\":\"../cycle/one.json\"}" },
         .{ .path = "cycle/one.json", .text = "{\"extends\":\"./two.json\"}" },
         .{ .path = "cycle/two.json", .text = "{\"extends\":\"./one.json\"}" },
     } };
-    var cyclic = try g.scan(a, std.testing.io, &.{ "a/tsconfig.json", "cycle/one.json", "cycle/two.json" }, cycle, f.Fixture.read, .{ .diagnostics = &diagnostic });
+    var cyclic = try f.scan(a, std.testing.io, &.{ "a/tsconfig.json", "cycle/one.json", "cycle/two.json" }, cycle, f.Fixture.read, .{ .diagnostics = &diagnostic });
     defer cyclic.deinit();
     try std.testing.expectEqual(1, cyclic.invalid().len);
     const record = cyclic.invalid()[0];
@@ -133,7 +133,7 @@ test "scan diagnostics record import and preprocessing errors and keep reading o
             .{ .path = "z/a.zig", .text = "const b = @import(\"b.zig\");" },
             .{ .path = "z/b.zig" },
         } };
-        var graph = try g.scan(a, std.testing.io, &.{ case.path, "z/a.zig", "z/b.zig" }, fixture, f.Fixture.read, .{ .python_star_reexports = true, .diagnostics = &diagnostic });
+        var graph = try f.scan(a, std.testing.io, &.{ case.path, "z/a.zig", "z/b.zig" }, fixture, f.Fixture.read, .{ .python_star_reexports = true, .diagnostics = &diagnostic });
         defer graph.deinit();
         try std.testing.expectEqual(null, diagnostic.failure);
         try invalid(&graph, case.path, case.phase, case.cause);
@@ -165,7 +165,7 @@ test "scan diagnostics own paths after cleanup and reset on every call" {
         var inputs: std.heap.ArenaAllocator = .init(a);
         defer inputs.deinit();
         const raw = try inputs.allocator().dupe(u8, "src/./a.zig");
-        try std.testing.expectError(error.MissingFixture, g.scan(a, std.testing.io, &.{raw}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{ .diagnostics = &diagnostic }));
+        try std.testing.expectError(error.MissingFixture, f.scan(a, std.testing.io, &.{raw}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{ .diagnostics = &diagnostic }));
         @memset(raw, 'x');
     }
     try failed(&diagnostic, "src/a.zig", .read, error.MissingFixture);
@@ -174,18 +174,18 @@ test "scan diagnostics own paths after cleanup and reset on every call" {
         .{ .path = "b.zig" },
         .{ .path = "pkg/__init__.py", .text = null },
     } };
-    var graph = try g.scan(a, std.testing.io, &.{ "a.zig", "b.zig", "pkg/__init__.py" }, fixture, f.Fixture.read, .{ .diagnostics = &diagnostic });
+    var graph = try f.scan(a, std.testing.io, &.{ "a.zig", "b.zig", "pkg/__init__.py" }, fixture, f.Fixture.read, .{ .diagnostics = &diagnostic });
     defer graph.deinit();
     try std.testing.expectEqual(null, diagnostic.failure);
     try f.edge(&graph, "a.zig", "b.zig", .import, 1);
     try std.testing.expectEqualDeep(&[_][]const u8{"pkg/__init__.py"}, graph.unread());
-    var plain = try g.scan(a, std.testing.io, &.{ "a.zig", "b.zig", "pkg/__init__.py" }, fixture, f.Fixture.read, .{});
+    var plain = try f.scan(a, std.testing.io, &.{ "a.zig", "b.zig", "pkg/__init__.py" }, fixture, f.Fixture.read, .{});
     defer plain.deinit();
     try std.testing.expectEqualDeep(plain.edges(), graph.edges());
     try std.testing.expectEqualDeep(plain.unread(), graph.unread());
-    try std.testing.expectError(error.InvalidPath, g.scan(a, std.testing.io, &.{"../again"}, fixture, f.Fixture.read, .{ .diagnostics = &diagnostic }));
+    try std.testing.expectError(error.InvalidPath, f.scan(a, std.testing.io, &.{"../again"}, fixture, f.Fixture.read, .{ .diagnostics = &diagnostic }));
     try failed(&diagnostic, "../again", .paths, error.InvalidPath);
-    var empty = try g.scan(a, std.testing.io, &.{}, fixture, f.Fixture.read, .{ .diagnostics = &diagnostic });
+    var empty = try f.scan(a, std.testing.io, &.{}, fixture, f.Fixture.read, .{ .diagnostics = &diagnostic });
     defer empty.deinit();
     try std.testing.expectEqual(null, diagnostic.failure);
 }
@@ -195,7 +195,7 @@ test "scan diagnostics preserve causes when copying the path runs out of memory"
     var fixed: std.heap.FixedBufferAllocator = .init(&storage);
     var diagnostic = g.Diagnostics.init(fixed.allocator());
     defer diagnostic.deinit();
-    try std.testing.expectError(error.MissingFixture, g.scan(a, std.testing.io, &.{"a.zig"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{ .diagnostics = &diagnostic }));
+    try std.testing.expectError(error.MissingFixture, f.scan(a, std.testing.io, &.{"a.zig"}, f.Fixture{ .items = &.{} }, f.Fixture.read, .{ .diagnostics = &diagnostic }));
     try failed(&diagnostic, null, .read, error.MissingFixture);
 }
 
@@ -223,7 +223,7 @@ fn allocations(alloc: std.mem.Allocator, expected: ?*const g.Graph) !g.Graph {
     } };
     var paths: [fixture.items.len][]const u8 = undefined;
     for (fixture.items, &paths) |item, *p| p.* = item.path;
-    var graph = g.scan(alloc, std.testing.io, &paths, fixture, f.Fixture.read, .{ .kinds = &.{ .import, .@"test", .link, .asset }, .diagnostics = &diagnostic }) catch |cause| {
+    var graph = f.scan(alloc, std.testing.io, &paths, fixture, f.Fixture.read, .{ .kinds = &.{ .import, .@"test", .link, .asset }, .diagnostics = &diagnostic }) catch |cause| {
         try std.testing.expectEqual(error.OutOfMemory, cause);
         try std.testing.expectEqual(cause, diagnostic.failure.?.cause);
         if (diagnostic.failure.?.phase == .graph) try std.testing.expectEqual(null, diagnostic.failure.?.path);

@@ -1,5 +1,6 @@
 const std = @import("std");
 const aegis = @import("aegis");
+const frontend = @import("frontend");
 const ReferenceCountTag = struct {};
 const NodeIdTag = struct {};
 const ByteOffsetTag = struct {};
@@ -9,47 +10,17 @@ pub const ReferenceCount = aegis.units.Count(ReferenceCountTag, usize);
 pub const NodeId = aegis.id.Id(NodeIdTag, u32);
 /// A byte position in diagnostic source, distinct from reference occurrences.
 pub const ByteOffset = aegis.id.Id(ByteOffsetTag, usize);
-pub const Language = enum { zig, c, javascript, python, go, rust, nim, java };
-/// What an edge or reference is. A source import is `import`, `type_only`,
-/// `dynamic` or `test`; a test file's import, or an import of a test file,
-/// is `test` whatever its form.
-pub const Kind = enum {
-    /// A static import, include or `require`.
-    import,
-    /// A Markdown link.
-    link,
-    /// A path a text file names.
-    asset,
-    /// An import in a test file or in code only a test build compiles, or
-    /// one a package import makes of a test file (Go, Java, a Rust `mod`).
-    @"test",
-    /// An import for types alone: a TypeScript `import type`, `export
-    /// type`, braces whose every name is marked `type`, `typeof import("x")`
-    /// or `import("x").T` in a type; a Python import under `if TYPE_CHECKING:`.
-    type_only,
-    /// A module loaded when the code runs: JavaScript `import("x")`, Python
-    /// `importlib.import_module("x")` and `__import__("x")`.
-    dynamic,
-};
+pub const Language = frontend.Language;
+pub const Kind = frontend.Kind;
+pub const Form = frontend.Form;
+pub const Spec = frontend.Spec;
+pub const ImportExpression = frontend.ImportExpression;
+pub const UnsupportedReference = frontend.UnsupportedReference;
+pub const Recovery = frontend.Recovery;
 /// What resolving one reference to selected files fails with: a spelling
 /// that is no path, two workspace replacements that disagree, or memory.
 pub const ResolveError = error{ InvalidPath, ConflictingReplacement, OutOfMemory };
 pub const Edge = struct { from: []const u8, to: []const u8, kind: Kind = .import, count: ReferenceCount = .fromRaw(1) };
-pub const Form = enum {
-    literal,
-    python,
-    rust_mod,
-    rust_use,
-    java_static,
-    /// A Rust path rooted at a crate's name rather than at `crate`,
-    /// `self`, `super` or a module of this file: a `use` path, an
-    /// `extern crate`, or the first segment of a path in code.
-    rust_crate,
-};
-/// Raw references borrow the source or the allocator passed to the lexer.
-/// `dead` as on `Reference`.
-// aegis: no danger there; docs/design.md: lexical offsets are bounded positions in one source slice, with no domain conversion inside recovery.
-pub const Spec = struct { name: []const u8, offset: usize, form: Form = .literal, member: ?[]const u8 = null, kind: Kind = .import, scope: []const u8 = "", python_base: bool = false, star: bool = false, dead: bool = false };
 // aegis: no danger there; docs/design.md: raw lexical positions describe one bounded source slice and undergo no unit conversion.
 pub const Reference = struct {
     from: []const u8,
@@ -71,66 +42,11 @@ pub const Token = struct {
     /// The identifier, decoded string, or code sequence joined with spaces.
     text: []const u8,
     /// Byte offset of the token's first byte, or of the opening quote of a
-    /// string or a Zig `@"name"`.
+    /// string. A Zig `@"name"` is an identifier that starts at its `@`.
     offset: usize,
     /// One-based line and byte column of `offset`.
     line: usize,
     column: usize,
-};
-/// The lexical construct that recovery could not turn into a reference, or
-/// a manifest construct it could not turn into a declaration.
-pub const ImportExpression = enum {
-    zig_import,
-    c_include,
-    javascript_import,
-    javascript_require,
-    /// An `importlib.import_module` call whose names are not literal.
-    python_importlib,
-    /// A `__import__` call whose name is not a literal.
-    python_import,
-    rust_include,
-    rust_path,
-    /// An `import` or `from` operand that is not a module path or string.
-    nim_import,
-    /// An `include` operand that is not a module path or string.
-    nim_include,
-    /// A `.nimble` `requires` or `taskRequires` argument that is not a string literal.
-    nimble_requires,
-    /// `Class.forName(`, which loads a class by a name known at run time.
-    java_for_name,
-    /// A `.loadClass(` call on a class loader.
-    java_load_class,
-    /// A `pom.xml` dependency naming a property its file does not define.
-    maven_dependency,
-    /// A Gradle `dependencies` statement that is not a literal declaration.
-    gradle_dependency,
-};
-/// Owned by Imports or Graph, with a byte offset at the construct's start.
-// aegis: no danger there; docs/design.md: raw lexical positions describe one bounded source slice and undergo no unit conversion.
-pub const UnsupportedReference = struct {
-    /// Null for anonymous source bytes passed to `imports`.
-    from: ?[]const u8 = null,
-    offset: usize,
-    expression: ImportExpression,
-};
-/// Internal extraction result; all slices borrow source or extraction storage.
-pub const Recovery = struct {
-    specs: []const Spec = &.{},
-    unsupported: []const UnsupportedReference = &.{},
-    /// The package a Java file declares, empty for none.
-    package: []const u8 = "",
-
-    /// Records and scopes belong to the workspace. Names and members belong to
-    /// returned references, so copy them directly into graph storage once.
-    pub fn clone(self: Recovery, arena: std.mem.Allocator, strings: std.mem.Allocator) std.mem.Allocator.Error!Recovery {
-        const specs = try arena.dupe(Spec, self.specs);
-        for (specs) |*spec| {
-            spec.name = try strings.dupe(u8, spec.name);
-            if (spec.member) |member| spec.member = try strings.dupe(u8, member);
-            spec.scope = try arena.dupe(u8, spec.scope);
-        }
-        return .{ .specs = specs, .unsupported = try arena.dupe(UnsupportedReference, self.unsupported), .package = try arena.dupe(u8, self.package) };
-    }
 };
 /// One declared dependency, as its manifest spells it.
 pub const Dependency = struct {

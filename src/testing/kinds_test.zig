@@ -76,7 +76,7 @@ test "Rust test propagation reads each source once and releases reader scratch" 
         }
     };
     var reader: Reader = .{};
-    var graph = try g.scan(a, std.testing.io, &.{ "src/lib.rs", "src/helper.rs", "src/helper/child.rs", "src/util.rs" }, &reader, Reader.read, .{});
+    var graph = try f.scan(a, std.testing.io, &.{ "src/lib.rs", "src/helper.rs", "src/helper/child.rs", "src/util.rs" }, &reader, Reader.read, .{});
     defer graph.deinit();
     try f.edge(&graph, "src/helper.rs", "src/util.rs", .@"test", 1);
     try f.edge(&graph, "src/helper/child.rs", "src/util.rs", .@"test", 1);

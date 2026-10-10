@@ -32,7 +32,7 @@ test "fixture: a Maven Java project resolves types, packages, statics, tests and
         if (g.path.dir(item.path).len > 0) try tmp.dir.createDirPath(io, g.path.dir(item.path));
         try tmp.dir.writeFile(io, .{ .sub_path = item.path, .data = item.text.? });
     }
-    var graph = try g.scan(a, io, &paths, g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try f.scan(a, io, &paths, g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
     defer graph.deinit();
     const app = "src/main/java/com/acme/app/App.java";
     const strings = "src/main/java/com/acme/util/Strings.java";
@@ -113,7 +113,7 @@ test "Java sources are read once for packages and imports" {
         }
     };
     var reader: Reader = .{};
-    var graph = try g.scan(a, std.testing.io, &.{ "A.java", "B.java" }, &reader, Reader.read, .{});
+    var graph = try f.scan(a, std.testing.io, &.{ "A.java", "B.java" }, &reader, Reader.read, .{});
     defer graph.deinit();
     try f.edge(&graph, "A.java", "B.java", .import, 1);
     try eq(2, reader.calls);

@@ -287,7 +287,7 @@ test "scan retains large recovered operands within a bounded allocator" {
                 return reader.text;
             }
         };
-        break :blk try g.scan(fixed.allocator(), std.testing.io, &.{"app.go"}, Reader{ .text = source }, Reader.read, .{});
+        break :blk try f.scan(fixed.allocator(), std.testing.io, &.{"app.go"}, Reader{ .text = source }, Reader.read, .{});
     };
     defer graph.deinit();
     try eq(1, graph.references().len);

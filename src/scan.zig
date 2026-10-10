@@ -23,6 +23,7 @@ const diagnostics = @import("scan/diagnostic.zig");
 const manifests = @import("manifests.zig");
 const path = @import("path.zig");
 const languages = @import("lang.zig");
+const frontend_module = @import("frontend");
 const api = @import("scan/options.zig");
 const languageOf = api.languageOf;
 const Options = api.Options;
@@ -34,6 +35,7 @@ const GoFile = api.GoFile;
 const ImportStore = @import("imports/State.zig");
 const PathStore = owned_slice_module.Store([]const u8);
 const Recorder = tokens_module.Recorder;
+pub const Frontend = frontend_module.Frontend;
 pub const Imports = imports_module.Imports;
 pub const Paths = PathStore.Owner;
 
@@ -41,26 +43,41 @@ pub const Paths = PathStore.Owner;
 /// allocator rather than staying resident for the rest of the scan.
 const scratch_kept = 1 << 20;
 
-/// What `imports` fails with: `InvalidEscape` or `InvalidLiteral` for a
-/// string literal recovery cannot decode, or memory.
-pub const ImportsError = error{ InvalidEscape, InvalidLiteral, OutOfMemory };
-/// `InvalidEscape` or `InvalidLiteral` for a string literal recovery cannot decode.
+/// What `imports` and `importsWith` fail with: `InvalidEscape` or
+/// `InvalidLiteral` for a string literal recovery cannot decode,
+/// `SourceTooLarge` for a file past what its frontend reads, `FrontendMissing`
+/// for a language that needs a frontend `imports` cannot give, or memory.
+pub const ImportsError = error{ InvalidEscape, InvalidLiteral, SourceTooLarge, FrontendMissing, OutOfMemory };
+/// Recovery from one source buffer in a language gantry's byte lexers read.
+/// A language a frontend reads (Zig) is `FrontendMissing` here; `importsWith`
+/// reads it.
 pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) ImportsError!Imports {
+    return importsFrom(gpa, &.{}, language, source);
+}
+/// Recovery from one source buffer, read by `frontend` in its language.
+pub fn importsWith(gpa: std.mem.Allocator, frontend: Frontend, source: []const u8) ImportsError!Imports {
+    return importsFrom(gpa, &.{frontend}, frontend.language, source);
+}
+fn importsFrom(gpa: std.mem.Allocator, frontends: []const Frontend, language: Language, source: []const u8) ImportsError!Imports {
     const result = try ImportStore.create(gpa);
     errdefer result.deinit();
     const a = result.arena.allocator();
-    result.recovery = try extract(a, language, try a.dupe(u8, source), null, 0, "");
+    result.recovery = try extract(a, frontends, language, try a.dupe(u8, source), null, 0, "");
     return ImportStore.owner(Imports, result);
 }
 /// Recovery, handing the token stream to the token rules on the way when
 /// `recorder` still wants this file.
-fn extract(arena: std.mem.Allocator, language: Language, source: []const u8, recorder: ?*Recorder, index: usize, file: []const u8) !t.Recovery {
+fn extract(arena: std.mem.Allocator, frontends: []const Frontend, language: Language, source: []const u8, recorder: ?*Recorder, index: usize, file: []const u8) !t.Recovery {
     return switch (language) {
         inline else => |lang| {
-            const module = @field(languages, @tagName(lang));
             const seen = if (recorder) |r| r.observer(arena, index, file, lang, source) else null;
-            if (lang == .zig) return module.recoverSeen(arena, source, seen);
-            return module.recoverTokens(arena, source, try module.lex(arena, source, seen));
+            if (comptime languages.readsThroughFrontend(lang)) {
+                const frontend = frontend_module.find(frontends, lang) orelse return error.FrontendMissing;
+                return frontend.recover(arena, source, seen);
+            } else {
+                const module = @field(languages, @tagName(lang));
+                return module.recoverTokens(arena, source, try module.lex(arena, source, seen));
+            }
         },
     };
 }
@@ -144,6 +161,15 @@ fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype
     const Reader = @TypeOf(reader.*);
     const a = g.arena.allocator();
     const code_enabled = options.strict_imports or enabled(options, .import) or enabled(options, .type_only) or enabled(options, .dynamic) or enabled(options, .@"test");
+    // A frontend's language is read by it or not at all: a gap is no silent empty file.
+    if (code_enabled or options.tokens.len > 0) for (g.paths) |p| if (languageOf(p)) |language| switch (language) {
+        inline else => |lang| if (comptime languages.readsThroughFrontend(lang)) {
+            if (frontend_module.find(options.frontends, lang) == null) {
+                progress.at(.imports, p);
+                return error.FrontendMissing;
+            }
+        },
+    };
     const needs_cache = blk: {
         if (code_enabled) for (g.paths) |p| {
             const language = languageOf(p);
@@ -339,12 +365,12 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
         const from: t.NodeId = .fromRaw(@intCast(file_index)); // safe: positions validates g.paths.len fits u32.
         if (lexed and !code) {
             progress.at(.imports, p);
-            _ = extract(s, language.?, text, recorder, file_index, p) catch |err| try progress.tolerate(err);
+            _ = extract(s, options.frontends, language.?, text, recorder, file_index, p) catch |err| try progress.tolerate(err);
         }
         if (code) {
             var seen: std.AutoHashMapUnmanaged(struct { usize, t.NodeId }, void) = .empty;
             progress.at(.imports, p);
-            const recovery = prior orelse extract(s, language.?, text, recorder, file_index, p) catch |err| empty: {
+            const recovery = prior orelse extract(s, options.frontends, language.?, text, recorder, file_index, p) catch |err| empty: {
                 try progress.tolerate(err);
                 break :empty t.Recovery{};
             };

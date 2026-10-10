@@ -5,7 +5,7 @@ const support = @import("../testing/support.zig");
 
 /// The kind of each `@import` of `source`, by name, in source order.
 fn expectKinds(source: []const u8, expected: []const struct { []const u8, g.Kind }) !void {
-    var imports = try g.imports(a, .zig, source);
+    var imports = try support.imports(a, .zig, source);
     defer imports.deinit();
     var n: usize = 0;
     for (imports.items()) |spec| if (spec.member == null) {
@@ -120,7 +120,7 @@ test "Zig return types with braces and generic calls end a function at its body"
 }
 
 test "Zig member references through an alias take the kind of their use" {
-    var imports = try g.imports(a, .zig,
+    var imports = try support.imports(a, .zig,
         \\const util = @import("util.zig");
         \\pub fn run() void { util.live(); }
         \\test { util.check(); }
@@ -183,7 +183,7 @@ test "Zig field initialisers and member access are not decl literals" {
 
 /// The `@import` names of `source` that no build analyses, in source order.
 fn expectDead(source: []const u8, expected: []const []const u8) !void {
-    var imports = try g.imports(a, .zig, source);
+    var imports = try support.imports(a, .zig, source);
     defer imports.deinit();
     var n: usize = 0;
     for (imports.items()) |spec| if (spec.member == null and spec.dead) {
@@ -231,7 +231,7 @@ test "Zig imports a root, a test, a field, a call or a decl literal reaches are 
 test "Zig small-file liveness fits in an 8 KiB heap allocation budget" {
     const shakedown = @import("shakedown");
     var counted: shakedown.alloc.Counting = .init(a);
-    var imports = try g.imports(counted.allocator(), .zig,
+    var imports = try support.imports(counted.allocator(), .zig,
         \\const dep = @import("dep.zig");
         \\pub fn f() void { _ = dep; }
     );
@@ -253,7 +253,7 @@ test "Zig liveness keeps colliding names distinct as a file grows" {
         // share every sampled byte too, so collision chains remain needed.
         for (0..n) |i| try source.print(a, "const a{d:0>4}z = @import(\"{d}.zig\");\n", .{ i, i });
         try source.appendSlice(a, "pub fn f() void { _ = a0000z; }\ntest { _ = a0001z; }\n");
-        var imports = try g.imports(a, .zig, source.items);
+        var imports = try support.imports(a, .zig, source.items);
         defer imports.deinit();
         try std.testing.expectEqual(n, imports.items().len);
         for (imports.items(), 0..) |spec, i| {
@@ -276,7 +276,7 @@ test "Zig streamed recovery keeps deep nesting and truncated test branches class
     try expectKinds("const b = @import(\"builtin\"); pub const T = if (b.is_test) struct { const x = @import(\"x.zig\");", &.{ .{ "builtin", .import }, .{ "x.zig", .@"test" } });
     const S = struct {
         fn run(allocator: std.mem.Allocator, text: []const u8) !void {
-            var imports = try g.imports(allocator, .zig, text);
+            var imports = try support.imports(allocator, .zig, text);
             defer imports.deinit();
             try std.testing.expectEqual(@as(usize, 5), imports.items().len);
             try std.testing.expectEqual(g.Kind.@"test", imports.items()[1].kind);
@@ -284,30 +284,6 @@ test "Zig streamed recovery keeps deep nesting and truncated test branches class
         }
     };
     try support.checkAllAllocationFailures(S.run, .{source.items});
-}
-
-test "Zig streamed recovery preserves const tokens and uses token padding" {
-    const lexer = @import("../lexer.zig");
-    const zig = @import("zig.zig");
-    const OriginalToken = struct { kind: @FieldType(lexer.Token, "kind"), text: []const u8, offset: usize, end: usize };
-    if (@bitSizeOf(usize) == 64) try std.testing.expectEqual(@sizeOf(OriginalToken), @sizeOf(lexer.Token));
-    for ([_][]const u8{
-        "",
-        "@as(u8, 1) @import(name) @import",
-        "const b = @import(\"builtin\"); const x = @import(\"x.zig\"); pub fn f() void { if (b.is_test) _ = x; }",
-        "const Self = @This(); const a = @import(\"a.zig\"); const x = a.v; pub fn f() void { _ = @field(Self, \"x\"); } test { a.check(); }",
-        "} ) ] test { _ = @import(\"t.zig\"); const nested = (((",
-        "pub const S = struct { test { _ = @import(\"s.zig\"); } }; pub const a = @import(\"a\\x2ezig\");",
-    }) |source| {
-        var arena: std.heap.ArenaAllocator = .init(a);
-        defer arena.deinit();
-        const work = arena.allocator();
-        const ts = try zig.lex(work, source, null);
-        const replay = try zig.recoverTokens(work, source, ts);
-        for (ts) |token| try std.testing.expectEqual(@as(u32, 0), token.partner);
-        const streamed = try zig.recoverSeen(work, source, null);
-        try std.testing.expectEqualDeep(replay, streamed);
-    }
 }
 
 test "Zig streamed structural spills retain every builtin alias and test mark" {
@@ -324,4 +300,39 @@ test "Zig streamed structural spills retain every builtin alias and test mark" {
     const short_expected: [12]struct { []const u8, g.Kind } = @splat(.{ "x.zig", .import });
     try std.testing.expect(source.written().len <= 1024);
     try expectKinds(source.written(), &short_expected);
+}
+
+test "Zig files without their frontend fail the scan before anything is read" {
+    const Reader = struct {
+        const Self = @This();
+        reads: usize = 0,
+        fn read(self: *Self, _: std.mem.Allocator, _: std.Io, _: []const u8) !?[]const u8 {
+            self.reads += 1;
+            return "const x = @import(\"x.zig\");";
+        }
+    };
+    var reader: Reader = .{};
+    var diagnostic = g.Diagnostics.init(a);
+    defer diagnostic.deinit();
+    const paths = &.{ "a.py", "src/a.zig" };
+    try std.testing.expectError(error.FrontendMissing, g.scan(a, std.testing.io, paths, &reader, Reader.read, .{ .diagnostics = &diagnostic }));
+    try std.testing.expectEqual(0, reader.reads);
+    try std.testing.expectEqualStrings("src/a.zig", diagnostic.failure.?.path.?);
+    try std.testing.expectEqual(error.FrontendMissing, diagnostic.failure.?.cause);
+    // Token rules read Zig too, whatever edges are wanted.
+    try std.testing.expectError(error.FrontendMissing, g.scan(a, std.testing.io, paths, &reader, Reader.read, .{ .kinds = &.{.link}, .tokens = &.{.{ .name = "any", .tokens = &.{"*"} }} }));
+    // A scan that reads no code needs no frontend for the Zig files it lists.
+    var links = try g.scan(a, std.testing.io, paths, &reader, Reader.read, .{ .kinds = &.{.link} });
+    defer links.deinit();
+    try std.testing.expectEqual(0, links.invalid().len);
+    var listed = try support.scan(a, std.testing.io, paths, &reader, Reader.read, .{});
+    defer listed.deinit();
+}
+
+test "Zig single-file recovery needs its frontend and reports it" {
+    try std.testing.expectError(error.FrontendMissing, g.imports(a, .zig, "const x = @import(\"x.zig\");"));
+    var imports = try g.importsWith(a, support.zig.frontend, "const x = @import(\"x.zig\");");
+    defer imports.deinit();
+    try std.testing.expectEqual(1, imports.items().len);
+    try std.testing.expectEqualStrings("x.zig", imports.items()[0].name);
 }

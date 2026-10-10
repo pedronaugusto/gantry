@@ -7,3 +7,11 @@ pub const go = @import("lang/go.zig");
 pub const rust = @import("lang/rust.zig");
 pub const nim = @import("lang/nim.zig");
 pub const java = @import("lang/java.zig");
+
+const Self = @This();
+const Language = @import("types.zig").Language;
+/// Whether a language's recovery is a frontend's, because it needs more than
+/// the byte lexers here can give. Zig reads through glint, in `gantry.zig`.
+pub fn readsThroughFrontend(comptime language: Language) bool {
+    return !@hasDecl(@field(Self, @tagName(language)), "recoverTokens");
+}

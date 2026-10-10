@@ -7,7 +7,7 @@ const eq = std.testing.expectEqualStrings;
 fn check(language: g.Language, source: []const u8, want: []const []const u8) !void {
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
-    var parsed = try g.imports(std.testing.allocator, language, source);
+    var parsed = try f.imports(std.testing.allocator, language, source);
     defer parsed.deinit();
     const specs = parsed.items();
     try std.testing.expectEqual(want.len, specs.len);
@@ -31,7 +31,7 @@ test "Zig comments strings characters multiline strings and whitespace" {
 test "Zig member references direct bound typed and multiline with no comments or strings" {
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
-    var parsed = try g.imports(std.testing.allocator, .zig,
+    var parsed = try f.imports(std.testing.allocator, .zig,
         \\const p: type = @import("proto");
         \\const m = p
         \\    .mirror;
@@ -136,7 +136,7 @@ test "Nim imports groups prefixes strings and pragmas ignore comments strings an
     , &.{ "std/os", "std/strutils", "../lib/a", "c", "std/times", "pkg/d", "n/o", "../q/r", "../q/t", "./l", "./m", "e/f", "./g", "h", "k" });
 }
 test "Java package and imports ignore comments strings text blocks characters and members" {
-    var parsed = try g.imports(std.testing.allocator, .java,
+    var parsed = try f.imports(std.testing.allocator, .java,
         \\// import bad.One;
         \\/* import bad.Two; */
         \\package com.acme
@@ -261,13 +261,13 @@ test "C directives survive continued lines and multiline comments" {
 }
 test "owned raw imports outlive the source and clean up on allocation failure" {
     const source = try std.testing.allocator.dupe(u8, "const p = @import(\"proto\"); const m = p.mirror;");
-    var parsed = try g.imports(std.testing.allocator, .zig, source);
+    var parsed = try f.imports(std.testing.allocator, .zig, source);
     defer parsed.deinit();
     std.testing.allocator.free(source);
     try eq("proto", parsed.items()[0].name);
     const S = struct {
         fn run(a: std.mem.Allocator) !void {
-            var result = try g.imports(a, .zig, "const p = @import(\"proto\"); const m = p.mirror;");
+            var result = try f.imports(a, .zig, "const p = @import(\"proto\"); const m = p.mirror;");
             defer result.deinit();
         }
     };

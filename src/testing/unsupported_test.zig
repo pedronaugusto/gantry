@@ -8,7 +8,7 @@ fn unsupportedCount(result: anytype) usize {
 }
 
 fn lexical(language: g.Language, source: []const u8, count: usize) !void {
-    var result = try g.imports(a, language, source);
+    var result = try f.imports(a, language, source);
     defer result.deinit();
     try std.testing.expectEqual(count, unsupportedCount(&result));
     for (result.unsupported(), 0..) |record, i| {
@@ -88,7 +88,7 @@ test "unsupported Python imports expose direct runtime loaders without guessing 
 
 test "Python loader calls are read across line breaks" {
     const source = "m = (importlib\n    .import_module(name))\nn = (other.\n    __import__(name))\n";
-    var result = try g.imports(a, .python, source);
+    var result = try f.imports(a, .python, source);
     defer result.deinit();
     try std.testing.expectEqual(1, result.unsupported().len);
     try std.testing.expectEqual(.python_importlib, result.unsupported()[0].expression);
@@ -134,7 +134,7 @@ test "unsupported Nim imports keep no module from a statement they cannot read" 
         \\let text = "import $bad"
         \\proc p() {.importc.}
     , 6);
-    var result = try g.imports(a, .nim, "import a, b & \"c\"\nimport d");
+    var result = try f.imports(a, .nim, "import a, b & \"c\"\nimport d");
     defer result.deinit();
     try std.testing.expectEqual(1, result.items().len);
     try std.testing.expectEqualStrings("d", result.items()[0].name);
@@ -157,7 +157,7 @@ test "unsupported Java class loading names exact spellings, not members or text"
 }
 
 test "unsupported Go imports do not invent computed syntax for valid declarations" {
-    var result = try g.imports(a, .go,
+    var result = try f.imports(a, .go,
         \\package p
         \\import "one"
         \\import ( alias "two"; _ `three`; . "four" )
@@ -176,7 +176,7 @@ fn strictOptions(diagnostics: ?*g.Diagnostics) g.Options {
 }
 
 fn refuse(fixture: f.Fixture, paths: []const []const u8, diagnostic: ?*g.Diagnostics) !void {
-    if (g.scan(a, std.testing.io, paths, fixture, f.Fixture.read, strictOptions(diagnostic))) |value| {
+    if (f.scan(a, std.testing.io, paths, fixture, f.Fixture.read, strictOptions(diagnostic))) |value| {
         var graph = value;
         defer graph.deinit();
         return error.TestExpectedUnsupportedImport;
@@ -224,7 +224,7 @@ test "unsupported tolerant scans own records in sorted source order" {
 }
 
 test "unsupported templates cannot promote interpolated strings into literal imports" {
-    var result = try g.imports(a, .javascript,
+    var result = try f.imports(a, .javascript,
         \\import(`prefix${'./wrong.js'}suffix`);
         \\require(`${"./wrong.js"}`);
         \\import(`prefix${import('./right.js')}suffix`);
@@ -275,7 +275,7 @@ test "unsupported strict diagnostics cover every detecting language and survive 
         try std.testing.expectEqual(@as(?g.ByteOffset, .fromRaw(case.offset)), diagnostic.failure.?.offset);
         try std.testing.expectEqual(g.Diagnostics.Phase.imports, diagnostic.failure.?.phase);
     }
-    var empty = try g.scan(a, std.testing.io, &.{}, f.Fixture{ .items = &.{} }, f.Fixture.read, strictOptions(&diagnostic));
+    var empty = try f.scan(a, std.testing.io, &.{}, f.Fixture{ .items = &.{} }, f.Fixture.read, strictOptions(&diagnostic));
     defer empty.deinit();
     try std.testing.expectEqual(null, diagnostic.failure);
 }
@@ -308,7 +308,7 @@ test "unsupported lexical and graph owners retain records after their inputs are
     defer a.free(source);
     const path = try a.dupe(u8, "src/a.zig");
     defer a.free(path);
-    var result = try g.imports(a, .zig, source);
+    var result = try f.imports(a, .zig, source);
     defer result.deinit();
     const fixture: f.Fixture = .{ .items = &.{
         .{ .path = path, .text = source },
@@ -337,7 +337,7 @@ fn lexicalAllocations(alloc: std.mem.Allocator) !void {
             .nim => "import $name\nimport literal",
             .java => "import a.b.Literal; class A { Object x = Class.forName(name); }",
         };
-        var result = try g.imports(alloc, language, source);
+        var result = try f.imports(alloc, language, source);
         defer result.deinit();
         try std.testing.expectEqual(if (language == .go) @as(usize, 0) else 1, result.unsupported().len);
         try std.testing.expectEqual(1, result.items().len);
@@ -385,7 +385,7 @@ test "unsupported Python loader detection follows implicit line continuation" {
         \\(__import__
         \\    (other))
     ;
-    var result = try g.imports(a, .python, source);
+    var result = try f.imports(a, .python, source);
     defer result.deinit();
     try std.testing.expectEqual(2, result.unsupported().len);
     try std.testing.expectEqual(g.ImportExpression.python_importlib, result.unsupported()[0].expression);
@@ -398,7 +398,7 @@ fn strictAllocations(alloc: std.mem.Allocator) !void {
     var diagnostic = g.Diagnostics.init(a);
     defer diagnostic.deinit();
     const fixture: f.Fixture = .{ .items = &.{.{ .path = "a.zig", .text = "@import(name);" }} };
-    if (g.scan(alloc, std.testing.io, &.{"a.zig"}, fixture, f.Fixture.read, strictOptions(&diagnostic))) |value| {
+    if (f.scan(alloc, std.testing.io, &.{"a.zig"}, fixture, f.Fixture.read, strictOptions(&diagnostic))) |value| {
         var graph = value;
         defer graph.deinit();
         return error.TestExpectedUnsupportedImport;

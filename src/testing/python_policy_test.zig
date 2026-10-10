@@ -1,5 +1,4 @@
 const std = @import("std");
-const g = @import("../gantry.zig");
 const f = @import("support.zig");
 const a = std.testing.allocator;
 
@@ -48,7 +47,7 @@ test "Python reexports and imports share one source read" {
         }
     };
     var reader: Reader = .{};
-    var graph = try g.scan(a, std.testing.io, &.{ "pkg/__init__.py", "pkg/api.py", "pkg/impl.py" }, &reader, Reader.read, .{ .python_initializers = .explicit });
+    var graph = try f.scan(a, std.testing.io, &.{ "pkg/__init__.py", "pkg/api.py", "pkg/impl.py" }, &reader, Reader.read, .{ .python_initializers = .explicit });
     defer graph.deinit();
     try f.edge(&graph, "pkg/__init__.py", "pkg/impl.py", .import, 1);
     try std.testing.expectEqual(3, reader.calls);
