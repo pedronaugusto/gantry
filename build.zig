@@ -1,6 +1,9 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) !void {
+    // lazyImport compares every package of the dependency tree at comptime;
+    // a large tree runs past the default quota of 1000 branches.
+    @setEvalBranchQuota(100_000);
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const aegis_package = b.dependency("aegis", .{ .target = target, .optimize = optimize });
@@ -94,6 +97,9 @@ pub fn build(b: *std.Build) !void {
 /// an imported module keeps its own mode, so a ReleaseFast benchmark over the
 /// Debug module would time the Debug module.
 fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) []const std.Build.Module.Import {
+    // lazyImport compares every package of the dependency tree at comptime;
+    // a large tree runs past the default quota of 1000 branches.
+    @setEvalBranchQuota(100_000);
     const sweep = b.dependency("sweep", .{ .target = target, .optimize = optimize }).module("sweep");
     const aegis = b.dependency("aegis", .{ .target = target, .optimize = optimize }).module("aegis");
     // unreachable: `build` returns before `addCi` while glint is missing.
