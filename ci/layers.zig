@@ -1,6 +1,5 @@
 //! Source layers, lowest first. Every source has one explicit place.
 const gantry = @import("gantry");
-const family = @import("preflight_rules");
 
 pub const layers: []const gantry.rules.Layer = &.{
     .{ .name = "primitives", .patterns = &.{
@@ -89,8 +88,8 @@ const package_references = [_]gantry.rules.ReferenceRule{
     .{ .name = "source siblings", .suffix = ".zig", .relative = true, .except_targets = &.{"src/**"} },
 };
 
-pub const references: []const gantry.rules.ReferenceRule = &(package_references ++ family.shakedown);
-pub const owned: []const gantry.rules.TokenRule = &(family.durability ++ family.no_async);
+pub const references: []const gantry.rules.ReferenceRule = &package_references;
+pub const owned: []const gantry.rules.TokenRule = &(durability ++ no_async);
 
 pub const required = [_][]const u8{
     "src/builtins.zig",
@@ -145,3 +144,23 @@ pub const required = [_][]const u8{
     "src/gantry.zig",
     "src/tests.zig",
 };
+
+/// Durable writes go through airlock.
+const durability = [_]gantry.rules.TokenRule{.{
+    .name = "durability belongs to airlock",
+    .sequences = &.{
+        &.{ ".", "sync", "(" },
+        &.{ ".", "syncFile", "(" },
+        &.{ ".", "syncDir", "(" },
+        &.{ "createFileAtomic", "(" },
+        &.{ "fsync", "(" },
+        &.{ "fdatasync", "(" },
+        &.{ "FlushFileBuffers", "(" },
+    },
+}};
+
+/// The caller owns asynchronous work.
+const no_async = [_]gantry.rules.TokenRule{.{
+    .name = "async belongs to the caller",
+    .sequences = &.{&.{ "io", ".", "async", "(" }},
+}};

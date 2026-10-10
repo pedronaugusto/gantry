@@ -1,7 +1,6 @@
 {
   "land": true,
   "attest": true,
-  "package": "gantry",
   "compile_step": "check",
   "targets": [
     "x86_64-linux-gnu",
@@ -16,5 +15,12 @@
     "x86_64-netbsd"
   ],
   "compile_once": true,
-  "test_job_timeout": 40
+  "test_job_timeout": 40,
+  "jobs": [
+    {
+      "name": "report formats",
+      "step": "check-reports",
+      "setup": "reports-setup"
+    }
+  ]
 }
