@@ -5,7 +5,7 @@ const std = @import("std");
 /// Manifests borrow the nearest rules (TOML reads as Python, go.mod as Go),
 /// and Gradle build scripts are Groovy or Kotlin.
 pub const Syntax = enum { c, javascript, python, go, rust, nim, java, groovy, kotlin };
-const frontend = @import("frontend");
+const frontend = @import("frontend.zig");
 pub const Token = frontend.Lexeme;
 /// Called as each code token or string joins a stream, with the stream so far.
 pub const Observer = frontend.Observer;

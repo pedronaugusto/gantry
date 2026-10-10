@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Breaking
 
+- One module: the build modules `gantry.graph`, `gantry.analysis`, `gantry.scan`, `gantry.imports`, `gantry.rules`, `gantry.manifests`, `gantry.path`, `gantry.report` and `gantry.frontend` are gone. Code that imports `gantry` and uses `gantry.rules`, `gantry.manifests`, `gantry.path` or `gantry.report` is unchanged; those and `gantry.frontend` are namespaces of the root, and a graph, analysis, scan or import declaration is read from the root (`gantry.Graph`, `gantry.scan`, `gantry.imports`), as it always was. A caller that imported `gantry.graph`, `gantry.analysis`, `gantry.scan` or `gantry.imports` as a module names the root instead. Only `gantry.zig` stays a module, because it needs glint; it imports `gantry` for the frontend vocabulary.
 - Zig is read by a frontend module, `gantry.zig`, on [glint](https://github.com/pedronaugusto/glint)'s token tier, in place of gantry's own Zig lexer. A project that never analyses Zig builds without it and fetches no glint; to scan Zig, depend on gantry with `.zig = true`, import `gantry.zig` and list `frontend` in `Options.frontends`. A scan of a `.zig` path without that frontend fails with `ScanError.FrontendMissing` before it reads anything, `gantry.imports` returns `error.FrontendMissing` for `.zig` and `gantry.importsWith(gpa, frontend, source)` reads a frontend's language. Edges, references, liveness and unsupported constructs on the family's Zig (19 repositories, 1,528 files) are identical. A source past 512 MiB is a record in `Graph.invalid()` (`FileError.SourceTooLarge`); text that is not Zig may be tokenized as std's tokenizer reads it, which differs from the old lexer only where the old one guessed.
 - A Zig `@"name"` that a token rule records as an identifier starts at its `@`, not at its opening quote, as a sequence already did; `@"64"` stays an identifier.
 - `Edge.count` is `ReferenceCount` (aegis's tagged occurrence count): construct with `ReferenceCount.fromRaw`, extract with `raw`, and add with checked `add`. `Diagnostics.Failure.offset` and `InvalidFile.offset` are optional `ByteOffset` IDs; construct and extract explicitly.
@@ -39,8 +40,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Package Glint configuration requires the adopted scalar rule A004 in gate mode, including tests and benchmarks; enforcement awaits the preflight G4 integration.
-
-- Separate build modules for graph, analysis, scan, imports, rules, manifests, path and report, sharing the root facade's declaration identities.
 
 - `match/path-compiled` benchmarks repeated matching in gantry's path dialect, with compilation outside the clock, alongside the one-shot path row.
 

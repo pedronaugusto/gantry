@@ -336,10 +336,9 @@ that are not UTF-8 as `\xNN`, so distinct paths stay distinct IDs. Mermaid nodes
 codes. JSON writes a byte that is not UTF-8 as U+FFFD; SARIF URIs percent-encode
 every byte outside the unreserved set and `/`.
 
-The root also has separate build modules for its existing concerns:
-`gantry.graph`, `gantry.analysis`, `gantry.scan`, `gantry.imports`,
-`gantry.rules`, `gantry.manifests`, `gantry.path` and `gantry.report`.
-They share declaration identities and can be imported together.
+`gantry` is one build module. `gantry.rules`, `gantry.manifests`, `gantry.path`,
+`gantry.report` and `gantry.frontend` are namespaces of it, and graphs, analysis, scans
+and import recovery are named on the root. The only other module is `gantry.zig`.
 Runtime dependencies are commit-pinned aegis and sweep; CI and test dependencies
 remain lazy.
 

@@ -10,7 +10,6 @@ const diagnostic_module = @import("scan/diagnostic.zig");
 const std = @import("std");
 const t = @import("types.zig");
 const resolver = @import("resolve.zig");
-const frontend_module = @import("frontend");
 /// A scan's or `fromEdges`'s owned graph: files, edges, references and records.
 pub const Graph = graph_module.Graph;
 /// Layers, components, cycle witnesses, coupling and queries over a graph.
@@ -72,8 +71,10 @@ pub const Imports = scan_module.Imports;
 pub const imports = scan_module.imports;
 /// Recovery from one anonymous source buffer, read by a frontend module.
 pub const importsWith = scan_module.importsWith;
+/// What a language frontend yields to the core, and the seam a scan reaches it by. A frontend module (`gantry.zig`) imports this vocabulary from here.
+pub const frontend = @import("frontend.zig");
 /// A module that reads a language the byte lexers do not, as `Options.frontends` lists.
-pub const Frontend = frontend_module.Frontend;
+pub const Frontend = frontend.Frontend;
 /// What `imports` and `importsWith` fail with.
 pub const ImportsError = scan_module.ImportsError;
 /// read(scratch, io, context, path) returns `E!?[]const u8`. Bytes need
@@ -116,3 +117,7 @@ pub const Paths = scan_module.Paths;
 pub const walk = scan_module.walk;
 /// What `walk` fails with.
 pub const WalkError = scan_module.WalkError;
+
+test {
+    _ = @import("tests.zig");
+}

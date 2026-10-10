@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) !void {
     // repository's own build always has it.
     const own_tree = b.pkg_hash.len == 0;
     const with_zig = own_tree or (b.option(bool, "zig", "Build the gantry.zig frontend, which fetches glint") orelse false);
-    const glint = if (with_zig) (try b.dependencyLazy("glint", .{ .target = target, .optimize = optimize })).module("glint_token") else null;
+    const glint = if (with_zig) (try b.dependencyLazy("glint", .{ .target = target, .optimize = optimize })).module("glint") else null;
     const modules = publicModules(b, target, optimize, sweep, aegis, glint, true);
     const module = modules.root;
     const library = b.addLibrary(.{ .name = "gantry", .root_module = module });
@@ -22,16 +22,10 @@ pub fn build(b: *std.Build) !void {
     // gantry builds the module and nothing else, and fetches nothing for it.
     if (!own_tree) return;
     const filters = if (b.option([]const u8, "test-filter", "Select tests by name")) |filter| &.{filter} else &.{};
-    const tests = b.addTest(.{
-        .name = "gantry-tests",
-        .filters = filters,
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/tests.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis }, .{ .name = "frontend", .module = modules.frontend }, .{ .name = "zig_frontend", .module = modules.zig.? } },
-        }),
-    });
+    // The tests are the core module's own, so they reach its files. The Zig frontend they scan
+    // with imports the core, so the core imports it back here and nowhere else.
+    module.addImport("zig_frontend", modules.zig.?);
+    const tests = b.addTest(.{ .name = "gantry-tests", .filters = filters, .root_module = module });
     const domains = b.step("check-domains", "Reject raw counts and mixed diagnostic domains");
     for ([_][]const u8{ "raw_count", "mixed_offset" }) |name| {
         const negative = b.addObject(.{ .name = name, .root_module = b.createModule(.{ .root_source_file = b.path(b.fmt("ci/domains/{s}.zig", .{name})), .target = target, .optimize = optimize, .imports = &.{.{ .name = "gantry", .module = module }} }) });
@@ -63,7 +57,7 @@ pub fn build(b: *std.Build) !void {
     // only the root build asks for them, both in one configure pass.
     const ci = b.lazyImport(@This(), "preflight");
     const shakedown = (try b.dependencyLazy("shakedown", .{ .target = target, .optimize = optimize })).module("shakedown");
-    tests.root_module.addImport("shakedown", shakedown);
+    module.addImport("shakedown", shakedown);
     fixtures.root_module.addImport("shakedown", shakedown);
     if (ci) |preflight| {
         preflight.addCi(b, .{
@@ -83,7 +77,7 @@ pub fn build(b: *std.Build) !void {
         });
         // A project that depends on gantry by path, with no packages to
         // fetch: the build a consumer gets.
-        preflight.addConsumerCheck(b, .{ .package = "gantry", .program = b.path("ci/consumer.zig"), .modules = &.{ "gantry", "gantry.frontend", "gantry.graph", "gantry.analysis", "gantry.scan", "gantry.imports", "gantry.rules", "gantry.manifests", "gantry.path", "gantry.report" }, .packages = &.{ sweep_package, aegis_package } });
+        preflight.addConsumerCheck(b, .{ .package = "gantry", .program = b.path("ci/consumer.zig"), .modules = &.{"gantry"}, .packages = &.{ sweep_package, aegis_package } });
         // Validates the report goldens with their downstream tools.
         check.dependOn(&preflight.addCheck(b, "check-reports", "ci/reports.zig").step);
     }
@@ -96,7 +90,7 @@ fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.l
     const sweep = b.dependency("sweep", .{ .target = target, .optimize = optimize }).module("sweep");
     const aegis = b.dependency("aegis", .{ .target = target, .optimize = optimize }).module("aegis");
     // unreachable: `build` returns before `addCi` while glint is missing.
-    const glint = (b.dependencyLazy("glint", .{ .target = target, .optimize = optimize }) catch unreachable).module("glint_token");
+    const glint = (b.dependencyLazy("glint", .{ .target = target, .optimize = optimize }) catch unreachable).module("glint");
     const gantry = publicModules(b, target, optimize, sweep, aegis, glint, false);
     // unreachable: `build` returns before `addCi` while shakedown is missing.
     const shakedown = (b.dependencyLazy("shakedown", .{ .target = target, .optimize = optimize }) catch unreachable).module("shakedown");
@@ -108,32 +102,21 @@ fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.l
 }
 
 const Modules = struct {
-    /// `gantry`, which names every concern.
+    /// `gantry`: every concern, as namespaces of one module.
     root: *std.Build.Module,
-    /// `gantry.frontend`: what a frontend yields, which the core and a frontend share.
-    frontend: *std.Build.Module,
     /// `gantry.zig`, when glint is there to build it on.
     zig: ?*std.Build.Module,
 };
 
-/// Public concerns share one private source module so imports keep declaration identities.
+/// The core is one module. Its concerns are namespaces of it, since none has a dependency of
+/// its own that a user should not fetch. The Zig frontend is a module apart because it needs
+/// glint; it imports the core for the frontend vocabulary and the core imports nothing of it.
 fn publicModules(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize, sweep: *std.Build.Module, aegis: *std.Build.Module, glint: ?*std.Build.Module, publish: bool) Modules {
-    const frontend = b.createModule(.{ .root_source_file = b.path("src/frontend.zig"), .target = target, .optimize = optimize });
-    const implementation = b.createModule(.{ .root_source_file = b.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis }, .{ .name = "frontend", .module = frontend } } });
-    const root = b.createModule(.{ .root_source_file = b.path("src/public.zig"), .target = target, .optimize = optimize });
-    for ([_][]const u8{ "graph", "analysis", "scan", "imports", "rules", "manifests", "path", "report" }) |name| {
-        const concern = b.createModule(.{ .root_source_file = b.path(b.fmt("src/public/{s}.zig", .{name})), .target = target, .optimize = optimize, .imports = &.{.{ .name = "implementation", .module = implementation }} });
-        const module_name = b.fmt("gantry.{s}", .{name});
-        root.addImport(module_name, concern);
-        if (publish) b.modules.put(b.allocator, b.dupe(module_name), concern) catch @panic("OOM");
-    }
-    // The Zig frontend reaches the core only through the vocabulary below it,
-    // so a consumer of the core alone builds none of it.
-    const zig = if (glint) |token| b.createModule(.{ .root_source_file = b.path("src/frontends/zig.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "frontend", .module = frontend }, .{ .name = "glint_token", .module = token } } }) else null;
+    const root = b.createModule(.{ .root_source_file = b.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis } } });
+    const zig = if (glint) |dependency| b.createModule(.{ .root_source_file = b.path("src/frontends/zig.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "gantry", .module = root }, .{ .name = "glint", .module = dependency } } }) else null;
     if (publish) {
         b.modules.put(b.allocator, "gantry", root) catch @panic("OOM");
-        b.modules.put(b.allocator, "gantry.frontend", frontend) catch @panic("OOM");
         if (zig) |module| b.modules.put(b.allocator, "gantry.zig", module) catch @panic("OOM");
     }
-    return .{ .root = root, .frontend = frontend, .zig = zig };
+    return .{ .root = root, .zig = zig };
 }

@@ -24,9 +24,10 @@
 A language gantry's byte lexers do not read is read by a frontend, a module
 that yields a file's `Recovery` (references with kind and liveness, and the
 constructs it cannot read) and, when token rules ask, the units of its tokens
-to an `Observer`. The vocabulary (`src/frontend.zig`, published as
-`gantry.frontend`) is below everything else and imports only std, so the core
-and a frontend module share its types without importing each other. Resolution
+to an `Observer`. The vocabulary (`src/frontend.zig`, the namespace
+`gantry.frontend`) is below everything else and imports only std. A frontend
+module imports `gantry` for it, and the core imports no frontend, so they share
+its types with the dependency running one way. Resolution
 of a reference to files stays in the core, which knows the selected paths. A
 scan lists its frontends in `Options.frontends`; a path in a language that
 needs one without it is `FrontendMissing`, decided before any file is read, so
@@ -53,14 +54,14 @@ progress. IDs and counts retain the original scalar layout. Named domain markers
 compiler diagnostics stable; compile-fail checks match semantic type errors
 without host paths or generated anonymous-struct numbers.
 
-The build exports `gantry.graph`, `gantry.analysis`, `gantry.scan`,
-`gantry.imports`, `gantry.rules`, `gantry.manifests`, `gantry.path` and
-`gantry.report`. The `gantry` root is a pure declaration facade over those
-concerns. Each concern refers downward to one private implementation module;
-this preserves declaration identities when callers combine concerns and the
-root. The existing source layer graph remains inside that implementation,
-with aegis and sweep below it. Unused declarations are lazy: importing a
-concern does not compile every operation in the private vocabulary.
+`gantry` is one module. Its concerns (`rules`, `manifests`, `path`, `report` and
+`frontend`) are namespaces of it, beside the graph, analysis, scan and import
+declarations the root names directly: no concern has a dependency a user should
+not fetch, and Zig compiles only what a program uses, so separate modules would
+buy nothing but a second path to the same declaration. The source layers inside
+it are what `ci/layers.zig` enforces, with aegis and sweep below. The one other
+module is `gantry.zig`, which needs glint and imports the root; a module of its
+own is what keeps glint from being fetched by a user who never reads Zig.
 
 ## Raw-site decisions
 

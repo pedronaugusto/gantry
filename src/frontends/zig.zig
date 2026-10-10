@@ -1,10 +1,10 @@
 //! Zig, read through glint's token tier: std's own tokenizer, the imports
 //! and test contexts of `@import`, and which of them only tests reach. It is
-//! a module apart so that a project that never analyses Zig never fetches
-//! glint. List `frontend` in `Options.frontends` to scan Zig files.
+//! a module apart, importing `gantry` while the core imports nothing of it,
+//! so that a project that never analyses Zig never fetches glint. List `frontend` in `Options.frontends` to scan Zig files.
 const std = @import("std");
-const seam = @import("frontend");
-const glint = @import("glint_token");
+const seam = @import("gantry").frontend;
+const tokens = @import("glint").token;
 
 /// What a scan lists in `Options.frontends` to read `.zig` files.
 pub const frontend: seam.Frontend = .{ .language = .zig, .recover = recover };
@@ -15,13 +15,13 @@ fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?seam.Observer) s
     var bridge: Bridge = .{ .source = source };
     const facts = if (seen) |observer| watched: {
         bridge.seen = observer;
-        break :watched try glint.scan(arena, source, .{
+        break :watched try tokens.scan(arena, source, .{
             .context = &bridge,
             .punctuation = observer.punctuation,
             .boundary = Bridge.boundary,
             .token = Bridge.token,
         });
-    } else try glint.scan(arena, source, null);
+    } else try tokens.scan(arena, source, null);
     const specs = try arena.alloc(seam.Spec, facts.imports.len);
     for (facts.imports, specs) |import, *spec| spec.* = .{
         .name = import.name,
@@ -51,7 +51,7 @@ const Bridge = struct {
     /// The operator whose last byte has not yet arrived.
     operator: ?seam.Lexeme = null,
 
-    fn token(context: *anyopaque, current: glint.Token) error{OutOfMemory}!void {
+    fn token(context: *anyopaque, current: tokens.Token) error{OutOfMemory}!void {
         const b: *Bridge = @ptrCast(@alignCast(context)); // safe: `recover` passes its own bridge as the context.
         const unit: seam.Lexeme = .{
             .kind = switch (current.kind()) {

@@ -67,28 +67,15 @@ pub const layers: []const gantry.rules.Layer = &.{
         "src/report.zig",
         "src/report/**",
     } },
+    .{ .name = "public root", .patterns = &.{"src/gantry.zig"} },
     .{ .name = "frontends", .patterns = &.{"src/frontends/**"} },
-    .{ .name = "package vocabulary", .patterns = &.{
-        "src/gantry.zig",
-    } },
-    .{ .name = "public concerns", .patterns = &.{"src/public/**"} },
-    .{ .name = "public root", .patterns = &.{"src/public.zig"} },
 };
 
 pub const entries: []const []const u8 = &.{};
 
 pub const modules: []const gantry.NamedModule = &.{
-    .{ .name = "frontend", .path = "src/frontend.zig", .from = "src/**" },
+    .{ .name = "gantry", .path = "src/gantry.zig", .from = "src/frontends/**" },
     .{ .name = "zig_frontend", .path = "src/frontends/zig.zig", .from = "src/testing/**" },
-    .{ .name = "implementation", .path = "src/gantry.zig", .from = "src/public/**" },
-    .{ .name = "gantry.graph", .path = "src/public/graph.zig", .from = "src/public.zig" },
-    .{ .name = "gantry.analysis", .path = "src/public/analysis.zig", .from = "src/public.zig" },
-    .{ .name = "gantry.scan", .path = "src/public/scan.zig", .from = "src/public.zig" },
-    .{ .name = "gantry.imports", .path = "src/public/imports.zig", .from = "src/public.zig" },
-    .{ .name = "gantry.rules", .path = "src/public/rules.zig", .from = "src/public.zig" },
-    .{ .name = "gantry.manifests", .path = "src/public/manifests.zig", .from = "src/public.zig" },
-    .{ .name = "gantry.path", .path = "src/public/path.zig", .from = "src/public.zig" },
-    .{ .name = "gantry.report", .path = "src/public/report.zig", .from = "src/public.zig" },
 };
 
 const package_references = [_]gantry.rules.ReferenceRule{
@@ -96,7 +83,7 @@ const package_references = [_]gantry.rules.ReferenceRule{
         "std",
         "aegis",
         "sweep",
-        "glint_token",
+        "glint",
         "shakedown",
     } },
     .{ .name = "source siblings", .suffix = ".zig", .relative = true, .except_targets = &.{"src/**"} },
@@ -156,14 +143,5 @@ pub const required = [_][]const u8{
     "src/report/json.zig",
     "src/frontends/zig.zig",
     "src/gantry.zig",
-    "src/public.zig",
-    "src/public/graph.zig",
-    "src/public/analysis.zig",
-    "src/public/scan.zig",
-    "src/public/imports.zig",
-    "src/public/rules.zig",
-    "src/public/manifests.zig",
-    "src/public/path.zig",
-    "src/public/report.zig",
     "src/tests.zig",
 };

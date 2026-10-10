@@ -1,6 +1,6 @@
 const std = @import("std");
 const aegis = @import("aegis");
-const frontend = @import("frontend");
+const frontend = @import("frontend.zig");
 const ReferenceCountTag = struct {};
 const NodeIdTag = struct {};
 const ByteOffsetTag = struct {};
