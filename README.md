@@ -357,21 +357,21 @@ remain lazy.
 
 ## Built with
 
-[preflight](https://github.com/pedronaugusto/preflight), one local and one hosted gate for
-Zig packages, and **tycho**, every coding agent in one folder (in development).
+[bay](https://github.com/pedronaugusto/bay) runs gantry's development; [preflight](https://github.com/pedronaugusto/preflight), one local and one hosted gate for
+Zig packages, and [shakedown](https://github.com/pedronaugusto/shakedown), the test doubles, are dev dependencies through bay that a project depending on gantry never sees. The workspace is **tycho**, every coding agent in one folder (in development).
 
 ## Testing
 
-`zig build test` runs the suite and usage example in Debug by default. Fixtures cover
+`bay test` runs the suite and usage example in Debug by default. Fixtures cover
 lexical exclusions, resolvers, manifests, diagnostics, strict imports and rules.
 Generated graphs are checked against independent reachability, depth, closure,
 shortest-chain, coupling and nearest-target calculations; allocation-failure tests check
 cleanup, and a 50,000-file graph bounds a query's memory. Every lexer, every manifest and
 config reader, and the package names dependency rules read from import spellings have a
 shakedown `check` property (no panic or leak, only documented errors, output bounded
-by the input, the same result twice): `zig build test` runs their examples and then seeded
-cases, and `zig build test --fuzz` searches. `zig build examples` runs the example
-separately; `zig build check` compiles the tests only. CI also runs `zig build lint`.
+by the input, the same result twice): `bay test` runs their examples and then seeded
+cases, and `bay test --fuzz` searches. `bay examples` runs the example
+separately; `bay check` compiles the tests only. CI also runs `bay lint`.
 Reports are compared with golden files in `src/testing/golden`, which CI reads with Graphviz's
 `dot`, Mermaid's CLI and the SARIF 2.1.0 schema.
 
@@ -380,7 +380,7 @@ on `ubuntu-latest` for every change it is asked to check, and compiles them for 
 Windows and the cross targets below. A candidate for main also runs them in Debug on
 `macos-latest` and `windows-latest`, and checks the report goldens with their downstream
 tools. Before a release, the tests and example run in Debug and ReleaseSafe on all three
-hosts and in ReleaseFast on Ubuntu; ReleaseSmall compiles them and the library. `zig build
+hosts and in ReleaseFast on Ubuntu; ReleaseSmall compiles them and the library. `bay
 check-consumer` builds a project that depends on gantry with nothing fetched. There is no
 ThreadSanitizer job.
 
@@ -389,12 +389,12 @@ Compile-only jobs use the default `zig build` for `x86_64-linux-gnu`,
 `aarch64-windows-gnu`, `x86_64-macos`, `aarch64-macos`, `x86_64-freebsd` and
 `x86_64-netbsd`.
 
-`zig build bench` builds the benchmarks from `bench/` in ReleaseFast under
+`bay bench` builds the benchmarks from `bench/` in ReleaseFast under
 `zig-out/bench` and runs them one after another: `scan` writes a six-language tree and
 times its walk, scans from disk and from memory, analysis and aggregation, and `ops`
 times every public operation in process. Run from `zig-out/bench`, `scan <dir>` times a
 tree of your own, `ops <workload> <arg>` one operation (`ops --list` names them), and
-`fixtures synthetic|operations <dir>` writes the inputs. `zig build test` runs each
+`fixtures synthetic|operations <dir>` writes the inputs. `bay test` runs each
 once at its smallest size with `--smoke`; CI times none of them.
 
 ## Licence
