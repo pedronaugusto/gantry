@@ -1,6 +1,7 @@
 const std = @import("std");
 const g = @import("gantry.zig");
 const f = @import("testing/support.zig");
+const formats = @import("testing/formats.zig");
 const a = std.testing.allocator;
 const eq = std.testing.expectEqual;
 const expect = std.testing.expect;
@@ -40,8 +41,24 @@ fn drawn(comptime draw: anytype, graph: *const g.Graph, options: report.Options)
     try draw(a, &out.writer, graph, options);
     return out.toOwnedSlice();
 }
+/// `actual` is the golden `name`, and a document of the format its extension names.
 fn golden(comptime name: []const u8, actual: []const u8) !void {
     try std.testing.expectEqualStrings(@embedFile("testing/golden/" ++ name), actual);
+    const ext = comptime std.Io.Dir.path.extension(name);
+    const checked = if (comptime std.mem.eql(u8, ext, ".dot"))
+        formats.dot(actual)
+    else if (comptime std.mem.eql(u8, ext, ".mmd"))
+        formats.mermaid(actual)
+    else if (comptime std.mem.eql(u8, ext, ".json"))
+        formats.json(a, actual)
+    else if (comptime std.mem.eql(u8, ext, ".sarif"))
+        formats.sarif(a, actual, @embedFile("sarif_schema"))
+    else
+        @compileError("no format check for " ++ name);
+    checked catch |err| {
+        std.debug.print("{s}: {s}\n", .{ name, formats.reason() });
+        return err;
+    };
 }
 
 test "dot and mermaid draw nodes, kinds, clusters and findings as their goldens" {
@@ -305,4 +322,17 @@ test "layer reports reject malformed patterns even with no paths" {
     const options: g.report.Options = .{ .cluster = .layer, .layers = &.{.{ .name = "bad", .patterns = &.{"["} }} };
     try std.testing.expectError(error.InvalidPattern, g.report.dot(a, &out.writer, &graph, options));
     try std.testing.expectError(error.InvalidPattern, g.report.mermaid(a, &out.writer, &graph, options));
+}
+
+test "the SARIF check refuses a document the 2.1.0 schema refuses" {
+    const schema = @embedFile("sarif_schema");
+    const ok = "{\"version\":\"2.1.0\",\"runs\":[{\"tool\":{\"driver\":{\"name\":\"x\"}},\"results\":[{\"level\":\"error\",\"message\":{\"text\":\"t\"}}]}]}";
+    try formats.sarif(a, ok, schema);
+    for ([_][]const u8{
+        "{\"runs\":[]}",
+        "{\"version\":\"2.0.0\",\"runs\":[]}",
+        "{\"version\":\"2.1.0\",\"runs\":[{\"tool\":{\"driver\":{}}}]}",
+        "{\"version\":\"2.1.0\",\"runs\":[{\"tool\":{\"driver\":{\"name\":\"x\"}},\"results\":[{\"level\":\"bogus\",\"message\":{\"text\":\"t\"}}]}]}",
+        "{\"version\":\"2.1.0\",\"runs\":[{\"tool\":{\"driver\":{\"name\":\"x\"}},\"results\":[{\"message\":{}}]}]}",
+    }) |bad| try std.testing.expectError(error.SchemaViolation, formats.sarif(a, bad, schema));
 }

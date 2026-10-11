@@ -10,6 +10,8 @@ const python_policy_test_module = @import("testing/python_policy_test.zig");
 const graph_test_module = @import("graph_test.zig");
 const rules_test_module = @import("rules_test.zig");
 const report_test_module = @import("report_test.zig");
+const formats_test_module = @import("testing/formats.zig");
+const schema_test_module = @import("testing/schema.zig");
 const queries_test_module = @import("testing/queries_test.zig");
 const dependencies_test_module = @import("testing/dependencies_test.zig");
 const tokens_test_module = @import("tokens_test.zig");
@@ -52,6 +54,8 @@ test {
     _ = graph_test_module;
     _ = rules_test_module;
     _ = report_test_module;
+    _ = formats_test_module;
+    _ = schema_test_module;
     _ = queries_test_module;
     _ = dependencies_test_module;
     _ = tokens_test_module;

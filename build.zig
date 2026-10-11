@@ -39,6 +39,8 @@ pub fn dev(b: *std.Build, tools: type) void {
     // The tests are the core module's own, so they reach its files. The Zig frontend they scan
     // with imports the core, so the core imports it back here and nowhere else.
     module.addImport("zig_frontend", zig_module);
+    // The schema the SARIF goldens are held to, which the tests embed.
+    module.addAnonymousImport("sarif_schema", .{ .root_source_file = p.path("ci/sarif-schema-2.1.0.json") });
     const tests = b.addTest(.{ .name = "gantry-tests", .filters = filters, .root_module = module });
     const domains = b.step("check-domains", "Reject raw counts and mixed diagnostic domains");
     for ([_][]const u8{ "raw_count", "mixed_offset" }) |name| {
@@ -91,13 +93,6 @@ pub fn dev(b: *std.Build, tools: type) void {
     // A project that depends on gantry by path, with no packages to
     // fetch: the build a consumer gets.
     tools.preflight.addConsumerCheck(b, p, .{ .package = "gantry", .program = p.path("ci/consumer.zig"), .modules = &.{"gantry"}, .packages = &.{ sweep_package, aegis_package } });
-    // Validates the report goldens with their downstream tools.
-    check.dependOn(&tools.preflight.addCheck(b, p, "check-reports", "ci/reports.zig").step);
-    // Those tools on the Ubuntu runner, which has node: the report job's setup.
-    const update = b.addSystemCommand(&.{ "sudo", "apt-get", "update", "-q" });
-    const install = b.addSystemCommand(&.{ "sudo", "apt-get", "install", "-y", "-q", "graphviz", "python3-jsonschema" });
-    install.step.dependOn(&update.step);
-    b.step("reports-setup", "Install the tools check-reports runs, on an Ubuntu runner").dependOn(&install.step);
 }
 
 /// gantry, its Zig frontend and shakedown in the mode a benchmark builds in:
