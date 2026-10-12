@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-12
+
+### Changed
+
+- Pins glint 0.2.1, preflight 0.3.3 and shakedown 0.2.5.
+
 ## [0.2.0] - 2026-10-12
 
 ### Breaking
