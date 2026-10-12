@@ -113,7 +113,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Reject undeclared dependencies, duplicate layer membership and imports of source executables.
 - Scanning stays linear in hostile input: Markdown wiki links stay on their line and code spans find their closer from an index of backtick runs; XML entity names and C++ raw-string delimiters are searched within their bounds; Go import blocks and Rust use trees are read once.
 - Document that rule findings borrow required-path strings as well as graph storage and rule names.
-- Pins aegis 0.1.0.
+- Pins aegis 0.1.0, sweep 0.2.0 and glint 0.2.0.
 
 ### Fixed
 
