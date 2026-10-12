@@ -85,7 +85,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- The report goldens are checked as documents of their format by the tests, in Zig: DOT and Mermaid by a syntax check of what gantry writes, JSON by its documented shape, and SARIF by a validator of the draft-04 keywords the vendored SARIF 2.1.0 schema uses. The CI job that installed Graphviz, Node and Python for this is gone.
+- The report goldens are checked as documents of their format by the tests, in Zig: DOT and Mermaid by a syntax check of what gantry writes, JSON by its documented shape, and SARIF against the draft-04 keywords the vendored SARIF 2.1.0 schema uses, except `pattern`, which fails the check if a document reaches it. The CI job that installed Graphviz, Node and Python for this is gone.
 - The Smith fuzz tests are shakedown `check` properties.
 - Zig declaration-reference scanning checks alias dots directly, keeping complete test/dead classification.
 

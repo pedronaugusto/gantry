@@ -375,16 +375,17 @@ separately; `bay check` compiles the tests only. CI also runs `bay lint`.
 Reports are compared with golden files in `src/testing/golden`, and each golden is
 also checked as a document of its format by the tests themselves: DOT and Mermaid
 against the syntax gantry writes, JSON against the documented shape, and SARIF
-against the 2.1.0 schema in `ci/sarif-schema-2.1.0.json`. No tool outside Zig is
-installed.
+against the draft-04 keywords the 2.1.0 schema in `ci/sarif-schema-2.1.0.json` uses,
+except `pattern`, which fails the check if a document reaches it. No tool outside Zig
+is installed.
 
 [CI](.github/workflows/ci.yml) runs the source checks and the tests and example in Debug
 on `ubuntu-latest` for every change it is asked to check, and compiles them for macOS,
 Windows and the cross targets below. A candidate for main also runs them in Debug on
 `macos-latest` and `windows-latest`. Before a release, the tests and example run in
-Debug and ReleaseSafe on all three hosts and in ReleaseFast on Ubuntu; ReleaseSmall compiles them and the library. `bay
-check-consumer` builds a project that depends on gantry with nothing fetched. There is no
-ThreadSanitizer job.
+Debug and ReleaseSafe on all three hosts and in ReleaseFast on Ubuntu; ReleaseSmall
+compiles them and the library. `bay check-consumer` builds a project that depends on
+gantry with nothing fetched. There is no ThreadSanitizer job.
 
 Compile-only jobs use the default `zig build` for `x86_64-linux-gnu`,
 `aarch64-linux-gnu`, `x86_64-linux-musl`, `x86_64-windows-gnu`, `x86_64-windows-msvc`,

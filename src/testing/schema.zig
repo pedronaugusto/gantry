@@ -9,7 +9,7 @@
 //! and so are `default`, `description`, `title`, `id`, `$schema` and
 //! `definitions`. A keyword this does not know is `error.UnsupportedSchema`,
 //! and so is a `pattern` that has a string to match: nothing here silently
-//! stops checking.
+//! stops checking, and `reason` names the keyword and where it was met.
 const std = @import("std");
 
 pub const Error = error{ SchemaViolation, UnsupportedSchema } || std.mem.Allocator.Error;
@@ -74,30 +74,30 @@ const Validator = struct {
     }
 
     fn check(v: *Validator, node: std.json.Value, instance: std.json.Value, path: []const u8) Error!void {
-        if (node != .object) return error.UnsupportedSchema;
+        if (node != .object) return unsupported("{s}: a schema that is not an object", .{path});
         var keys = node.object.iterator();
         while (keys.next()) |entry| {
             const key = entry.key_ptr.*;
             const value = entry.value_ptr.*;
             if (std.mem.eql(u8, key, "$ref")) {
-                return v.check(try v.resolve(value), instance, path);
+                return v.check(try v.resolve(value, path), instance, path);
             } else if (std.mem.eql(u8, key, "type")) {
                 try v.typeOf(value, instance, path);
             } else if (std.mem.eql(u8, key, "enum")) {
-                if (value != .array) return error.UnsupportedSchema;
+                if (value != .array) return unsupported("{s}: enum is not an array", .{path});
                 var allowed = false;
                 for (value.array.items) |option| allowed = allowed or equal(option, instance);
                 if (!allowed) return v.violation("{s}: not one of the allowed values", .{path});
             } else if (std.mem.eql(u8, key, "required")) {
                 if (instance != .object) continue;
-                if (value != .array) return error.UnsupportedSchema;
+                if (value != .array) return unsupported("{s}: required is not an array", .{path});
                 for (value.array.items) |name| {
-                    if (name != .string) return error.UnsupportedSchema;
+                    if (name != .string) return unsupported("{s}: required holds a non-name", .{path});
                     if (!instance.object.contains(name.string)) return v.violation("{s}: required '{s}' is missing", .{ path, name.string });
                 }
             } else if (std.mem.eql(u8, key, "properties")) {
                 if (instance != .object) continue;
-                if (value != .object) return error.UnsupportedSchema;
+                if (value != .object) return unsupported("{s}: properties is not an object", .{path});
                 var present = instance.object.iterator();
                 while (present.next()) |property| {
                     const property_schema = value.object.get(property.key_ptr.*) orelse continue;
@@ -118,7 +118,7 @@ const Validator = struct {
                             defer v.gpa.free(inner);
                             try v.check(value, property.value_ptr.*, inner);
                         },
-                        else => return error.UnsupportedSchema,
+                        else => return unsupported("{s}: additionalProperties is neither a boolean nor a schema", .{path}),
                     }
                 }
             } else if (std.mem.eql(u8, key, "items")) {
@@ -129,7 +129,8 @@ const Validator = struct {
                     try v.check(value, item, inner);
                 }
             } else if (std.mem.eql(u8, key, "minItems")) {
-                if (instance == .array and instance.array.items.len < try count(value)) return v.violation("{s}: fewer than {d} items", .{ path, try count(value) });
+                const least = try count(value, key, path);
+                if (instance == .array and instance.array.items.len < least) return v.violation("{s}: fewer than {d} items", .{ path, least });
             } else if (std.mem.eql(u8, key, "uniqueItems")) {
                 if (instance != .array or value != .bool or !value.bool) continue;
                 const items = instance.array.items;
@@ -138,11 +139,11 @@ const Validator = struct {
                 };
             } else if (std.mem.eql(u8, key, "minimum") or std.mem.eql(u8, key, "maximum")) {
                 const number = asFloat(instance) orelse continue;
-                const bound = asFloat(value) orelse return error.UnsupportedSchema;
+                const bound = asFloat(value) orelse return unsupported("{s}: {s} is not a number", .{ path, key });
                 const low = std.mem.eql(u8, key, "minimum");
                 if (if (low) number < bound else number > bound) return v.violation("{s}: {d} is out of the {s} {d}", .{ path, number, key, bound });
             } else if (std.mem.eql(u8, key, "oneOf") or std.mem.eql(u8, key, "anyOf") or std.mem.eql(u8, key, "allOf")) {
-                if (value != .array) return error.UnsupportedSchema;
+                if (value != .array) return unsupported("{s}: {s} is not an array", .{ path, key });
                 if (std.mem.eql(u8, key, "allOf")) {
                     for (value.array.items) |option| try v.check(option, instance, path);
                     continue;
@@ -154,8 +155,8 @@ const Validator = struct {
                 const one = std.mem.eql(u8, key, "oneOf");
                 if (matched == 0 or (one and matched > 1)) return v.violation("{s}: matches {d} of the {s} alternatives", .{ path, matched, key });
             } else if (std.mem.eql(u8, key, "pattern")) {
-                if (instance == .string) return error.UnsupportedSchema;
-            } else if (!annotation(key)) return error.UnsupportedSchema;
+                if (instance == .string) return unsupported("{s}: pattern, which this does not check, reaches a string", .{path});
+            } else if (!annotation(key)) return unsupported("{s}: the keyword '{s}' is not supported", .{ path, key });
         }
     }
 
@@ -164,21 +165,21 @@ const Validator = struct {
             .string => |name| if (!isType(name, instance)) return v.violation("{s}: not a {s}", .{ path, name }),
             .array => |names| {
                 for (names.items) |name| {
-                    if (name != .string) return error.UnsupportedSchema;
+                    if (name != .string) return unsupported("{s}: type holds a non-name", .{path});
                     if (isType(name.string, instance)) return;
                 }
                 return v.violation("{s}: not any of the allowed types", .{path});
             },
-            else => return error.UnsupportedSchema,
+            else => return unsupported("{s}: type is neither a name nor an array of names", .{path}),
         }
     }
 
     /// `#/definitions/name`, the only reference form the schema uses.
-    fn resolve(v: *const Validator, ref: std.json.Value) Error!std.json.Value {
-        if (ref != .string or !std.mem.startsWith(u8, ref.string, "#/definitions/")) return error.UnsupportedSchema;
-        const definitions = v.root.object.get("definitions") orelse return error.UnsupportedSchema;
-        if (definitions != .object) return error.UnsupportedSchema;
-        return definitions.object.get(ref.string["#/definitions/".len..]) orelse error.UnsupportedSchema;
+    fn resolve(v: *const Validator, ref: std.json.Value, path: []const u8) Error!std.json.Value {
+        if (ref != .string or !std.mem.startsWith(u8, ref.string, "#/definitions/")) return unsupported("{s}: $ref is not into #/definitions", .{path});
+        const definitions = v.root.object.get("definitions") orelse return unsupported("{s}: $ref '{s}' with no definitions", .{ path, ref.string });
+        if (definitions != .object) return unsupported("{s}: $ref '{s}' with definitions that are not an object", .{ path, ref.string });
+        return definitions.object.get(ref.string["#/definitions/".len..]) orelse unsupported("{s}: $ref '{s}' names no definition", .{ path, ref.string });
     }
 };
 
@@ -189,9 +190,15 @@ fn annotation(key: []const u8) bool {
     return false;
 }
 
-fn count(value: std.json.Value) Error!usize {
-    if (value != .integer or value.integer < 0) return error.UnsupportedSchema;
-    return @intCast(value.integer);
+/// A schema this does not check: why, kept for `reason` as a violation's is.
+fn unsupported(comptime format: []const u8, args: anytype) Error {
+    say("schema: unsupported: " ++ format, args);
+    return error.UnsupportedSchema;
+}
+
+fn count(value: std.json.Value, key: []const u8, path: []const u8) Error!usize {
+    if (value != .integer or value.integer < 0 or value.integer > std.math.maxInt(usize)) return unsupported("{s}: {s} is not a count", .{ path, key });
+    return @intCast(value.integer); // safe: the guard above returned for an integer below zero or past maxInt(usize).
 }
 
 fn asFloat(value: std.json.Value) ?f64 {
@@ -209,7 +216,13 @@ fn isType(name: []const u8, instance: std.json.Value) bool {
     if (std.mem.eql(u8, name, "boolean")) return instance == .bool;
     if (std.mem.eql(u8, name, "null")) return instance == .null;
     if (std.mem.eql(u8, name, "number")) return instance == .integer or instance == .float or instance == .number_string;
-    if (std.mem.eql(u8, name, "integer")) return instance == .integer or (instance == .float and @floor(instance.float) == instance.float);
+    // Draft 04: a number with no fraction or exponent part, so not `1.0`.
+    // std.json reads one as `.integer`, or as `.number_string` past an i64.
+    if (std.mem.eql(u8, name, "integer")) return switch (instance) {
+        .integer => true,
+        .number_string => |text| std.json.isNumberFormattedLikeAnInteger(text),
+        else => false,
+    };
     return false;
 }
 
@@ -257,9 +270,16 @@ test "the keywords a schema holds an instance to" {
         "{\"n\":\"x\",\"list\":[1,1]}",
         "{\"n\":\"x\",\"list\":[10]}",
         "{\"n\":\"x\",\"list\":[1.5]}",
+        "{\"n\":\"x\",\"list\":[1.0]}",
         "{\"n\":\"x\",\"either\":3}",
         "[]",
     }) |instance| try std.testing.expectError(error.SchemaViolation, validate(a, schema, instance));
+}
+
+test "integer is a number with no fraction or exponent part" {
+    const a = std.testing.allocator;
+    for ([_][]const u8{ "1", "-3", "123456789012345678901234567890" }) |instance| try validate(a, "{\"type\":\"integer\"}", instance);
+    for ([_][]const u8{ "1.0", "1e2", "1.5", "1e400", "\"1\"" }) |instance| try std.testing.expectError(error.SchemaViolation, validate(a, "{\"type\":\"integer\"}", instance));
 }
 
 test "a keyword the validator does not know is refused, not skipped" {
@@ -267,4 +287,40 @@ test "a keyword the validator does not know is refused, not skipped" {
     try std.testing.expectError(error.UnsupportedSchema, validate(a, "{\"minLength\":1}", "\"x\""));
     try std.testing.expectError(error.UnsupportedSchema, validate(a, "{\"pattern\":\"^a\"}", "\"a\""));
     try validate(a, "{\"pattern\":\"^a\"}", "1");
+}
+
+test "a schema this does not check says which keyword and where" {
+    const a = std.testing.allocator;
+    // Each schema sits at `#/p`, under {"properties":{"p": ...}} after the
+    // root's other keys; the reason must name the keyword and `#/p`, not
+    // repeat an earlier failure's.
+    for ([_][4][]const u8{
+        .{ "{\"minLength\":1}", "\"x\"", "'minLength'", "" },
+        .{ "{\"pattern\":\"^a\"}", "\"a\"", "pattern", "" },
+        .{ "1", "1", "not an object", "" },
+        .{ "{\"enum\":1}", "1", "enum", "" },
+        .{ "{\"required\":1}", "{}", "required", "" },
+        .{ "{\"required\":[1]}", "{}", "required", "" },
+        .{ "{\"properties\":1}", "{}", "properties", "" },
+        .{ "{\"additionalProperties\":1}", "{\"q\":1}", "additionalProperties", "" },
+        .{ "{\"minItems\":-1}", "[]", "minItems", "" },
+        .{ "{\"minimum\":\"a\"}", "1", "minimum", "" },
+        .{ "{\"anyOf\":1}", "1", "anyOf", "" },
+        .{ "{\"type\":1}", "1", "type", "" },
+        .{ "{\"type\":[1]}", "1", "type", "" },
+        .{ "{\"$ref\":\"#/x\"}", "1", "$ref", "" },
+        .{ "{\"$ref\":\"#/definitions/none\"}", "1", "$ref", "" },
+        .{ "{\"$ref\":\"#/definitions/none\"}", "1", "$ref", "\"definitions\":1," },
+        .{ "{\"$ref\":\"#/definitions/none\"}", "1", "$ref", "\"definitions\":{}," },
+    }) |case| {
+        const schema = try a.print("{{{s}\"properties\":{{\"p\":{s}}}}}", .{ case[3], case[0] });
+        defer a.free(schema);
+        const instance = try a.print("{{\"p\":{s}}}", .{case[1]});
+        defer a.free(instance);
+        say("stale", .{});
+        try std.testing.expectError(error.UnsupportedSchema, validate(a, schema, instance));
+        errdefer std.debug.print("{s}: {s}\n", .{ case[0], reason() });
+        try std.testing.expect(std.mem.find(u8, reason(), "#/p: ") != null);
+        try std.testing.expect(std.mem.find(u8, reason(), case[2]) != null);
+    }
 }
