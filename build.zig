@@ -103,10 +103,8 @@ fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.l
     const glint = p.dependency("glint", .{ .target = target, .optimize = optimize }).module("glint");
     const root = b.createModule(.{ .root_source_file = p.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis } } });
     const zig = b.createModule(.{ .root_source_file = p.path("src/frontends/zig.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "gantry", .module = root }, .{ .name = "glint", .module = glint } } });
-    const shakedown_package = b.dependency("shakedown", .{ .target = target, .optimize = optimize });
     return b.allocator.dupe(std.Build.Module.Import, &.{
         .{ .name = "gantry", .module = root },
         .{ .name = "gantry.zig", .module = zig },
-        .{ .name = "shakedown", .module = shakedown_package.module("shakedown") },
     }) catch @panic("OOM");
 }
