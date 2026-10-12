@@ -1,6 +1,6 @@
 .{
     .name = .gantry,
-    .version = "0.1.0",
+    .version = "0.2.0",
     .minimum_zig_version = "0.17.0",
     .fingerprint = 0xbcb052ec916b23d6,
     .paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "CHANGELOG.md", "LICENSE" },
