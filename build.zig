@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
 }
 
 /// gantry's development: its tests, example, checks and benchmarks under
-/// preflight's gate, with shakedown bound to gantry's aegis. Run through bay.
+/// preflight's gate. Run through bay.
 pub fn dev(b: *std.Build, tools: type) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -33,7 +33,6 @@ pub fn dev(b: *std.Build, tools: type) void {
     const zig_module = package.module("gantry.zig");
     const library = package.artifact("gantry");
     const aegis_package = p.dependency("aegis", .{ .target = target, .optimize = optimize });
-    const aegis = aegis_package.module("aegis");
     const sweep_package = p.dependency("sweep", .{ .target = target, .optimize = optimize });
     const filters = if (test_filter) |filter| &.{filter} else &.{};
     // The tests are the core module's own, so they reach its files. The Zig frontend they scan
@@ -69,9 +68,8 @@ pub fn dev(b: *std.Build, tools: type) void {
     check.dependOn(&example.step);
     b.getInstallStep().dependOn(&tests.step);
     b.getInstallStep().dependOn(&example.step);
-    // The test doubles are shakedown's, bound to gantry's aegis so one aegis is linked.
-    const shakedown_package = b.dependency("shakedown", .{ .target = target, .optimize = optimize, .aegis = .consumer });
-    tools.shakedown.useAegis(shakedown_package, aegis);
+    // The test doubles are shakedown's.
+    const shakedown_package = b.dependency("shakedown", .{ .target = target, .optimize = optimize });
     const shakedown = shakedown_package.module("shakedown");
     module.addImport("shakedown", shakedown);
     fixtures.root_module.addImport("shakedown", shakedown);
@@ -105,9 +103,7 @@ fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.l
     const glint = p.dependency("glint", .{ .target = target, .optimize = optimize }).module("glint");
     const root = b.createModule(.{ .root_source_file = p.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis } } });
     const zig = b.createModule(.{ .root_source_file = p.path("src/frontends/zig.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "gantry", .module = root }, .{ .name = "glint", .module = glint } } });
-    // The same binding as `useAegis`, which only a `dev` has the tools for: one aegis is linked.
-    const shakedown_package = b.dependency("shakedown", .{ .target = target, .optimize = optimize, .aegis = .consumer });
-    shakedown_package.module("shakedown").addImport("aegis", aegis);
+    const shakedown_package = b.dependency("shakedown", .{ .target = target, .optimize = optimize });
     return b.allocator.dupe(std.Build.Module.Import, &.{
         .{ .name = "gantry", .module = root },
         .{ .name = "gantry.zig", .module = zig },
