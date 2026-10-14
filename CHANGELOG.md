@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Pins aegis 0.1.8, glint 0.2.8, sweep 0.2.3.
+
 ## [0.2.4] - 2026-10-14
 
 ### Changed
