@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Pins glint 0.2.15 and aegis 0.1.14 (development: preflight 0.10.1), the glint line preflight 0.11.0 can hold beside glint 0.4.0.
+
 ## [0.2.5] - 2026-10-14
 
 ### Changed

@@ -6,8 +6,8 @@
     .paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "CHANGELOG.md", "LICENSE" },
     .dependencies = .{
         .aegis = .{
-            .url = "git+https://github.com/pedronaugusto/aegis?ref=v0.1.8#7081a64bbf1d2ea3aeef4f3a68789395129aae40",
-            .hash = "aegis-0.1.8-rsxouk3RBwB9Gf3ufLvaDfLadP9eSSCxDSpZq4v920O2",
+            .url = "git+https://github.com/pedronaugusto/aegis?ref=v0.1.14#5852ab956e97a47926af73abbb7dced5361f9267",
+            .hash = "aegis-0.1.14-rsxouiwFCACpt6FVOECFUhpjUaetlNneWpaDTj95q514",
         },
 
         .sweep = .{
@@ -16,15 +16,15 @@
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.2.8#a505c248e08ee8eab5ca8f146aaccebe9f8095f5",
-            .hash = "glint-0.2.8-3jcpocdfBwAZp2KZYQyG2CHJdyYOJDk42ma5UmojJ40c",
+            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.2.15#0f272ab89cdcb79bbb408c3809464b17d556d65e",
+            .hash = "glint-0.2.15-3jcpoU91CgBvvbfMBQ68U57dEdyrlfngyjKr-ch2S0mT",
             .lazy = true,
         },
     },
     .dev_dependencies = .{
         .preflight = .{
-            .url = "git+https://github.com/pedronaugusto/preflight?ref=v0.5.5#8f3c97125d899197c426502338d21a754739af66",
-            .hash = "preflight-0.5.5-LX1ZwiDjDwAUhzeLVMFWbC6fN99BWcXW16QrIsyEtwgV",
+            .url = "git+https://github.com/pedronaugusto/preflight?ref=v0.10.1#bdc1f442dcca61b412a1ee6124047e4451db20a9",
+            .hash = "preflight-0.10.1-LX1ZwjS_EgBksp46Wx5etx4lui4Q7bqc7a04XX8tR3JQ",
         },
 
         .shakedown = .{
