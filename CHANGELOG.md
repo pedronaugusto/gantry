@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-10-20
+
 ### Changed
 
 - The manifest names no `.coexist`: development's preflight 0.11.0 (the family's durability door in its default policy) reads Zig through glint 0.4.1, the line gantry builds on. `ci/layers.zig` no longer carries its own token rules for sync calls, and `io.async` is a `glint.disallowed` entry.
