@@ -2,6 +2,8 @@
     .name = .gantry,
     .version = "0.2.6",
     .minimum_zig_version = "0.17.0",
+    // preflight, a development dependency, reads Zig through glint's 0.2 line beside the 0.4 line gantry builds on.
+    .coexist = .{.glint},
     .fingerprint = 0xbcb052ec916b23d6,
     .paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "CHANGELOG.md", "LICENSE" },
     .dependencies = .{
@@ -16,15 +18,15 @@
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.2.15#0f272ab89cdcb79bbb408c3809464b17d556d65e",
-            .hash = "glint-0.2.15-3jcpoU91CgBvvbfMBQ68U57dEdyrlfngyjKr-ch2S0mT",
+            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.4.1#aee8eb4b386a7d159161a8f2f818440871a6ceda",
+            .hash = "glint-0.4.1-3jcpoXPFCwAynu6S25z7IGsnjpHVqMpdS2mgaTEvUFF3",
             .lazy = true,
         },
     },
     .dev_dependencies = .{
         .preflight = .{
-            .url = "git+https://github.com/pedronaugusto/preflight?ref=v0.10.1#bdc1f442dcca61b412a1ee6124047e4451db20a9",
-            .hash = "preflight-0.10.1-LX1ZwjS_EgBksp46Wx5etx4lui4Q7bqc7a04XX8tR3JQ",
+            .url = "git+https://github.com/pedronaugusto/preflight?ref=v0.10.2#b38de4d327f1590274fdab8383c0fdf6fac640a7",
+            .hash = "preflight-0.10.2-LX1ZwgjAEgC5Mxkh4WektRfj6fo2rzhao5KhC5jywlR8",
         },
 
         .shakedown = .{

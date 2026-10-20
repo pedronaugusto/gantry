@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Pins glint 0.4.1, the line preflight 0.11.0 builds its policy on (P006, the entries' owners); `.coexist = .{.glint}` in the root, since development's preflight 0.10.2 reads Zig through glint's 0.2 line.
+
 ## [0.2.6] - 2026-10-18
 
 ### Changed
