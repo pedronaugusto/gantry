@@ -76,6 +76,9 @@ pub fn dev(b: *std.Build, tools: type) void {
     tools.preflight.addCi(b, p, .{
         .tests = test_step,
         .portable_tests = true,
+        // The release tier fuzzes the properties and runs the suite under
+        // ThreadSanitizer.
+        .hardened = .{ .fuzz_step = "test", .tsan_step = "test" },
         .bench = .{
             .programs = &.{
                 .{ .name = "scan", .source = "bench/scan.zig" },

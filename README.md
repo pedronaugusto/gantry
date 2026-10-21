@@ -385,7 +385,10 @@ Windows and the cross targets below. A candidate for main also runs them in Debu
 `macos-latest` and `windows-latest`. Before a release, the tests and example run in
 Debug and ReleaseSafe on all three hosts and in ReleaseFast on Ubuntu; ReleaseSmall
 compiles them and the library. `bay check-consumer` builds a project that depends on
-gantry with nothing fetched. There is no ThreadSanitizer job.
+gantry with nothing fetched. The release tier also runs the hardened profile: `bay
+hardened` (the suite with safety on and `std.testing.allocator` on shakedown's
+quarantine), `bay hardened-fuzz` (the properties under Zig's fuzzer) and, on x86_64
+or aarch64 Linux, `bay hardened-tsan` (the suite under ThreadSanitizer).
 
 Compile-only jobs use the default `zig build` for `x86_64-linux-gnu`,
 `aarch64-linux-gnu`, `x86_64-linux-musl`, `x86_64-windows-gnu`, `x86_64-windows-msvc`,

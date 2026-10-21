@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Development: the suite runs under the release tier's hardened profile (`bay hardened`, `bay hardened-fuzz`, `bay hardened-tsan`).
 - Development: the lint gates the aegis pack, glint's A001-A005.
 
 ## [0.2.8] - 2026-10-20
