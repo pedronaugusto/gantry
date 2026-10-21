@@ -102,10 +102,14 @@ fn place(s: []const u8) bool {
     return std.mem.findScalar(u8, s, '/') != null or std.mem.startsWith(u8, s, "git") or std.mem.startsWith(u8, s, "file:") or std.mem.startsWith(u8, s, "github:") or std.mem.startsWith(u8, s, "workspace:");
 }
 fn zon(gpa: std.mem.Allocator, path: []const u8, text: []const u8, out: *std.ArrayList(t.Dependency)) ReadSupportedError!void {
+    // Zig source is UTF-8, and std's literal parsing reads past a sequence cut
+    // short (`'\xc3'` panics in `std.zig.parseCharLiteral`, Zig 0.17.0).
+    if (!std.unicode.utf8ValidateSlice(text)) return error.InvalidManifest;
     const source = try gpa.dupeSentinel(u8, text, 0);
     defer gpa.free(source);
     var ast = try std.zig.Ast.parse(gpa, source, .{ .mode = .zon });
     defer ast.deinit(gpa);
+    if (ast.errors.len != 0) return error.InvalidManifest;
     var zoir = try std.zig.ZonGen.generate(gpa, ast, .{});
     defer zoir.deinit(gpa);
     if (zoir.hasCompileErrors()) return error.InvalidManifest;

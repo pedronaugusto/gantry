@@ -79,6 +79,14 @@ test "ZON comments nested braces quoted names and misleading strings" {
     try eq(1, deps.len);
     try dep(deps, "a-b", "git+https://x/{a}");
 }
+test "ZON that is not UTF-8, or does not parse, is an invalid manifest, never a crash" {
+    var arena: std.heap.ArenaAllocator = .init(a);
+    defer arena.deinit();
+    // A char literal holding a sequence cut short: std's literal parsing reads past it.
+    try std.testing.expectError(error.InvalidManifest, g.manifests.parse(arena.allocator(), "build.zig.zon", ".{ .x = '\xc3' }"));
+    try std.testing.expectError(error.InvalidManifest, g.manifests.parse(arena.allocator(), "build.zig.zon", ".{ .dependencies = .{ .a = \"\xe2\x82\" } }"));
+    try std.testing.expectError(error.InvalidManifest, g.manifests.parse(arena.allocator(), "build.zig.zon", ".{ .dependencies = .{ "));
+}
 test "Cargo workspace target dev build dependencies and separate dependency tables" {
     var arena: std.heap.ArenaAllocator = .init(a);
     defer arena.deinit();
