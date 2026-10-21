@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-10-21
+
 ### Fixed
 
 - A `build.zig.zon` that is not UTF-8 crashed `manifests.read` (std's char literal parsing reads past a UTF-8 sequence cut short: `'\xc3'` panics in `std.zig.parseCharLiteral`, Zig 0.17.0), found by the manifests' fuzz target in the 2026-10-21 nightly. It is an invalid manifest, as Zig source must be UTF-8; and one that does not parse is refused before its literals are read.
