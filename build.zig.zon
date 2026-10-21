@@ -2,6 +2,8 @@
     .name = .gantry,
     .version = "0.2.9",
     .minimum_zig_version = "0.17.0",
+    // preflight, a development dependency, reads Zig through glint's 0.4 line beside the 0.5 line gantry builds on.
+    .coexist = .{.glint},
     .fingerprint = 0xbcb052ec916b23d6,
     .paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "CHANGELOG.md", "LICENSE" },
     .dependencies = .{
@@ -16,8 +18,8 @@
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.4.1#aee8eb4b386a7d159161a8f2f818440871a6ceda",
-            .hash = "glint-0.4.1-3jcpoXPFCwAynu6S25z7IGsnjpHVqMpdS2mgaTEvUFF3",
+            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.5.0#5aceb8bd71eca7c7e57410658d2896916c03507c",
+            .hash = "glint-0.5.0-3jcpoebBDgC5fMqLW-OFxN1oQ3AOkmInfof-vNNZ1zed",
             .lazy = true,
         },
     },

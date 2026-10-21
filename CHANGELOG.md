@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Pins glint 0.5.0, the line preflight's next release builds on (its token tier, which `gantry.zig` reads, is unchanged); `.coexist = .{.glint}` in the root, since development's preflight 0.11.0 reads Zig through glint's 0.4 line.
+
 ## [0.2.9] - 2026-10-21
 
 ### Fixed
