@@ -8,30 +8,30 @@
     .paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "CHANGELOG.md", "LICENSE" },
     .dependencies = .{
         .aegis = .{
-            .url = "git+https://github.com/pedronaugusto/aegis?ref=v0.1.14#5852ab956e97a47926af73abbb7dced5361f9267",
-            .hash = "aegis-0.1.14-rsxouiwFCACpt6FVOECFUhpjUaetlNneWpaDTj95q514",
+            .url = "git+https://github.com/pedronaugusto/aegis?ref=v0.1.17#58751d5713c134b890d0fe0e65be95c289b84983",
+            .hash = "aegis-0.1.17-rsxouvg5CABaJmNEkRXQIkVJ6JqVOG7NN60ctSBvSzO_",
         },
 
         .sweep = .{
-            .url = "git+https://github.com/pedronaugusto/sweep?ref=v0.2.3#ec9a419014f9487c3d46b6b03bc52cb18633f1ff",
-            .hash = "sweep-0.2.3-6ErwadvaOwAknAcqbByfIcLMa8lPkrDy-UeHgnCZhGlF",
+            .url = "git+https://github.com/pedronaugusto/sweep?ref=v0.2.5#1f14fa9f08442cc8c777695854c0c5ed9e9ba0a5",
+            .hash = "sweep-0.2.5-6ErwaS3jOwD0Tho5DpGS3dI7znNYw29wr8NtheYp7sq8",
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.5.0#5aceb8bd71eca7c7e57410658d2896916c03507c",
-            .hash = "glint-0.5.0-3jcpoebBDgC5fMqLW-OFxN1oQ3AOkmInfof-vNNZ1zed",
+            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.5.2#94f29c8110dbd5ebdee3d980a2e36029e7d3beca",
+            .hash = "glint-0.5.2-3jcpoVDlDgA9NHtV98JQKuSXvr-G_JBDYFm8CvXlrt0e",
             .lazy = true,
         },
     },
     .dev_dependencies = .{
         .preflight = .{
-            .url = "git+https://github.com/pedronaugusto/preflight?ref=v0.11.0#eea6503d9f0bef415054dda0801c99bf51349fe2",
-            .hash = "preflight-0.11.0-LX1ZwqjVEgCdvh79Szw-T-WWXlrvp0es54ZGSOEutILh",
+            .url = "git+https://github.com/pedronaugusto/preflight?ref=v0.17.0#d4b591746fea0a2354322967f0513b2a43cd0b04",
+            .hash = "preflight-0.17.0-LX1ZwiU1EgCWQT4q8WKiwM-7LGFaQ1iuFgCgTh-fR6HF",
         },
 
         .shakedown = .{
-            .url = "git+https://github.com/pedronaugusto/shakedown?ref=v0.4.3#13d249434d23c0a744766b42217546863c41bc07",
-            .hash = "shakedown-0.4.3-BR8U40sSFgAW7sXQ4fi_WxDVNqJ9h4LfpjAwFKsEB-4N",
+            .url = "git+https://github.com/pedronaugusto/shakedown?ref=v0.4.17#b96c548a2fed2a4cc8b9d790fdbf29332b056f9d",
+            .hash = "shakedown-0.4.17-BR8U41SzFgBFNel0aa2pn9ELQvUHoVDmnXOWslP0wHV7",
         },
     },
 }
