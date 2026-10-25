@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-25
+
 ### Breaking
 
 - `DirReader.ReadError` is aegis's `own.ReadFileError`: `DirReader.read` reads a file whole by aegis's `readFile`, which returns a cancel that lands on the file's length (std's `readFileAlloc` read on and lost it). `DirReader.limit` is still the caller's `Io.Limit`.
