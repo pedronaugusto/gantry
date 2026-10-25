@@ -52,7 +52,7 @@ const Bridge = struct {
     operator: ?seam.Lexeme = null,
 
     fn token(context: *anyopaque, current: tokens.Token) error{OutOfMemory}!void {
-        const b: *Bridge = @ptrCast(@alignCast(context)); // safe: `recover` passes its own bridge as the context.
+        const b: *Bridge = @ptrCast(@alignCast(context)); // aegis: no-danger: `recover` passes its own bridge as the context.
         const unit: seam.Lexeme = .{
             .kind = switch (current.kind()) {
                 .word, .keyword, .literal => .word,
@@ -83,7 +83,7 @@ const Bridge = struct {
     }
 
     fn boundary(context: *anyopaque) void {
-        const b: *Bridge = @ptrCast(@alignCast(context)); // safe: `recover` passes its own bridge as the context.
+        const b: *Bridge = @ptrCast(@alignCast(context)); // aegis: no-danger: `recover` passes its own bridge as the context.
         b.operator = null;
         const observer = b.seen.?;
         if (observer.boundary) |call| call(observer.context);

@@ -11,6 +11,10 @@
 /// Each workload runs once and samples no clock.
 var smoke = false;
 const std = @import("std");
+const aegis = @import("aegis");
+
+/// The most one input file of a benchmark holds; the fixtures are far below it.
+const input_limit = 64 << 20;
 const gantry = @import("gantry");
 const zig = @import("gantry.zig");
 const fixtures = @import("fixtures.zig");
@@ -178,7 +182,7 @@ fn repeat(io: std.Io, out: Out, context: anytype, comptime op: anytype) !void {
 }
 
 fn importsWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, language: gantry.Language, file: []const u8) !void {
-    const source = try std.Io.Dir.cwd().readFileAlloc(io, file, gpa, .unlimited);
+    const source = try aegis.own.readFile(io, std.Io.Dir.cwd(), file, gpa, .fromRaw(input_limit));
     defer gpa.free(source);
     const Ctx = struct {
         gpa: std.mem.Allocator,
@@ -198,7 +202,7 @@ fn importsWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, language: gantr
 }
 
 fn manifestWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, name: []const u8, file: []const u8) !void {
-    const text = try std.Io.Dir.cwd().readFileAlloc(io, file, gpa, .unlimited);
+    const text = try aegis.own.readFile(io, std.Io.Dir.cwd(), file, gpa, .fromRaw(input_limit));
     defer gpa.free(text);
     const Ctx = struct {
         gpa: std.mem.Allocator,
@@ -527,7 +531,7 @@ fn queryWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, query: []const u8
 
 /// Static, type-only and dynamic imports of a TypeScript file, by kind.
 fn kindsWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, file: []const u8) !void {
-    const source = try std.Io.Dir.cwd().readFileAlloc(io, file, gpa, .unlimited);
+    const source = try aegis.own.readFile(io, std.Io.Dir.cwd(), file, gpa, .fromRaw(input_limit));
     defer gpa.free(source);
     const Ctx = struct {
         gpa: std.mem.Allocator,

@@ -191,9 +191,6 @@ fn spelled(e: Ecosystem, rule: engine.DependencyRule, package: []const u8) ?[]co
 /// Ecosystem and directory used to group governing manifests.
 pub const Key = struct { Ecosystem, []const u8 };
 
-/// The manifests that govern files of one ecosystem in one directory.
-const Manifests = struct { first: usize, end: usize };
-
 /// Undeclared imports in reference order, then unused declarations in
 /// declaration order. Findings borrow the graph and the rule.
 pub fn check(arena: std.mem.Allocator, g: anytype, rule: engine.DependencyRule, globs: *engine.Globs, out: *engine.Collector) (std.mem.Allocator.Error || sweep.CompileError)!void {

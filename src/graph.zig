@@ -8,6 +8,7 @@ const dependency_check_module = @import("rules/dependency_check.zig");
 const std = @import("std");
 const t = @import("types.zig");
 const store = @import("graph/Storage.zig");
+const analysis_store = @import("analysis/State.zig");
 
 /// Move this owner; do not copy it and deinitialize it twice.
 pub const Graph = enum(usize) {
@@ -85,7 +86,7 @@ pub const Graph = enum(usize) {
     }
     /// Analysis owns its results independently of the graph.
     pub fn analyze(g: *const Graph, gpa: std.mem.Allocator) std.mem.Allocator.Error!analysis_module.Analysis {
-        return @fromBackingInt(@intCast(@intFromPtr(try analyze_module.analyze(store.get(g.*), gpa)))); // safe: the owning handle retains the newly allocated analysis state until deinit.
+        return analysis_store.owner(analysis_module.Analysis, try analyze_module.analyze(store.get(g.*), gpa));
     }
     /// Findings borrow graph storage, rule names and required-path strings.
     /// Keep the graph and those caller strings alive until `Findings.deinit`,

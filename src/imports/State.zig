@@ -17,11 +17,12 @@ pub fn deinit(state: *State) void {
     state.* = undefined;
 }
 pub fn owner(comptime Owner: type, state: *State) Owner {
-    return @fromBackingInt(@intCast(@intFromPtr(state))); // safe: the owning handle preserves the allocated state's address.
+    return @fromBackingInt(@intCast(@intFromPtr(state))); // aegis: internal: the handle type holds the allocated state's address; owner and get are its only conversions
 }
 pub fn get(self: anytype) *State {
     const address = @backingInt(self);
     std.debug.assert(address != 0);
     std.debug.assert(address % @alignOf(State) == 0);
+    // aegis: internal: the address owner made from the state this handle owns
     return @ptrFromInt(address);
 }

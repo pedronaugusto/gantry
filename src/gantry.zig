@@ -8,6 +8,7 @@ const options_module = @import("scan/options.zig");
 const scan_module = @import("scan.zig");
 const diagnostic_module = @import("scan/diagnostic.zig");
 const std = @import("std");
+const aegis = @import("aegis");
 const t = @import("types.zig");
 const resolver = @import("resolve.zig");
 /// A scan's or `fromEdges`'s owned graph: files, edges, references and records.
@@ -101,10 +102,11 @@ pub const FileError = diagnostic_module.FileError;
 pub const DirReader = struct {
     dir: std.Io.Dir,
     limit: std.Io.Limit = .unlimited,
-    pub const ReadError = std.Io.Dir.ReadFileAllocError;
+    /// aegis's whole-file read: a cancel that lands on the file's length is `Canceled`.
+    pub const ReadError = aegis.own.ReadFileError;
     pub fn read(self: DirReader, scratch: std.mem.Allocator, io: std.Io, p: []const u8) DirReader.ReadError!?[]const u8 {
-        const value = try self.dir.readFileAlloc(io, p, scratch, self.limit);
-        return value;
+        const most: u64 = if (self.limit.toInt()) |bytes| bytes else std.math.maxInt(u64);
+        return try aegis.own.readFile(io, self.dir, p, scratch, .fromRaw(most));
     }
 };
 /// Convenience listing. keep(context, slash_path, entry_kind) may prune a

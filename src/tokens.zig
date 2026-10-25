@@ -33,7 +33,7 @@ pub const Recorder = struct {
         @memset(done, false);
         var patterns: std.ArrayList(Named) = .empty;
         for (rules) |rule| for (rule.tokens) |token| try patterns.append(w, .{ .kind = rule.kind, .pattern = try globs.get(.token, token) });
-        var r: Recorder = .{ .rules = rules, .patterns = patterns.items, .strings = strings, .done = done };
+        var r: Recorder = .{ .rules = rules, .patterns = try patterns.toOwnedSlice(w), .strings = strings, .done = done };
         for (rules) |rule| {
             if (rule.kind == .sequence) return error.InvalidPattern;
             for (rule.tokens) |token| r.filters[@backingInt(rule.kind)].add(token);
@@ -44,7 +44,7 @@ pub const Recorder = struct {
             r.endings.add(sequence[sequence.len - 1]);
             r.width = @max(r.width, sequence.len);
         };
-        r.sequences = sequences.items;
+        r.sequences = try sequences.toOwnedSlice(w);
         return r;
     }
     pub fn active(r: *const Recorder) bool {
@@ -99,7 +99,7 @@ const File = struct {
     next: usize = 0,
 
     fn token(context: *anyopaque, tokens: []const l.Token) error{OutOfMemory}!void {
-        const f: *File = @ptrCast(@alignCast(context)); // safe: `observer` hands the lexer the recorder's own File as the context.
+        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger: `observer` hands the lexer the recorder's own File as the context.
         const r = f.recorder;
         const i = tokens.len - 1;
         const current = tokens[i];
@@ -136,7 +136,7 @@ const File = struct {
     }
 
     fn sequenceToken(context: *anyopaque, stream: []const l.Token) error{OutOfMemory}!void {
-        const f: *File = @ptrCast(@alignCast(context)); // safe: observer supplies the recorder's own File
+        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger: observer supplies the recorder's own File
         const current = stream[stream.len - 1];
         switch (current.kind) {
             .word => try f.sequence(current),
@@ -149,7 +149,7 @@ const File = struct {
     }
 
     fn boundary(context: *anyopaque) void {
-        const f: *File = @ptrCast(@alignCast(context)); // safe: observer supplies the recorder's own File
+        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger: observer supplies the recorder's own File
         f.used = 0;
     }
 

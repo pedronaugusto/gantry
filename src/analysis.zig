@@ -107,7 +107,7 @@ pub const Analysis = enum(usize) {
     pub fn init(gpa: std.mem.Allocator, paths: []const []const u8, edges: []const t.Edge) InitError!Analysis {
         const graph = try Storage_module.fromEdges(gpa, paths, edges);
         defer graph.deinit();
-        return @fromBackingInt(@intCast(@intFromPtr(try analyze_module.analyze(graph, gpa)))); // safe: the owning handle retains the newly allocated analysis state until deinit.
+        return store.owner(Analysis, try analyze_module.analyze(graph, gpa));
     }
 };
 

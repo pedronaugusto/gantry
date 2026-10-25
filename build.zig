@@ -52,7 +52,7 @@ pub fn dev(b: *std.Build, tools: type) void {
     test_step.dependOn(&b.addRunArtifact(tests).step);
     // The benchmarks' inputs keep their bytes, so a change to them is seen
     // before it moves a measurement.
-    const fixtures = b.addTest(.{ .name = "bench-fixtures", .filters = filters, .root_module = b.createModule(.{ .root_source_file = p.path("bench/fixtures.zig"), .target = target, .optimize = optimize }) });
+    const fixtures = b.addTest(.{ .name = "bench-fixtures", .filters = filters, .root_module = b.createModule(.{ .root_source_file = p.path("bench/fixtures.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "aegis", .module = aegis_package.module("aegis") }} }) });
     test_step.dependOn(&b.addRunArtifact(fixtures).step);
     const check = b.step("check", "Compile the tests, library and example without running them");
     check.dependOn(&tests.step);
@@ -96,7 +96,7 @@ pub fn dev(b: *std.Build, tools: type) void {
     tools.preflight.addConsumerCheck(b, p, .{ .package = "gantry", .program = p.path("ci/consumer.zig"), .modules = &.{"gantry"}, .packages = &.{ sweep_package, aegis_package } });
 }
 
-/// gantry, its Zig frontend and shakedown in the mode a benchmark builds in:
+/// gantry, its Zig frontend, aegis and shakedown in the mode a benchmark builds in:
 /// an imported module keeps its own mode, so a ReleaseFast benchmark over the
 /// Debug module would time the Debug module. `b` is the development build.
 fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) []const std.Build.Module.Import {
@@ -109,5 +109,6 @@ fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.l
     return b.allocator.dupe(std.Build.Module.Import, &.{
         .{ .name = "gantry", .module = root },
         .{ .name = "gantry.zig", .module = zig },
+        .{ .name = "aegis", .module = aegis },
     }) catch @panic("OOM");
 }

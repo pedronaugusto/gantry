@@ -188,7 +188,7 @@ fn fill(gpa: std.mem.Allocator, w: std.mem.Allocator, g: *Graph, reader: anytype
         var scanned: std.ArrayList(Graph.ScannedToken) = .empty;
         for (options.tokens) |rule| for (rule.tokens) |token| try scanned.append(a, .{ .kind = rule.kind, .text = try a.dupe(u8, token) });
         for (options.tokens) |rule| for (rule.sequences) |sequence| try scanned.append(a, .{ .kind = .sequence, .text = try std.mem.join(a, " ", sequence) });
-        g.scanned_tokens = scanned.items;
+        g.scanned_tokens = try scanned.toOwnedSlice(a);
     }
     const cached: []?t.Recovery = if (needs_cache) try w.alloc(?t.Recovery, g.paths.len) else &.{};
     @memset(cached, null);
@@ -481,6 +481,6 @@ fn finish(arena: std.mem.Allocator, g: *Graph, manifests_enabled: bool, reader: 
             return order == .lt or (order == .eq and (if (x.offset) |offset| offset.raw() else 0) < (if (y.offset) |offset| offset.raw() else 0));
         }
     }.less);
-    g.invalid = progress.invalid.items;
+    g.invalid = try progress.invalid.toOwnedSlice(arena);
     return Graph.owner(graph_module.Graph, g);
 }

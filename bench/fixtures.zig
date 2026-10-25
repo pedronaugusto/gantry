@@ -5,6 +5,10 @@
 //! must not count.
 
 const std = @import("std");
+const aegis = @import("aegis");
+
+/// The most one input file of a benchmark holds; the fixtures are far below it.
+const input_limit = 64 << 20;
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 
@@ -27,7 +31,7 @@ pub const Writer = struct {
         const full = try std.Io.Dir.path.join(w.a, &.{ w.root, sub });
         if (std.Io.Dir.path.dirname(full)) |parent| try Io.Dir.cwd().createDirPath(w.io, parent);
         if (w.only_if_changed) {
-            if (Io.Dir.cwd().readFileAlloc(w.io, full, w.a, .unlimited)) |old| {
+            if (aegis.own.readFile(w.io, Io.Dir.cwd(), full, w.a, .fromRaw(input_limit))) |old| {
                 if (std.mem.eql(u8, old, text)) return;
             } else |_| {}
         }
@@ -341,7 +345,7 @@ fn treeDigest(a: Allocator, io: Io, root: []const u8) ![64]u8 {
     for (names.items) |name| {
         digest.update(name);
         digest.update(&.{0});
-        digest.update(try dir.readFileAlloc(io, name, a, .unlimited));
+        digest.update(try aegis.own.readFile(io, dir, name, a, .fromRaw(input_limit)));
         digest.update(&.{0});
     }
     var hex: [64]u8 = undefined;

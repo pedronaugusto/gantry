@@ -3,6 +3,10 @@
 //! no arguments it scans the synthetic corpus, written to its working
 //! directory first; `--smoke` scans a small one once.
 const std = @import("std");
+const aegis = @import("aegis");
+
+/// The most one input file of a benchmark holds; the fixtures are far below it.
+const input_limit = 64 << 20;
 const gantry = @import("gantry");
 const zig = @import("gantry.zig");
 const fixtures = @import("fixtures.zig");
@@ -66,7 +70,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, arena: std.mem.Allocator, w: *std.Io.
     defer memory.deinit();
     const ma = memory.allocator();
     var store: std.StringHashMapUnmanaged([]const u8) = .empty;
-    for (paths.items()) |p| try store.put(ma, p, try dir.readFileAlloc(io, p, ma, .unlimited));
+    for (paths.items()) |p| try store.put(ma, p, try aegis.own.readFile(io, dir, p, ma, .fromRaw(input_limit)));
     for (0..rounds) |round| {
         const start = benchmarkNow(io);
         var graph = try gantry.scan(gpa, io, paths.items(), &store, readMemory, .{ .python_roots = &.{"py"}, .frontends = &.{zig.frontend} });

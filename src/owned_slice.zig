@@ -32,9 +32,10 @@ pub fn Store(comptime T: type) type {
             return state;
         }
         pub fn owner(state: *State) Owner {
-            return @fromBackingInt(@intCast(@intFromPtr(state))); // safe: the owning handle preserves the allocated state's address.
+            return @fromBackingInt(@intCast(@intFromPtr(state))); // aegis: internal: the handle type holds the allocated state's address; owner and get are its only conversions
         }
         fn get(self: Owner) *State {
+            // aegis: internal: the address owner made from the state this handle owns
             return @ptrFromInt(@backingInt(self));
         }
     };

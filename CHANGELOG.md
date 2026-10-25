@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Breaking
+
+- `DirReader.ReadError` is aegis's `own.ReadFileError`: `DirReader.read` reads a file whole by aegis's `readFile`, which returns a cancel that lands on the file's length (std's `readFileAlloc` read on and lost it). `DirReader.limit` is still the caller's `Io.Limit`.
+
+### Fixed
+
+- gantry's source checks pass under the aegis pack of glint 0.7.0. A handle is made from its state only by the state's own `owner`, and the conversions inside the handle types say so; the callbacks that recover their own context say why it is theirs; a recorder and a scan own the slices they keep, where they kept a list's storage; the benchmarks read their inputs whole by aegis's `readFile`, to 64 MiB each. P001, which glint 0.7.0 retires, leaves the configuration.
+
 ## [0.2.12] - 2026-10-25
 
 ### Changed
