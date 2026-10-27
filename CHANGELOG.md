@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Pins aegis 0.2.1, the 0.2 line: `SecretBytes` holds no allocator.
+- Pins sweep 0.3.0 and glint 0.7.1.
 
 ## [0.3.0] - 2026-10-25
 

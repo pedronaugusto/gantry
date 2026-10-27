@@ -13,13 +13,13 @@
         },
 
         .sweep = .{
-            .url = "git+https://github.com/pedronaugusto/sweep?ref=aegis-0.2#71dd5f3228e8972a104d16cde4e2eccc0751bc3c",
-            .hash = "sweep-0.2.5-6ErwaSvjOwAGWa_gkfiSTLDEPx5RJ_3jDcbTkrC-LehT",
+            .url = "git+https://github.com/pedronaugusto/sweep?ref=v0.3.0#f1f1b785ad5e78e4b4985d88256237d5b075ec23",
+            .hash = "sweep-0.3.0-6ErwaQLfOwDqQAHDbpYqoiC89uZLfW9WM-NMukmlhHTZ",
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint?ref=aegis-0.2#2bb11589e49b17fa19115084d5613edf0cf62f33",
-            .hash = "glint-0.7.0-3jcpoalCFACkToVvWWImSg4S2qf7qq8_aVW3JuAAp7DZ",
+            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.7.1#c6885d81a8be3495925c33d77ff45cbdf2f934ec",
+            .hash = "glint-0.7.1-3jcpoRXPFAApSvFVYLiK8dQEUrjReNJaDsqdWmfCZZ-b",
             .lazy = true,
         },
     },
