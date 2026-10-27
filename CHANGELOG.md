@@ -8,6 +8,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Two expressions Zig 0.18 refuses as ambiguous operator precedence are parenthesized as Zig 0.17 reads them: a percent escape's two hex digits, and a recovery taken from before or extracted (glint's Z034).
 - Development: the property that scanning stays linear under unclosed openers measures this thread's CPU time over sixteen times the input, not the wall clock over four: a release gate on a loaded Mac failed it on linear work (9.3 times the time for four times the openers).
 
 ### Changed

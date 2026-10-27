@@ -146,7 +146,7 @@ fn unescape(arena: std.mem.Allocator, name: []const u8) ![]const u8 {
         if (name[i] == '\\' and i + 1 < name.len) {
             i += 1;
         } else if (name[i] == '%' and i + 2 < name.len and std.ascii.isHex(name[i + 1]) and std.ascii.isHex(name[i + 2])) {
-            try out.append(arena, hexDigit(name[i + 1]) << 4 | hexDigit(name[i + 2]));
+            try out.append(arena, (hexDigit(name[i + 1]) << 4) | hexDigit(name[i + 2]));
             i += 2;
             continue;
         }

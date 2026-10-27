@@ -370,7 +370,7 @@ fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
         if (code) {
             var seen: std.AutoHashMapUnmanaged(struct { usize, t.NodeId }, void) = .empty;
             progress.at(.imports, p);
-            const recovery = prior orelse extract(s, options.frontends, language.?, text, recorder, file_index, p) catch |err| empty: {
+            const recovery = (prior orelse extract(s, options.frontends, language.?, text, recorder, file_index, p)) catch |err| empty: {
                 try progress.tolerate(err);
                 break :empty t.Recovery{};
             };
