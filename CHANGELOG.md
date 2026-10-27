@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Pins glint 0.7.2.
+
 ## [0.3.1] - 2026-10-27
 
 ### Changed
