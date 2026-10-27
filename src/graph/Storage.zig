@@ -206,7 +206,7 @@ pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pend
 }
 
 pub fn owner(comptime Owner: type, state: *Storage) Owner {
-    return @fromBackingInt(@intCast(@intFromPtr(state))); // aegis: internal: the handle type holds the allocated state's address; owner and get are its only conversions
+    return @fromBackingInt(@intCast(@intFromPtr(state)));
 }
 pub fn get(g: anytype) *Storage {
     // aegis: internal: the address owner made from the state this handle owns

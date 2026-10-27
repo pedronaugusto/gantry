@@ -17,7 +17,7 @@ pub fn deinit(state: *State) void {
     state.* = undefined;
 }
 pub fn owner(comptime Owner: type, state: *State) Owner {
-    return @fromBackingInt(@intCast(@intFromPtr(state))); // aegis: internal: the handle type holds the allocated state's address; owner and get are its only conversions
+    return @fromBackingInt(@intCast(@intFromPtr(state)));
 }
 pub fn get(self: anytype) *State {
     const address = @backingInt(self);
