@@ -8,18 +8,18 @@
     .paths = .{ "build.zig", "build.zig.zon", "src", "README.md", "CHANGELOG.md", "LICENSE" },
     .dependencies = .{
         .aegis = .{
-            .url = "git+https://github.com/pedronaugusto/aegis?ref=v0.1.18#c6fd0e2501b553af60256669df0ee15176ed21ce",
-            .hash = "aegis-0.1.18-rsxounuqCAA3bG0JhLkfilLi4zBvhm9QTeUkT1U4UBr5",
+            .url = "git+https://github.com/pedronaugusto/aegis?ref=v0.2.0#f58cea578f23a38aaf94dc0d855b97e7164a6d58",
+            .hash = "aegis-0.2.0-rsxouhW3CACsiNW-C1ujVL8HNVQ6iol6C-QfRkkoZ1vo",
         },
 
         .sweep = .{
-            .url = "git+https://github.com/pedronaugusto/sweep?ref=v0.2.5#1f14fa9f08442cc8c777695854c0c5ed9e9ba0a5",
-            .hash = "sweep-0.2.5-6ErwaS3jOwD0Tho5DpGS3dI7znNYw29wr8NtheYp7sq8",
+            .url = "git+https://github.com/pedronaugusto/sweep?ref=aegis-0.2#71dd5f3228e8972a104d16cde4e2eccc0751bc3c",
+            .hash = "sweep-0.2.5-6ErwaSvjOwAGWa_gkfiSTLDEPx5RJ_3jDcbTkrC-LehT",
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.7.0#2d0b6556cc021d894c3e75c8d4012c75985df2b7",
-            .hash = "glint-0.7.0-3jcpoSyLEwC69_BI5TeWtcHjd1siaa3KmulX0dLRtTGT",
+            .url = "git+https://github.com/pedronaugusto/glint?ref=aegis-0.2#c965ca653f9da85eb7e1a06ebe8f9a4dc7ae3125",
+            .hash = "glint-0.7.0-3jcpoUY9FABae7L3kPMw-Mf4Bh7GPmxLeQe_G3gVqtvg",
             .lazy = true,
         },
     },
