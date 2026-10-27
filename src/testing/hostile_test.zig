@@ -53,7 +53,10 @@ fn run(case: Case, units: usize) !u64 {
     const io = std.testing.io;
     var best: u64 = std.math.maxInt(u64);
     for (0..3) |_| {
-        const start = std.Io.Timestamp.now(io, .awake);
+        // This thread's CPU time: what the scan itself costs, whatever else the
+        // machine runs. The wall clock counts other processes' turns too, and a
+        // loaded machine failed this property on linear work.
+        const start = std.Io.Timestamp.now(io, .cpu_thread);
         if (fixture.scan(a, .{ .kinds = &.{ .import, .type_only, .dynamic, .@"test", .link, .asset } })) |graph| {
             var owned = graph;
             owned.deinit();
@@ -61,7 +64,7 @@ fn run(case: Case, units: usize) !u64 {
             error.OutOfMemory => return err,
             else => {},
         }
-        const took = start.durationTo(std.Io.Timestamp.now(io, .awake)).nanoseconds;
+        const took = start.durationTo(std.Io.Timestamp.now(io, .cpu_thread)).nanoseconds;
         best = @min(best, @as(u64, @intCast(took)));
     }
     return best;
@@ -71,12 +74,13 @@ test "property: scan time grows linearly with repeated unclosed openers" {
     for (cases) |case| {
         const small = 32 * 1024 / case.unit.len;
         const short = try run(case, small);
-        const long = try run(case, small * 4);
-        // Four times the input takes four times as long when the work is
-        // linear and sixteen when it is quadratic; the slack absorbs timer
-        // noise on a fast run.
-        if (long > 8 * short + 5 * std.time.ns_per_ms) {
-            std.log.err("{s}: {d} us for {d} openers, {d} us for {d}", .{ case.path, short / 1000, small, long / 1000, small * 4 });
+        const long = try run(case, small * 16);
+        // Sixteen times the input costs sixteen times as much when the work is
+        // linear and 256 when it is quadratic: a ceiling of 64 leaves four times
+        // either way for caches and clock steps; the slack absorbs a timer's
+        // resolution on a fast run.
+        if (long > 64 * short + 5 * std.time.ns_per_ms) {
+            std.log.err("{s}: {d} us for {d} openers, {d} us for {d}", .{ case.path, short / 1000, small, long / 1000, small * 16 });
             return error.TestQuadraticTime;
         }
     }

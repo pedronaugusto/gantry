@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Development: the property that scanning stays linear under unclosed openers measures this thread's CPU time over sixteen times the input, not the wall clock over four: a release gate on a loaded Mac failed it on linear work (9.3 times the time for four times the openers).
+
 ## [0.3.2] - 2026-10-27
 
 ### Changed
