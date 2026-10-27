@@ -18,8 +18,8 @@
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint?ref=aegis-0.2#c965ca653f9da85eb7e1a06ebe8f9a4dc7ae3125",
-            .hash = "glint-0.7.0-3jcpoUY9FABae7L3kPMw-Mf4Bh7GPmxLeQe_G3gVqtvg",
+            .url = "git+https://github.com/pedronaugusto/glint?ref=aegis-0.2#2bb11589e49b17fa19115084d5613edf0cf62f33",
+            .hash = "glint-0.7.0-3jcpoalCFACkToVvWWImSg4S2qf7qq8_aVW3JuAAp7DZ",
             .lazy = true,
         },
     },
