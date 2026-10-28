@@ -1,6 +1,6 @@
 .{
     .name = .gantry,
-    .version = "0.3.3",
+    .version = "0.3.4",
     .minimum_zig_version = "0.17.0",
     // preflight, a development dependency, reads Zig through glint's 0.4 line beside the 0.5 line gantry builds on.
     .coexist = .{.glint},
