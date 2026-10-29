@@ -64,11 +64,19 @@ pub const Recorder = struct {
     /// The observer that records file `index` while it is lexed, or null
     /// when it is recorded already or there are no rules. Valid until the
     /// next call.
-    pub fn observer(r: *Recorder, scratch: std.mem.Allocator, index: usize, path: []const u8, language: t.Language, source: []const u8) ?l.Observer {
+    pub fn observer(r: *Recorder, scratch: std.mem.Allocator, index: usize, path: []const u8, language: t.Language, source: []const u8) ?*l.Observer {
         if (!r.wants(index)) return null;
         r.done[index] = true;
-        r.current = .{ .recorder = r, .scratch = scratch, .path = path, .language = language, .source = source };
-        return .{ .context = &r.current, .token = if (r.sequences.len > 0) File.sequenceToken else File.token, .punctuation = r.sequences.len > 0, .boundary = if (r.sequences.len > 0) File.boundary else null };
+        const sequences = r.sequences.len > 0;
+        r.current = .{
+            .recorder = r,
+            .scratch = scratch,
+            .path = path,
+            .language = language,
+            .source = source,
+            .observer = .{ .token = if (sequences) File.sequenceToken else File.token, .punctuation = sequences, .boundary = if (sequences) File.boundary else null },
+        };
+        return &r.current.observer;
     }
     /// Occurrences by path and offset, in graph storage.
     pub fn finish(r: *Recorder) std.mem.Allocator.Error![]const t.Token {
@@ -86,6 +94,8 @@ pub const Recorder = struct {
 /// One file's observer: each word or string is checked as it is lexed,
 /// with the stream so far for the token before it.
 const File = struct {
+    /// What the lexer calls; the file is the struct holding it.
+    observer: l.Observer,
     recorder: *Recorder,
     scratch: std.mem.Allocator,
     path: []const u8,
@@ -98,8 +108,8 @@ const File = struct {
     used: usize = 0,
     next: usize = 0,
 
-    fn token(context: *anyopaque, tokens: []const l.Token) error{OutOfMemory}!void {
-        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger(A019): `observer` hands the lexer the recorder's own File as the context.
+    fn token(observer: *l.Observer, tokens: []const l.Token) error{OutOfMemory}!void {
+        const f: *File = @fieldParentPtr("observer", observer);
         const r = f.recorder;
         const i = tokens.len - 1;
         const current = tokens[i];
@@ -135,8 +145,8 @@ const File = struct {
         });
     }
 
-    fn sequenceToken(context: *anyopaque, stream: []const l.Token) error{OutOfMemory}!void {
-        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger(A019): observer supplies the recorder's own File
+    fn sequenceToken(observer: *l.Observer, stream: []const l.Token) error{OutOfMemory}!void {
+        const f: *File = @fieldParentPtr("observer", observer);
         const current = stream[stream.len - 1];
         switch (current.kind) {
             .word => try f.sequence(current),
@@ -145,11 +155,11 @@ const File = struct {
             .template => f.used = 0,
             .newline => {},
         }
-        if (current.kind == .word or current.kind == .string) try token(context, stream);
+        if (current.kind == .word or current.kind == .string) try token(observer, stream);
     }
 
-    fn boundary(context: *anyopaque) void {
-        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger(A019): observer supplies the recorder's own File
+    fn boundary(observer: *l.Observer) void {
+        const f: *File = @fieldParentPtr("observer", observer);
         f.used = 0;
     }
 

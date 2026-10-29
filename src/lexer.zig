@@ -14,14 +14,14 @@ pub fn lex(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8) st
 }
 /// `lex`, telling `seen` of each code token and string as it is emitted. One
 /// lexer serves both, so a scan without observers runs the same code.
-pub fn lexSeen(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
+pub fn lexSeen(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, seen: ?*Observer) std.mem.Allocator.Error![]Token {
     return tokenize(lang, true, arena, text, seen);
 }
 /// `compact(lexSeen(…))`, without emitting the newlines it would drop.
-pub fn lexCompact(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
+pub fn lexCompact(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, seen: ?*Observer) std.mem.Allocator.Error![]Token {
     return tokenize(lang, false, arena, text, seen);
 }
-fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocator, text: []const u8, seen: ?Observer) std.mem.Allocator.Error![]Token {
+fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocator, text: []const u8, seen: ?*Observer) std.mem.Allocator.Error![]Token {
     var out: Stream = .{ .total = text.len };
     try out.reserve(gpa, tokenCapacity(text.len));
     var i: usize = 0;
@@ -47,7 +47,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
             // Retain an opaque boundary so a string inside an interpolation
             // cannot become the literal operand of an enclosing import call.
             try out.push(gpa, .{ .kind = .template, .text = text[start .. start + 1], .offset = start, .end = start + 1 });
-            if (seen) |observer| if (observer.punctuation) try observer.token(observer.context, out.list.items);
+            if (seen) |observer| if (observer.punctuation) try observer.token(observer, out.list.items);
             if (c == '}') _ = templates.pop();
             i += 1;
             while (i < text.len) {
@@ -74,7 +74,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
             continue;
         }
         if (lang == .javascript and c == '/' and regex_allowed) {
-            if (seen) |observer| if (observer.boundary) |boundary| boundary(observer.context);
+            if (seen) |observer| if (observer.boundary) |boundary| boundary(observer);
             i += 1;
             var bracket = false;
             while (i < text.len and text[i] != '\n') {
@@ -97,7 +97,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
         const before_literal = out.list.items.len;
         if (try literal(lang, gpa, text, start, &out, seen)) |end| {
             if (seen) |observer| if (observer.boundary) |boundary| {
-                if (out.list.items.len == before_literal or out.list.items[out.list.items.len - 1].kind == .template) boundary(observer.context);
+                if (out.list.items.len == before_literal or out.list.items[out.list.items.len - 1].kind == .template) boundary(observer);
             };
             i = end;
             regex_allowed = false;
@@ -108,7 +108,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
             while (i < text.len and identIn(lang, text[i])) : (i += 1) {}
             const word = text[start..i];
             try out.push(gpa, .{ .kind = .word, .text = word, .offset = start, .end = i });
-            if (seen) |observer| try observer.token(observer.context, out.list.items);
+            if (seen) |observer| try observer.token(observer, out.list.items);
             if (lang == .javascript) {
                 const class = js_words.get(word) orelse .other;
                 control_pending = class == .control;
@@ -118,7 +118,7 @@ fn tokenize(comptime lang: Syntax, comptime newlines: bool, gpa: std.mem.Allocat
         }
         i += 1;
         try out.push(gpa, .{ .kind = .punctuation, .text = text[start..i], .offset = start, .end = i });
-        if (seen) |observer| if (observer.punctuation) try observer.token(observer.context, out.list.items);
+        if (seen) |observer| if (observer.punctuation) try observer.token(observer, out.list.items);
         if (lang == .javascript) {
             regex_allowed = std.mem.findScalar(u8, "=(:,;!&|?{}", c) != null;
             if (c == '(') {
@@ -471,7 +471,7 @@ fn skipTrivia(comptime lang: Syntax, comptime newlines: bool, arena: std.mem.All
 }
 
 /// Quoted operands and interpolation boundaries, with source offsets intact.
-fn literal(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, start: usize, out: anytype, seen: ?Observer) !?usize {
+fn literal(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, start: usize, out: anytype, seen: ?*Observer) !?usize {
     var i = start;
     const c = text[i];
     if (lang == .nim and c == '"' and (std.mem.startsWith(u8, text[i..], "\"\"\"") or (i > 0 and ident(text[i - 1])))) {
@@ -542,7 +542,7 @@ fn literal(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, st
         const character = c == '\'' and (lang == .c or lang == .rust or lang == .java or lang == .kotlin);
         if (closed and !triple and !character and !(lang == .javascript and c == '`')) {
             try out.push(arena, .{ .kind = .string, .text = text[content..end], .offset = start, .end = i });
-            if (seen) |observer| try observer.token(observer.context, out.list.items);
+            if (seen) |observer| try observer.token(observer, out.list.items);
         }
         return i;
     }

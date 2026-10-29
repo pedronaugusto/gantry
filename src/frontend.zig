@@ -123,15 +123,15 @@ pub const Lexeme = struct {
 /// no further back, so a frontend needs to keep no more. A frontend yields
 /// exactly the units it recovers from: words (a keyword or a number is one),
 /// strings, and punctuation, one byte of it at a time unless the language's
-/// own operators are longer.
+/// own operators are longer. Its owner embeds it and reads itself back from
+/// the observer each call is given, with `@fieldParentPtr`.
 pub const Observer = struct {
-    context: *anyopaque,
     /// Whether punctuation joins the calls.
     punctuation: bool = false,
     /// Called where a unit the stream omits (a character literal, a raw
     /// line) breaks any sequence of neighbours.
-    boundary: ?*const fn (context: *anyopaque) void = null,
-    token: *const fn (context: *anyopaque, stream: []const Lexeme) error{OutOfMemory}!void,
+    boundary: ?*const fn (observer: *Observer) void = null,
+    token: *const fn (observer: *Observer, stream: []const Lexeme) error{OutOfMemory}!void,
 };
 
 /// What a frontend's recovery fails with. The first three are about the
@@ -146,7 +146,7 @@ pub const Frontend = struct {
     language: Language,
     /// `arena` owns everything the result borrows. With `seen`, the units of
     /// the file reach the observer as they are read.
-    recover: *const fn (arena: std.mem.Allocator, source: []const u8, seen: ?Observer) RecoverError!Recovery,
+    recover: *const fn (arena: std.mem.Allocator, source: []const u8, seen: ?*Observer) RecoverError!Recovery,
 };
 
 /// The frontend among `frontends` that reads `language`, if any.

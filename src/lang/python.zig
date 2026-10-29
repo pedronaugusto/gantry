@@ -11,7 +11,7 @@ fn module(arena: std.mem.Allocator, ts: []const l.Token, pos: *usize) ![]const u
 const types = @import("../types.zig");
 const Spec = types.Spec;
 /// The token stream recovery reads; `seen` observes it as it grows.
-pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) std.mem.Allocator.Error![]const l.Token {
+pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?*l.Observer) std.mem.Allocator.Error![]const l.Token {
     return l.lexSeen(.python, arena, source, seen);
 }
 pub fn recover(arena: std.mem.Allocator, source: []const u8) std.mem.Allocator.Error!types.Recovery {

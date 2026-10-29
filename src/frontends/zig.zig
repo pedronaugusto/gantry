@@ -11,7 +11,7 @@ pub const frontend: seam.Frontend = .{ .language = .zig, .recover = recover };
 
 /// A file's `@import`s with their member spellings, test kinds and liveness,
 /// and the operands of any `@import` that is not a string literal.
-fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?seam.Observer) seam.RecoverError!seam.Recovery {
+fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?*seam.Observer) seam.RecoverError!seam.Recovery {
     var bridge: Bridge = .{ .source = source };
     const facts = if (seen) |observer| watched: {
         bridge.seen = observer;
@@ -40,7 +40,7 @@ fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?seam.Observer) s
 const Bridge = struct {
     source: []const u8,
     /// Set before glint reads, whenever glint is given the bridge at all.
-    seen: ?seam.Observer = null,
+    seen: ?*seam.Observer = null,
     /// The last two units handed over: an observer reads no further back.
     window: [2]seam.Lexeme = @splat(.{ .kind = .word, .text = "", .offset = 0, .end = 0 }),
     delivered: usize = 0,
@@ -77,14 +77,14 @@ const Bridge = struct {
         b.window[1] = unit;
         b.delivered += 1;
         const observer = b.seen.?;
-        try observer.token(observer.context, if (b.delivered == 1) b.window[1..] else &b.window);
+        try observer.token(observer, if (b.delivered == 1) b.window[1..] else &b.window);
     }
 
     fn boundary(glint_observer: *tokens.Observer) void {
         const b: *Bridge = @fieldParentPtr("observer", glint_observer);
         b.operator = null;
         const observer = b.seen.?;
-        if (observer.boundary) |call| call(observer.context);
+        if (observer.boundary) |call| call(observer);
     }
 };
 
