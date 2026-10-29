@@ -15,12 +15,8 @@ fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?seam.Observer) s
     var bridge: Bridge = .{ .source = source };
     const facts = if (seen) |observer| watched: {
         bridge.seen = observer;
-        break :watched try tokens.scan(arena, source, .{
-            .context = &bridge,
-            .punctuation = observer.punctuation,
-            .boundary = Bridge.boundary,
-            .token = Bridge.token,
-        });
+        bridge.observer.punctuation = observer.punctuation;
+        break :watched try tokens.scan(arena, source, &bridge.observer);
     } else try tokens.scan(arena, source, null);
     const specs = try arena.alloc(seam.Spec, facts.imports.len);
     for (facts.imports, specs) |import, *spec| spec.* = .{
@@ -50,9 +46,11 @@ const Bridge = struct {
     delivered: usize = 0,
     /// The operator whose last byte has not yet arrived.
     operator: ?seam.Lexeme = null,
+    /// What glint calls as it reads; the bridge is the struct holding it.
+    observer: tokens.Observer = .{ .boundary = Bridge.boundary, .token = Bridge.token },
 
-    fn token(context: *anyopaque, current: tokens.Token) error{OutOfMemory}!void {
-        const b: *Bridge = @ptrCast(@alignCast(context)); // aegis: no-danger: `recover` passes its own bridge as the context.
+    fn token(glint_observer: *tokens.Observer, current: tokens.Token) error{OutOfMemory}!void {
+        const b: *Bridge = @fieldParentPtr("observer", glint_observer);
         const unit: seam.Lexeme = .{
             .kind = switch (current.kind()) {
                 .word, .keyword, .literal => .word,
@@ -82,8 +80,8 @@ const Bridge = struct {
         try observer.token(observer.context, if (b.delivered == 1) b.window[1..] else &b.window);
     }
 
-    fn boundary(context: *anyopaque) void {
-        const b: *Bridge = @ptrCast(@alignCast(context)); // aegis: no-danger: `recover` passes its own bridge as the context.
+    fn boundary(glint_observer: *tokens.Observer) void {
+        const b: *Bridge = @fieldParentPtr("observer", glint_observer);
         b.operator = null;
         const observer = b.seen.?;
         if (observer.boundary) |call| call(observer.context);
