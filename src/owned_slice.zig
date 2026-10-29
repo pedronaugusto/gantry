@@ -35,7 +35,7 @@ pub fn Store(comptime T: type) type {
             return @fromBackingInt(@intCast(@intFromPtr(state)));
         }
         fn get(self: Owner) *State {
-            // aegis: internal: the address owner made from the state this handle owns
+            // aegis: internal(A019): the address owner made from the state this handle owns
             return @ptrFromInt(@backingInt(self));
         }
     };

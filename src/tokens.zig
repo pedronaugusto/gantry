@@ -99,7 +99,7 @@ const File = struct {
     next: usize = 0,
 
     fn token(context: *anyopaque, tokens: []const l.Token) error{OutOfMemory}!void {
-        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger: `observer` hands the lexer the recorder's own File as the context.
+        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger(A019): `observer` hands the lexer the recorder's own File as the context.
         const r = f.recorder;
         const i = tokens.len - 1;
         const current = tokens[i];
@@ -136,7 +136,7 @@ const File = struct {
     }
 
     fn sequenceToken(context: *anyopaque, stream: []const l.Token) error{OutOfMemory}!void {
-        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger: observer supplies the recorder's own File
+        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger(A019): observer supplies the recorder's own File
         const current = stream[stream.len - 1];
         switch (current.kind) {
             .word => try f.sequence(current),
@@ -149,7 +149,7 @@ const File = struct {
     }
 
     fn boundary(context: *anyopaque) void {
-        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger: observer supplies the recorder's own File
+        const f: *File = @ptrCast(@alignCast(context)); // aegis: no-danger(A019): observer supplies the recorder's own File
         f.used = 0;
     }
 
