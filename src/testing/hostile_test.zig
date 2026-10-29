@@ -2,6 +2,7 @@
 //! repeats one opener whose close never comes, which a reader searching to
 //! the end for every opener would take quadratic time over.
 const std = @import("std");
+const builtin = @import("builtin");
 const f = @import("support.zig");
 const a = std.testing.allocator;
 
@@ -43,6 +44,28 @@ const cases = [_]Case{
     .{ .path = "tsconfig.json", .unit = "{\"extends\":" },
 };
 
+/// The work this thread has done so far, counted in the finest unit the
+/// system keeps per thread: what the scan itself costs, whatever else the
+/// machine runs (the wall clock counts other processes' turns too, and a
+/// loaded machine failed this property on linear work). Windows charges a
+/// thread's CPU time only at its scheduler's tick, about 15.6 ms, so a short
+/// scan reads 0 there; its cycle count, the call QueryThreadCycleTime makes,
+/// is exact. Linux and macOS keep the thread's CPU time in nanoseconds.
+fn spent(io: std.Io) !u64 {
+    if (builtin.os.tag == .windows) {
+        const windows = std.os.windows;
+        var cycles: extern struct { accumulated: u64, current: u64 } = undefined;
+        const status = windows.ntdll.NtQueryInformationThread(windows.GetCurrentThread(), .CycleTime, &cycles, @sizeOf(@TypeOf(cycles)), null);
+        if (status != .SUCCESS) return error.CycleCountUnreadable;
+        return cycles.accumulated;
+    }
+    return @intCast(std.Io.Timestamp.now(io, .cpu_thread).nanoseconds);
+}
+
+/// The cost a measurement can show for no work at all: none for a cycle
+/// count, a few clock steps for a CPU clock.
+const slack: u64 = if (builtin.os.tag == .windows) 0 else 5 * std.time.ns_per_ms;
+
 fn run(case: Case, units: usize) !u64 {
     var text: std.ArrayList(u8) = .empty;
     defer text.deinit(a);
@@ -53,10 +76,7 @@ fn run(case: Case, units: usize) !u64 {
     const io = std.testing.io;
     var best: u64 = std.math.maxInt(u64);
     for (0..3) |_| {
-        // This thread's CPU time: what the scan itself costs, whatever else the
-        // machine runs. The wall clock counts other processes' turns too, and a
-        // loaded machine failed this property on linear work.
-        const start = std.Io.Timestamp.now(io, .cpu_thread);
+        const start = try spent(io);
         if (fixture.scan(a, .{ .kinds = &.{ .import, .type_only, .dynamic, .@"test", .link, .asset } })) |graph| {
             var owned = graph;
             owned.deinit();
@@ -64,8 +84,7 @@ fn run(case: Case, units: usize) !u64 {
             error.OutOfMemory => return err,
             else => {},
         }
-        const took = start.durationTo(std.Io.Timestamp.now(io, .cpu_thread)).nanoseconds;
-        best = @min(best, @as(u64, @intCast(took)));
+        best = @min(best, try spent(io) - start);
     }
     return best;
 }
@@ -77,10 +96,10 @@ test "property: scan time grows linearly with repeated unclosed openers" {
         const long = try run(case, small * 16);
         // Sixteen times the input costs sixteen times as much when the work is
         // linear and 256 when it is quadratic: a ceiling of 64 leaves four times
-        // either way for caches and clock steps; the slack absorbs a timer's
-        // resolution on a fast run.
-        if (long > 64 * short + 5 * std.time.ns_per_ms) {
-            std.log.err("{s}: {d} us for {d} openers, {d} us for {d}", .{ case.path, short / 1000, small, long / 1000, small * 16 });
+        // either way for caches and the system's own noise; the slack absorbs
+        // a clock's resolution on a fast run.
+        if (long > 64 * short + slack) {
+            std.log.err("{s}: {d} for {d} openers, {d} for {d}", .{ case.path, short, small, long, small * 16 });
             return error.TestQuadraticTime;
         }
     }

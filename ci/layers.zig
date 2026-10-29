@@ -80,6 +80,7 @@ pub const modules: []const gantry.NamedModule = &.{
 const package_references = [_]gantry.rules.ReferenceRule{
     .{ .name = "named dependencies", .unresolved_only = true, .except_targets = &.{
         "std",
+        "builtin",
         "aegis",
         "sweep",
         "glint",

@@ -11,6 +11,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The manifest names no `.coexist`: gantry and its development preflight read Zig through one line of glint (0.7), and a coexisting glint would let a second line in unseen, in a workspace for every member.
 - `ci/preflight.json` holds gantry's aegis escapes' count by reason (`glint.escapes`: 5 no-danger, 4 internal), which preflight 0.18.6's lint holds it to.
 
+### Fixed
+
+- The linear-scan property counts the thread's cycles on Windows, where the thread's CPU time moves only at the scheduler's tick (about 15.6 ms), so a short scan read 0 and four Windows legs failed linear work; Linux and macOS keep the thread's CPU time.
+
 ## [0.3.4] - 2026-10-28
 
 ### Changed
