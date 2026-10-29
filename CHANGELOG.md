@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The manifest names no `.coexist`: gantry and its development preflight read Zig through one line of glint (0.7), and a coexisting glint would let a second line in unseen, in a workspace for every member.
+- `ci/preflight.json` holds gantry's aegis escapes' count by reason (`glint.escapes`: 5 no-danger, 4 internal), which preflight 0.18.6's lint holds it to.
+
 ## [0.3.4] - 2026-10-28
 
 ### Changed
