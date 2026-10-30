@@ -1,4 +1,5 @@
 const std = @import("std");
+const aegis = @import("aegis");
 const l = @import("../lexer.zig");
 fn module(arena: std.mem.Allocator, ts: []const l.Token, pos: *usize) ![]const u8 {
     var name: std.ArrayList(u8) = .empty;
@@ -32,17 +33,15 @@ pub fn recoverTokens(arena: std.mem.Allocator, source: []const u8, ts: []const l
         const importlib = token.is("importlib");
         if (!importlib and !token.is("__import__")) continue;
         // Enough for `.import_module(".x", package="p")`.
-        var ahead: [10]l.Token = undefined;
-        var n: usize = 0;
+        var held: aegis.bounded.Array(l.Token, 10) = .init;
         for (ts[i + 1 ..]) |next| if (next.kind != .newline) {
-            ahead[n] = next;
-            n += 1;
-            if (n == ahead.len) break;
+            held.appendSlice(&.{next}) catch break;
         };
-        const call = if (importlib and n >= 3 and ahead[0].is(".") and ahead[1].is("import_module") and ahead[2].is("("))
-            ahead[3..n]
-        else if (!importlib and n >= 1 and ahead[0].is("("))
-            ahead[1..n]
+        const ahead = held.constItems();
+        const call = if (importlib and ahead.len >= 3 and ahead[0].is(".") and ahead[1].is("import_module") and ahead[2].is("("))
+            ahead[3..]
+        else if (!importlib and ahead.len >= 1 and ahead[0].is("("))
+            ahead[1..]
         else
             continue;
         if (try loaded(arena, call, importlib)) |name| {

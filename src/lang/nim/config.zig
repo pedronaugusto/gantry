@@ -4,6 +4,7 @@
 const diagnostic_module = @import("../../scan/diagnostic.zig");
 const path_module = @import("../../resolve/path.zig");
 const std = @import("std");
+const aegis = @import("aegis");
 const l = @import("../../lexer.zig");
 const p = @import("../../path.zig");
 /// The paths one config adds, joined to its folder, in the order it adds them.
@@ -52,18 +53,12 @@ pub fn load(arena: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []c
 }
 /// Nim option names ignore case and underscores after the first letter.
 fn pathKey(key: []const u8) bool {
-    var trimmed = std.mem.trimStart(u8, key, "-");
+    const trimmed = std.mem.trimStart(u8, key, "-");
     if (trimmed.len == 0) return false;
     if (std.mem.eql(u8, trimmed, "p")) return true;
-    var buffer: [8]u8 = undefined;
-    var n: usize = 0;
-    for (trimmed) |c| if (c != '_') {
-        if (n == buffer.len) return false;
-        buffer[n] = std.ascii.toLower(c);
-        n += 1;
-    };
-    trimmed = buffer[0..n];
-    return std.mem.eql(u8, trimmed, "path");
+    var lowered: aegis.bounded.Array(u8, 8) = .init;
+    for (trimmed) |c| if (c != '_') lowered.appendSlice(&.{std.ascii.toLower(c)}) catch return false;
+    return std.mem.eql(u8, lowered.constItems(), "path");
 }
 /// `nim.cfg` lines: `--path:"x"`, `-p:x`, `path = "x"`, `path: "x"`.
 fn cfg(arena: std.mem.Allocator, text: []const u8) ![]const []const u8 {

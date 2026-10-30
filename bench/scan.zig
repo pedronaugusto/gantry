@@ -50,7 +50,7 @@ fn run(gpa: std.mem.Allocator, io: std.Io, arena: std.mem.Allocator, w: *std.Io.
     // the scan measurement; file opens and reads are inside it.
     for (0..rounds) |round| {
         const start = benchmarkNow(io);
-        var graph = try gantry.scan(gpa, io, paths.items(), gantry.DirReader{ .dir = dir }, gantry.DirReader.read, .{ .python_roots = &.{"py"}, .frontends = &.{zig.frontend} });
+        var graph = try gantry.scan(gpa, io, paths.items(), gantry.DirReader{ .dir = .{ .data = dir } }, gantry.DirReader.read, .{ .python_roots = &.{"py"}, .frontends = &.{zig.frontend} });
         defer graph.deinit();
         const scanned = benchmarkNow(io);
         var analysis = try graph.analyze(gpa);

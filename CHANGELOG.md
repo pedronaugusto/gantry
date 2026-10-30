@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Breaking
 
 - `frontend.Observer` has no `context`: its `token` and `boundary` take the observer itself, which its owner embeds and reads itself back from with `@fieldParentPtr`, and a frontend's `recover` (and each language's `lex`) takes `?*Observer`. A context pointer was cast back on every call, with nothing to check the type it named. The zig frontend reads glint 0.8.0's `token.Observer` the same way.
+- `DirReader.dir` is an `aegis.own.Lent(std.Io.Dir)`, `.{ .data = dir }`: the caller's directory, which the reader reads and never closes, now says so in its type.
 
 ### Changed
 

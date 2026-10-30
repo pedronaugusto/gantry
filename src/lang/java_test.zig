@@ -32,7 +32,7 @@ test "fixture: a Maven Java project resolves types, packages, statics, tests and
         if (g.path.dir(item.path).len > 0) try tmp.dir.createDirPath(io, g.path.dir(item.path));
         try tmp.dir.writeFile(io, .{ .sub_path = item.path, .data = item.text.? });
     }
-    var graph = try f.scan(a, io, &paths, g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try f.scan(a, io, &paths, g.DirReader{ .dir = .{ .data = tmp.dir } }, g.DirReader.read, .{});
     defer graph.deinit();
     const app = "src/main/java/com/acme/app/App.java";
     const strings = "src/main/java/com/acme/util/Strings.java";

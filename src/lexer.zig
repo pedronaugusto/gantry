@@ -372,7 +372,7 @@ fn decodeImpl(arena: std.mem.Allocator, text: []const u8, javascript: bool) Deco
                     i += 6;
                 }
                 if (escape == 'x' and !javascript) try out.append(arena, @intCast(code)) else {
-                    var buf: [4]u8 = undefined;
+                    var buf: [4]u8 = @splat(0);
                     const len = std.unicode.utf8Encode(code, &buf) catch return error.InvalidEscape;
                     try out.appendSlice(arena, buf[0..len]);
                 }

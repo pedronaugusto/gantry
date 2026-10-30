@@ -293,7 +293,7 @@ pub fn value(arena: std.mem.Allocator, language: t.Language, text: []const u8, k
             if (decoded.byte) {
                 try out.append(arena, @intCast(decoded.code));
             } else {
-                var buf: [4]u8 = undefined;
+                var buf: [4]u8 = @splat(0);
                 const len = std.unicode.utf8Encode(decoded.code, &buf) catch {
                     try out.appendSlice(arena, text[i..decoded.end]);
                     i = decoded.end;

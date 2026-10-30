@@ -140,7 +140,7 @@ fn entities(arena: std.mem.Allocator, text: []const u8, out: *std.ArrayList(u8))
         }
         if (name.len > 1 and name[0] == '#') {
             const hex = name[1] == 'x' or name[1] == 'X';
-            var buffer: [4]u8 = undefined;
+            var buffer: [4]u8 = @splat(0);
             if (std.fmt.parseInt(u21, name[if (hex) 2 else 1..], if (hex) 16 else 10)) |code| {
                 if (std.unicode.utf8Encode(code, &buffer)) |len| {
                     try out.appendSlice(arena, buffer[0..len]);
