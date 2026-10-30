@@ -3,6 +3,7 @@
 //! the end for every opener would take quadratic time over.
 const std = @import("std");
 const builtin = @import("builtin");
+const aegis = @import("aegis");
 const f = @import("support.zig");
 const a = std.testing.allocator;
 
@@ -44,29 +45,44 @@ const cases = [_]Case{
     .{ .path = "tsconfig.json", .unit = "{\"extends\":" },
 };
 
+/// Windows charges a thread's CPU time only at its scheduler's tick, about
+/// 15.6 ms, so a short scan reads 0 there; its cycle count, the call
+/// QueryThreadCycleTime makes, is exact. Linux and macOS keep the thread's CPU
+/// time in nanoseconds.
+const counts_cycles = builtin.os.tag == .windows;
+const CycleTag = struct {};
+/// What a scan costs: the thread's cycles where the system counts them, its
+/// CPU time elsewhere.
+const Cost = if (counts_cycles) aegis.units.Count(CycleTag, u64) else aegis.units.Duration(.nanosecond, u64);
+/// A reading of what the thread has spent: a cycle count, or an instant of its
+/// CPU clock.
+const Reading = if (counts_cycles) Cost else aegis.units.Instant(std.Io.Clock.cpu_thread, .nanosecond, u64);
+
 /// The work this thread has done so far, counted in the finest unit the
 /// system keeps per thread: what the scan itself costs, whatever else the
 /// machine runs (the wall clock counts other processes' turns too, and a
-/// loaded machine failed this property on linear work). Windows charges a
-/// thread's CPU time only at its scheduler's tick, about 15.6 ms, so a short
-/// scan reads 0 there; its cycle count, the call QueryThreadCycleTime makes,
-/// is exact. Linux and macOS keep the thread's CPU time in nanoseconds.
-fn spent(io: std.Io) !u64 {
-    if (builtin.os.tag == .windows) {
+/// loaded machine failed this property on linear work).
+fn spent(io: std.Io) !Reading {
+    if (counts_cycles) {
         const windows = std.os.windows;
         var cycles: extern struct { accumulated: u64, current: u64 } = undefined;
         const status = windows.ntdll.NtQueryInformationThread(windows.GetCurrentThread(), .CycleTime, &cycles, @sizeOf(@TypeOf(cycles)), null);
         if (status != .SUCCESS) return error.CycleCountUnreadable;
-        return cycles.accumulated;
+        return .fromRaw(cycles.accumulated);
     }
-    return @intCast(std.Io.Timestamp.now(io, .cpu_thread).nanoseconds);
+    return Reading.fromTimestamp(std.Io.Timestamp.now(io, .cpu_thread), .exact);
+}
+
+/// What the thread spent from one reading to a later one.
+fn between(start: Reading, end: Reading) !Cost {
+    return if (counts_cycles) end.sub(start) else start.durationTo(end);
 }
 
 /// The cost a measurement can show for no work at all: none for a cycle
 /// count, a few clock steps for a CPU clock.
-const slack: u64 = if (builtin.os.tag == .windows) 0 else 5 * std.time.ns_per_ms;
+const slack: Cost = if (counts_cycles) .fromRaw(0) else .literal("5ms");
 
-fn run(case: Case, units: usize) !u64 {
+fn run(case: Case, units: usize) !Cost {
     var text: std.ArrayList(u8) = .empty;
     defer text.deinit(a);
     try text.appendSlice(a, case.head);
@@ -74,7 +90,7 @@ fn run(case: Case, units: usize) !u64 {
     try text.appendSlice(a, case.tail);
     const fixture: f.Fixture = .{ .items = &.{.{ .path = case.path, .text = text.items }} };
     const io = std.testing.io;
-    var best: u64 = std.math.maxInt(u64);
+    var best: ?Cost = null;
     for (0..3) |_| {
         const start = try spent(io);
         if (fixture.scan(a, .{ .kinds = &.{ .import, .type_only, .dynamic, .@"test", .link, .asset } })) |graph| {
@@ -84,9 +100,10 @@ fn run(case: Case, units: usize) !u64 {
             error.OutOfMemory => return err,
             else => {},
         }
-        best = @min(best, try spent(io) - start);
+        const cost = try between(start, try spent(io));
+        if (best == null or cost.compare(best.?) == .lt) best = cost;
     }
-    return best;
+    return best.?;
 }
 
 test "property: scan time grows linearly with repeated unclosed openers" {
@@ -98,8 +115,8 @@ test "property: scan time grows linearly with repeated unclosed openers" {
         // linear and 256 when it is quadratic: a ceiling of 64 leaves four times
         // either way for caches and the system's own noise; the slack absorbs
         // a clock's resolution on a fast run.
-        if (long > 64 * short + slack) {
-            std.log.err("{s}: {d} for {d} openers, {d} for {d}", .{ case.path, short, small, long, small * 16 });
+        if (long.compare(try (try short.mul(64)).add(slack)) == .gt) {
+            std.log.err("{s}: {d} for {d} openers, {d} for {d}", .{ case.path, short.raw(), small, long.raw(), small * 16 });
             return error.TestQuadraticTime;
         }
     }

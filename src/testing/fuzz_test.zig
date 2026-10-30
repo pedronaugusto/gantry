@@ -407,18 +407,18 @@ test "fuzz: Zig test context changes kinds only" {
                 try testing.expect(x.kind == .@"test" and (y.kind == .import or y.kind == .@"test"));
             }
             // Coalesced by kind, so one plain edge is up to two classified ones.
-            var total: usize = 0;
+            var total: g.ReferenceCount = .fromRaw(0);
             for (classified.edges()) |e| {
-                total += e.count.raw();
+                total = try total.add(e.count);
                 var found = false;
                 for (plain.edges()) |p| found = found or (std.mem.eql(u8, p.from, e.from) and std.mem.eql(u8, p.to, e.to));
                 try testing.expect(found);
             }
             for (plain.edges()) |p| {
                 try testing.expectEqual(g.Kind.@"test", p.kind);
-                total -= p.count.raw();
+                total = try total.sub(p.count);
             }
-            try testing.expectEqual(0, total);
+            try testing.expect(total.eql(.fromRaw(0)));
         }
     };
     try property(Property.one, &.{

@@ -478,7 +478,8 @@ fn finish(arena: std.mem.Allocator, g: *Graph, manifests_enabled: bool, reader: 
     std.mem.sort(diagnostics.InvalidFile, progress.invalid.items, {}, struct {
         fn less(_: void, x: diagnostics.InvalidFile, y: diagnostics.InvalidFile) bool {
             const order = std.mem.order(u8, x.path, y.path);
-            return order == .lt or (order == .eq and (if (x.offset) |offset| offset.raw() else 0) < (if (y.offset) |offset| offset.raw() else 0));
+            const none: t.ByteOffset = .fromRaw(0);
+            return order == .lt or (order == .eq and (x.offset orelse none).compare(y.offset orelse none) == .lt);
         }
     }.less);
     g.invalid = try progress.invalid.toOwnedSlice(arena);
