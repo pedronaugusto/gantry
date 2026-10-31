@@ -13,6 +13,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Pins glint 0.8.0.
 - The manifest names no `.coexist`: gantry and its development preflight read Zig through one line of glint (0.7), and a coexisting glint would let a second line in unseen, in a workspace for every member.
 - `ci/preflight.json` holds the findings gantry's aegis escapes cover, by reason and rule (`glint.escapes`: 4 A019 internal, the handles reading back the state they own), which preflight 0.18.6's lint holds it to. The five `no-danger` escapes went with the observers' context pointers.
 
