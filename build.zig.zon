@@ -16,15 +16,15 @@
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint?ref=strict-1029b#dc82fc67fe0d3bac4f9eda30264297d84f77fb9c",
-            .hash = "glint-0.7.5-3jcpoY5CJwCq9yIqIUvmt8g3wkH2nr4awN1M_R4-LfTZ",
+            .url = "git+https://github.com/pedronaugusto/glint?ref=strict-1029b#26ccb200a4ba32b61d3713930a2661928f4b4e62",
+            .hash = "glint-0.7.5-3jcpob1HLAAgRnEmcRdzj6XdAKnpA2Avec_PI8oJh8dH",
             .lazy = true,
         },
     },
     .dev_dependencies = .{
         .preflight = .{
-            .url = "git+https://github.com/pedronaugusto/preflight?ref=v0.18.5#a0eb6ad53b498f49ab636be27af10efd6f190b66",
-            .hash = "preflight-0.18.5-LX1ZwjAMFAAq6oVhY_x6-BnuKHsn3lPAG4HQrFOjVCMo",
+            .url = "git+https://github.com/pedronaugusto/preflight?ref=v0.18.6#fc92e4525de9c2097b7671c58d1b7dceeb382c7c",
+            .hash = "preflight-0.18.6-LX1Zwk0oFADjhxvFxsjPZipvvjxVgVuq3Z9jfPwQvaqw",
         },
 
         .shakedown = .{
