@@ -4,7 +4,7 @@ const l = @import("../lexer.zig");
 const types = @import("../types.zig");
 const Spec = types.Spec;
 /// The token stream recovery reads; `seen` observes it as it grows.
-pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) std.mem.Allocator.Error![]const l.Token {
+pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?*l.Observer) std.mem.Allocator.Error![]const l.Token {
     return l.lexCompact(.javascript, arena, source, seen);
 }
 pub fn recover(arena: std.mem.Allocator, source: []const u8) error{ InvalidEscape, OutOfMemory }!types.Recovery {

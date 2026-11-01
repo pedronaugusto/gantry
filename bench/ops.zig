@@ -652,7 +652,7 @@ fn processWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, mode: []const u
         // Below: static and type-only edges between modules, not initializers.
     } else if (!(std.mem.eql(u8, mode, "metrics-js"))) return error.UnknownProcessWorkload;
     options.frontends = &.{zig.frontend};
-    var graph = try gantry.scan(gpa, io, paths.items(), gantry.DirReader{ .dir = dir }, gantry.DirReader.read, options);
+    var graph = try gantry.scan(gpa, io, paths.items(), gantry.DirReader{ .dir = .{ .data = dir } }, gantry.DirReader.read, options);
     defer graph.deinit();
     const scanned = now(io);
     try out.row("scan_ms", ms(listed, scanned), "ms");

@@ -35,7 +35,7 @@ test "fixture: manifest fixtures name dependencies and their sources from temp f
         path.* = item.path;
         try tmp.dir.writeFile(io, .{ .sub_path = item.path, .data = item.text.? });
     }
-    var graph = try f.scan(a, io, &paths, g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try f.scan(a, io, &paths, g.DirReader{ .dir = .{ .data = tmp.dir } }, g.DirReader.read, .{});
     defer graph.deinit();
     try eq(11, graph.dependencies().len);
     try dep(graph.dependencies(), "strand", "git+https://github.com/me/strand#abc");

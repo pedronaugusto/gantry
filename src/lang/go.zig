@@ -7,7 +7,7 @@ const Spec = types.Spec;
 // Go import declarations require string literals. There is no computed
 // import expression to detect without adding a syntax-validation contract.
 /// The token stream recovery reads; `seen` observes it as it grows.
-pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?l.Observer) std.mem.Allocator.Error![]const l.Token {
+pub fn lex(arena: std.mem.Allocator, source: []const u8, seen: ?*l.Observer) std.mem.Allocator.Error![]const l.Token {
     return l.lexCompact(.go, arena, source, seen);
 }
 pub fn recover(arena: std.mem.Allocator, source: []const u8) error{ InvalidEscape, OutOfMemory }!types.Recovery {

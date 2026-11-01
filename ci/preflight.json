@@ -46,6 +46,7 @@
     "build.zig"
   ],
   "glint": {
+    "escapes": {"internal": {"A019": 4}},
     "rules": [{"id": "P003", "level": "gate"}, 
       {"id": "A001", "level": "gate"},
       {"id": "A002", "level": "gate"},

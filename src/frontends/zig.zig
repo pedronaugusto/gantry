@@ -11,16 +11,12 @@ pub const frontend: seam.Frontend = .{ .language = .zig, .recover = recover };
 
 /// A file's `@import`s with their member spellings, test kinds and liveness,
 /// and the operands of any `@import` that is not a string literal.
-fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?seam.Observer) seam.RecoverError!seam.Recovery {
+fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?*seam.Observer) seam.RecoverError!seam.Recovery {
     var bridge: Bridge = .{ .source = source };
     const facts = if (seen) |observer| watched: {
         bridge.seen = observer;
-        break :watched try tokens.scan(arena, source, .{
-            .context = &bridge,
-            .punctuation = observer.punctuation,
-            .boundary = Bridge.boundary,
-            .token = Bridge.token,
-        });
+        bridge.observer.punctuation = observer.punctuation;
+        break :watched try tokens.scan(arena, source, &bridge.observer);
     } else try tokens.scan(arena, source, null);
     const specs = try arena.alloc(seam.Spec, facts.imports.len);
     for (facts.imports, specs) |import, *spec| spec.* = .{
@@ -44,15 +40,17 @@ fn recover(arena: std.mem.Allocator, source: []const u8, seen: ?seam.Observer) s
 const Bridge = struct {
     source: []const u8,
     /// Set before glint reads, whenever glint is given the bridge at all.
-    seen: ?seam.Observer = null,
+    seen: ?*seam.Observer = null,
     /// The last two units handed over: an observer reads no further back.
     window: [2]seam.Lexeme = @splat(.{ .kind = .word, .text = "", .offset = 0, .end = 0 }),
     delivered: usize = 0,
     /// The operator whose last byte has not yet arrived.
     operator: ?seam.Lexeme = null,
+    /// What glint calls as it reads; the bridge is the struct holding it.
+    observer: tokens.Observer = .{ .boundary = Bridge.boundary, .token = Bridge.token },
 
-    fn token(context: *anyopaque, current: tokens.Token) error{OutOfMemory}!void {
-        const b: *Bridge = @ptrCast(@alignCast(context)); // aegis: no-danger: `recover` passes its own bridge as the context.
+    fn token(glint_observer: *tokens.Observer, current: tokens.Token) error{OutOfMemory}!void {
+        const b: *Bridge = @fieldParentPtr("observer", glint_observer);
         const unit: seam.Lexeme = .{
             .kind = switch (current.kind()) {
                 .word, .keyword, .literal => .word,
@@ -79,14 +77,14 @@ const Bridge = struct {
         b.window[1] = unit;
         b.delivered += 1;
         const observer = b.seen.?;
-        try observer.token(observer.context, if (b.delivered == 1) b.window[1..] else &b.window);
+        try observer.token(observer, if (b.delivered == 1) b.window[1..] else &b.window);
     }
 
-    fn boundary(context: *anyopaque) void {
-        const b: *Bridge = @ptrCast(@alignCast(context)); // aegis: no-danger: `recover` passes its own bridge as the context.
+    fn boundary(glint_observer: *tokens.Observer) void {
+        const b: *Bridge = @fieldParentPtr("observer", glint_observer);
         b.operator = null;
         const observer = b.seen.?;
-        if (observer.boundary) |call| call(observer.context);
+        if (observer.boundary) |call| call(observer);
     }
 };
 

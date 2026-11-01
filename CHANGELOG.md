@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Breaking
+
+- `frontend.Observer` has no `context`: its `token` and `boundary` take the observer itself, which its owner embeds and reads itself back from with `@fieldParentPtr`, and a frontend's `recover` (and each language's `lex`) takes `?*Observer`. A context pointer was cast back on every call, with nothing to check the type it named. The zig frontend reads glint 0.8.0's `token.Observer` the same way.
+- `DirReader.dir` is an `aegis.own.Lent(std.Io.Dir)`, `.{ .data = dir }`: the caller's directory, which the reader reads and never closes, now says so in its type.
+
+### Changed
+
+- Pins glint 0.8.0.
+- The manifest names no `.coexist`: gantry and its development preflight read Zig through one line of glint (0.7), and a coexisting glint would let a second line in unseen, in a workspace for every member.
+- `ci/preflight.json` holds the findings gantry's aegis escapes cover, by reason and rule (`glint.escapes`: 4 A019 internal, the handles reading back the state they own), which preflight 0.18.6's lint holds it to. The five `no-danger` escapes went with the observers' context pointers.
+
+### Fixed
+
+- The linear-scan property counts the thread's cycles on Windows, where the thread's CPU time moves only at the scheduler's tick (about 15.6 ms), so a short scan read 0 and four Windows legs failed linear work; Linux and macOS keep the thread's CPU time.
+
 ## [0.3.4] - 2026-10-28
 
 ### Changed

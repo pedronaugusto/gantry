@@ -286,10 +286,10 @@ test "DirReader and walk use a temp directory and caller pruning" {
     }.keep);
     defer paths.deinit();
     try eq(2, paths.items().len);
-    var graph = try f.scan(a, io, paths.items(), g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try f.scan(a, io, paths.items(), g.DirReader{ .dir = .{ .data = tmp.dir } }, g.DirReader.read, .{});
     defer graph.deinit();
     try eq(1, graph.edges().len);
-    try std.testing.expectError(error.StreamTooLong, f.scan(a, io, paths.items(), g.DirReader{ .dir = tmp.dir, .limit = .limited(4) }, g.DirReader.read, .{}));
+    try std.testing.expectError(error.StreamTooLong, f.scan(a, io, paths.items(), g.DirReader{ .dir = .{ .data = tmp.dir }, .limit = .limited(4) }, g.DirReader.read, .{}));
 }
 test "walk lists a colon in a name and skips what a scan would refuse" {
     // Windows file names hold neither byte.
@@ -309,7 +309,7 @@ test "walk lists a colon in a name and skips what a scan would refuse" {
     defer paths.deinit();
     try eq(1, paths.items().len);
     try std.testing.expectEqualStrings("docs/a:b.md", paths.items()[0]);
-    var graph = try f.scan(a, io, paths.items(), g.DirReader{ .dir = tmp.dir }, g.DirReader.read, .{});
+    var graph = try f.scan(a, io, paths.items(), g.DirReader{ .dir = .{ .data = tmp.dir } }, g.DirReader.read, .{});
     defer graph.deinit();
 }
 
