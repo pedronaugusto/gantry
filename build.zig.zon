@@ -23,8 +23,8 @@
     },
     .dev_dependencies = .{
         .preflight = .{
-            .url = "git+https://github.com/pedronaugusto/preflight?ref=aegis-preflight-land#76aac0b230d5dc3261c22bbbbae1a387747f5342",
-            .hash = "preflight-0.18.6-LX1ZwkRRGAC1rZoTxk21FnTlIt34An71IsbvFGgZU_X-",
+            .url = "git+https://github.com/pedronaugusto/preflight?ref=concurrent-gate-3#b20f88d7e4c87bdcb5875adf3e41d81ec842296a",
+            .hash = "preflight-0.18.6-LX1ZwiAXGQCrpPJVHTQ8rh3KoP99FlRQJhyhJYWXfhh9",
         },
 
         .shakedown = .{
