@@ -141,7 +141,9 @@ fn entities(arena: std.mem.Allocator, text: []const u8, out: *std.ArrayList(u8))
         if (name.len > 1 and name[0] == '#') {
             const hex = name[1] == 'x' or name[1] == 'X';
             var buffer: [4]u8 = @splat(0);
+            // glint-ignore: Z026 -- a number that does not parse, or names no scalar value, keeps its text: the `&` is copied below
             if (std.fmt.parseInt(u21, name[if (hex) 2 else 1..], if (hex) 16 else 10)) |code| {
+                // glint-ignore: Z026 -- as above: a surrogate or a value past U+10FFFF keeps its text
                 if (std.unicode.utf8Encode(code, &buffer)) |len| {
                     try out.appendSlice(arena, buffer[0..len]);
                     i = end.? + 1;

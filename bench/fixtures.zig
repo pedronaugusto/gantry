@@ -31,6 +31,7 @@ pub const Writer = struct {
         const full = try std.Io.Dir.path.join(w.a, &.{ w.root, sub });
         if (std.Io.Dir.path.dirname(full)) |parent| try Io.Dir.cwd().createDirPath(w.io, parent);
         if (w.only_if_changed) {
+            // glint-ignore: Z026 -- an old file that is missing or not read is written anew: only one that is read and the same is left alone
             if (aegis.own.readFile(w.io, Io.Dir.cwd(), full, w.a, .fromRaw(input_limit))) |old| {
                 if (std.mem.eql(u8, old, text)) return;
             } else |_| {}

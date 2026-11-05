@@ -15,8 +15,8 @@ pub fn build(b: *std.Build) void {
     // never analyses Zig builds without it and fetches nothing for it.
     if (b.option(bool, "zig", "Build the gantry.zig frontend, which fetches glint") orelse false) {
         // The module is declared either way, so a consumer can ask for it while glint is fetched.
-        // On the first pass Zig fetches glint and configures again.
         const zig = b.addModule("gantry.zig", .{ .root_source_file = b.path("src/frontends/zig.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "gantry", .module = root }} });
+        // glint-ignore: Z026 -- not there on the first pass: Zig fetches glint and configures again, and the module takes it then
         if (b.dependencyLazy("glint", .{ .target = target, .optimize = optimize })) |glint| zig.addImport("glint", glint.module("glint")) else |_| {}
     }
 }
