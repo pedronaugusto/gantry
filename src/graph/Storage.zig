@@ -209,7 +209,7 @@ pub fn owner(comptime Owner: type, state: *Storage) Owner {
     return @fromBackingInt(@intCast(@intFromPtr(state)));
 }
 pub fn get(g: anytype) *Storage {
-    // aegis: internal(A019): the address owner made from the state this handle owns
+    // aegis: design(A019): the address owner made from the state this handle owns; the handle is an enum so its state stays behind its accessors
     return @ptrFromInt(@backingInt(g));
 }
 
