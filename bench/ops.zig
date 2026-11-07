@@ -122,10 +122,13 @@ fn list(w: *std.Io.Writer) !void {
     var arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer arena.deinit();
     for (manifest_probes) |probe| {
-        // glint-ignore: Z026 -- a format this revision refuses is the answer: it is not listed
         if (gantry.manifests.parse(arena.allocator(), probe[0], probe[1])) |_| {
             try w.print("manifests/{s}\n", .{probe[0]});
-        } else |_| {}
+        } else |err| switch (err) {
+            error.OutOfMemory => |e| return e,
+            // A format this revision refuses is the answer: it is not listed.
+            else => {},
+        }
     }
     for ([_][]const u8{ "ordered", "forbidden", "allowed", "nothing-imports", "references", "required", "cycles" }) |f| try w.print("rules/{s}\n", .{f});
     try w.writeAll("rules/tokens\n");
