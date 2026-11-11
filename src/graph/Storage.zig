@@ -54,7 +54,7 @@ pub fn initTracked(gpa: std.mem.Allocator, paths: []const []const u8, progress: 
     if (progress) |current| current.at(.paths, null);
     std.mem.sort([]const u8, list.items, {}, t.stringsLess);
     g.paths = try list.toOwnedSlice(a);
-    std.debug.assert(g.paths.len == g.files.count());
+    aegis.assert.invariant(g.paths.len == g.files.count(), "every file has its path");
     return g;
 }
 pub const ScannedToken = struct { kind: t.Token.Kind, text: []const u8 };
@@ -200,7 +200,7 @@ pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pend
             n += 1;
         }
     }
-    std.debug.assert(n == edges.len);
+    aegis.assert.invariant(n == edges.len, "the coalesced edges fill what was counted");
     for (edges) |edge| std.debug.assert(edge.count != t.ReferenceCount.fromRaw(0));
     return edges;
 }
@@ -214,7 +214,7 @@ pub fn get(g: anytype) *Storage {
 }
 
 comptime {
-    std.debug.assert(@sizeOf(Pending) == 12);
-    std.debug.assert(@sizeOf(@FieldType(Pending, "from")) == @sizeOf(u32));
-    std.debug.assert(@sizeOf(@FieldType(Pending, "to")) == @sizeOf(u32));
+    aegis.assert.invariant(@sizeOf(Pending) == 12, "a pending edge is two ids and a kind");
+    aegis.assert.invariant(@sizeOf(@FieldType(Pending, "from")) == @sizeOf(u32), "a pending edge's from is a u32 id");
+    aegis.assert.invariant(@sizeOf(@FieldType(Pending, "to")) == @sizeOf(u32), "a pending edge's to is a u32 id");
 }

@@ -14,6 +14,7 @@ const code_kind_module = @import("code_kind.zig");
 const packages_module = @import("lang/java/packages.zig");
 const exports_module = @import("lang/python/exports.zig");
 const std = @import("std");
+const aegis = @import("aegis");
 const sweep = @import("sweep");
 const t = @import("types.zig");
 const resolver = @import("resolve.zig");
@@ -342,7 +343,7 @@ fn readManifests(w: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, opti
 
 /// Recover sources after language indexes are complete; read buffers stay local.
 fn readSources(gpa: std.mem.Allocator, arena: std.mem.Allocator, g: *Graph, options: Options, reader: anytype, scratch: *std.heap.ArenaAllocator, progress: *diagnostics.Progress, recorder: *Recorder, cached: []?t.Recovery, indexes: anytype, edges: *std.ArrayList(Graph.Pending), refs: *std.ArrayList(Reference), unsupported: *std.ArrayList(t.UnsupportedReference)) !void {
-    std.debug.assert(cached.len == 0 or cached.len == g.paths.len);
+    aegis.assert.invariant(cached.len == 0 or cached.len == g.paths.len, "a cached recovery for every path, or none");
     for (g.paths, 0..) |p, file_index| {
         if (indexes.inactive.contains(p)) continue;
         const language = languageOf(p);

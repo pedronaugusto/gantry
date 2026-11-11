@@ -3,6 +3,7 @@
 //! first path; every choice below takes the lowest, which makes results
 //! independent of input order.
 const std = @import("std");
+const aegis = @import("aegis");
 
 /// Node v's neighbours are `targets[offsets[v]..offsets[v + 1]]`, in the
 /// order the builder listed them; `labels` (empty, or one per target)
@@ -15,7 +16,7 @@ pub const Adjacency = struct {
     /// A stable counting sort of `from`/`to` pairs by `from`. With
     /// `labeled`, each neighbour carries its pair's index.
     pub fn init(gpa: std.mem.Allocator, n: usize, from: []const u32, to: []const u32, labeled: bool) std.mem.Allocator.Error!Adjacency {
-        std.debug.assert(from.len == to.len);
+        aegis.assert.invariant(from.len == to.len, "every edge has both ends");
         for (from, to) |v, w| {
             std.debug.assert(v < n);
             std.debug.assert(w < n);
@@ -34,9 +35,9 @@ pub const Adjacency = struct {
             if (labeled) labels[cursor[v]] = @intCast(i);
             cursor[v] += 1;
         }
-        std.debug.assert(offsets[0] == 0);
-        std.debug.assert(offsets[n] == targets.len);
-        std.debug.assert(labels.len == 0 or labels.len == targets.len);
+        aegis.assert.invariant(offsets[0] == 0, "the first node's neighbours start at 0");
+        aegis.assert.invariant(offsets[n] == targets.len, "the offsets cover every neighbour");
+        aegis.assert.invariant(labels.len == 0 or labels.len == targets.len, "a label for every neighbour, or none");
         return .{ .offsets = offsets, .targets = targets, .labels = labels };
     }
     pub fn children(self: Adjacency, v: usize) []const u32 {
@@ -56,7 +57,7 @@ pub const Adjacency = struct {
 /// Marks every node a walk of one edge or more reaches from `starts`.
 /// `marks` holds one entry per node, all false on entry.
 pub fn closure(gpa: std.mem.Allocator, adjacency: Adjacency, starts: []const u32, marks: []bool) std.mem.Allocator.Error!void {
-    std.debug.assert(adjacency.offsets.len == marks.len + 1);
+    aegis.assert.invariant(adjacency.offsets.len == marks.len + 1, "a mark for every node");
     for (marks) |marked| std.debug.assert(!marked);
     var queue: std.ArrayList(u32) = .empty;
     defer queue.deinit(gpa);
@@ -94,9 +95,9 @@ pub const Filter = struct {
 /// predecessors, labelled like `forward`) from every target at once.
 /// Only targets and passable nodes get a distance.
 pub fn distances(gpa: std.mem.Allocator, backward: Adjacency, targets: []const bool, filter: Filter, dist: []u32) std.mem.Allocator.Error!void {
-    std.debug.assert(backward.offsets.len == dist.len + 1);
-    std.debug.assert(targets.len == dist.len);
-    if (filter.passable) |passable| std.debug.assert(passable.len == dist.len);
+    aegis.assert.invariant(backward.offsets.len == dist.len + 1, "a distance for every node");
+    aegis.assert.invariant(targets.len == dist.len, "a target flag for every node");
+    if (filter.passable) |passable| aegis.assert.invariant(passable.len == dist.len, "a passable flag for every node");
     @memset(dist, unreached);
     var queue: std.ArrayList(u32) = .empty;
     defer queue.deinit(gpa);
