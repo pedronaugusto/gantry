@@ -86,7 +86,7 @@ pub fn dev(b: *std.Build, tools: type) void {
                 // Writes the fixtures trials reads; times nothing.
                 .{ .name = "fixtures", .source = "bench/fixtures.zig", .timed = false },
             },
-            .imports = benchImports,
+            .imports = tools.preflight.Bench.importsFrom(benchImports),
             .target = target,
             .optimize = optimize,
         },
