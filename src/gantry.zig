@@ -101,13 +101,14 @@ pub const FileError = diagnostic_module.FileError;
 /// The byte limit is caller policy. A missing selected file is an I/O error.
 pub const DirReader = struct {
     /// The caller's directory, lent: the reader never closes it.
-    dir: std.Io.Dir,
+    dir: aegis.own.Unowned(std.Io.Dir),
     limit: std.Io.Limit = .unlimited,
     /// aegis's whole-file read: a cancel that lands on the file's length is `Canceled`.
     pub const ReadError = aegis.own.ReadFileError;
     pub fn read(self: DirReader, scratch: std.mem.Allocator, io: std.Io, p: []const u8) DirReader.ReadError!?[]const u8 {
         const most: u64 = if (self.limit.toInt()) |bytes| bytes else std.math.maxInt(u64);
-        return try aegis.own.readFile(io, self.dir, p, scratch, .fromRaw(most));
+        // glint-ignore: A009 -- the scan's input seam: the bytes go to the lexers, which parse them as input
+        return try aegis.own.readFile(io, self.dir.get(), p, scratch, .fromRaw(most));
     }
 };
 /// Convenience listing. keep(context, slash_path, entry_kind) may prune a

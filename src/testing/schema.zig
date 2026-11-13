@@ -21,7 +21,6 @@ threadlocal var said_len: usize = 0;
 /// is expected to fail must not write to stderr, where a passing run shows it.
 pub fn say(comptime format: []const u8, args: anytype) void {
     var w: std.Io.Writer = .fixed(&said);
-    // glint-ignore: Z026 -- a reason longer than the buffer is cut where it ends, and the cut text still says what failed
     w.print(format, args) catch {};
     said_len = w.end;
 }

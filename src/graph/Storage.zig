@@ -97,9 +97,9 @@ pub fn fromEdges(gpa: std.mem.Allocator, paths: []const []const u8, edges: []con
     }
     g.edges = try coalesce(owned);
     for (g.edges) |edge| {
-        std.debug.assert(edge.count != t.ReferenceCount.fromRaw(0));
-        std.debug.assert(g.files.contains(edge.from));
-        std.debug.assert(g.files.contains(edge.to));
+        aegis.assert.invariant(edge.count != t.ReferenceCount.fromRaw(0), "edge.count != t.ReferenceCount.fromRaw(0)");
+        aegis.assert.invariant(g.files.contains(edge.from), "g.files.contains(edge.from)");
+        aegis.assert.invariant(g.files.contains(edge.to), "g.files.contains(edge.to)");
     }
     return g;
 }
@@ -166,9 +166,9 @@ pub fn positions(arena: std.mem.Allocator, paths: []const []const u8) std.mem.Al
     var result: std.StringHashMapUnmanaged(t.NodeId) = .empty;
     try result.ensureTotalCapacity(arena, aegis.int.cast(u32, paths.len) catch return error.OutOfMemory);
     for (paths, 0..) |path, i| {
-        if (i > 0) std.debug.assert(t.stringsLess({}, paths[i - 1], path));
+        if (i > 0) aegis.assert.invariant(t.stringsLess({}, paths[i - 1], path), "t.stringsLess({}, paths[i - 1], path)");
         result.putAssumeCapacity(path, .fromRaw(@intCast(i))); // safe: paths.len fits u32 at entry.
-        std.debug.assert(result.count() == i + 1);
+        aegis.assert.invariant(result.count() == i + 1, "result.count() == i + 1");
     }
     return result;
 }
@@ -176,8 +176,8 @@ pub fn positions(arena: std.mem.Allocator, paths: []const []const u8) std.mem.Al
 pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pending: []Pending) CoalesceError![]const t.Edge {
     const end: t.NodeId = .fromRaw(aegis.int.cast(u32, paths.len) catch return error.OutOfMemory);
     for (pending) |edge| {
-        std.debug.assert(edge.from.compare(end) == .lt);
-        std.debug.assert(edge.to.compare(end) == .lt);
+        aegis.assert.invariant(edge.from.compare(end) == .lt, "edge.from.compare(end) == .lt");
+        aegis.assert.invariant(edge.to.compare(end) == .lt, "edge.to.compare(end) == .lt");
     }
     std.mem.sort(Pending, pending, {}, struct {
         fn less(_: void, x: Pending, y: Pending) bool {
@@ -201,7 +201,7 @@ pub fn coalescePending(arena: std.mem.Allocator, paths: []const []const u8, pend
         }
     }
     aegis.assert.invariant(n == edges.len, "the coalesced edges fill what was counted");
-    for (edges) |edge| std.debug.assert(edge.count != t.ReferenceCount.fromRaw(0));
+    for (edges) |edge| aegis.assert.invariant(edge.count != t.ReferenceCount.fromRaw(0), "edge.count != t.ReferenceCount.fromRaw(0)");
     return edges;
 }
 
@@ -209,7 +209,7 @@ pub fn owner(comptime Owner: type, state: *Storage) Owner {
     return @fromBackingInt(@intCast(@intFromPtr(state)));
 }
 pub fn get(g: anytype) *Storage {
-    // aegis: design(A019): the address owner made from the state this handle owns; the handle is an enum so its state stays behind its accessors
+    // glint-ignore: P007 -- design: the address owner made from the state this handle owns; the handle is an enum so its state stays behind its accessors
     return @ptrFromInt(@backingInt(g));
 }
 

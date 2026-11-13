@@ -46,9 +46,15 @@
     "build.zig"
   ],
   "glint": {
-    "escapes": {"design": {"A019": 4}},
-    "rules": [{"id": "P003", "level": "gate"}, 
-      {"id": "A001", "level": "gate"},
+    "rules": [
+      {
+        "id": "P003",
+        "level": "gate"
+      },
+      {
+        "id": "A001",
+        "level": "gate"
+      },
       {
         "id": "A004",
         "level": "gate"
@@ -57,7 +63,6 @@
         "id": "Z026",
         "level": "gate"
       }
-    ],
-    "disallowed": [{"source": "std", "declaration": "Io.async", "reason": "the caller owns asynchronous work", "replacement": "return the work and let the caller start it"}]
+    ]
   }
 }

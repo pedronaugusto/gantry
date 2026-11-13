@@ -18,8 +18,8 @@ pub const Adjacency = struct {
     pub fn init(gpa: std.mem.Allocator, n: usize, from: []const u32, to: []const u32, labeled: bool) std.mem.Allocator.Error!Adjacency {
         aegis.assert.invariant(from.len == to.len, "every edge has both ends");
         for (from, to) |v, w| {
-            std.debug.assert(v < n);
-            std.debug.assert(w < n);
+            aegis.assert.invariant(v < n, "v < n");
+            aegis.assert.invariant(w < n, "w < n");
         }
         if (n >= std.math.maxInt(u32) or from.len >= std.math.maxInt(u32)) return error.OutOfMemory;
         const offsets = try gpa.alloc(u32, n + 1);
@@ -41,15 +41,15 @@ pub const Adjacency = struct {
         return .{ .offsets = offsets, .targets = targets, .labels = labels };
     }
     pub fn children(self: Adjacency, v: usize) []const u32 {
-        std.debug.assert(v + 1 < self.offsets.len);
-        std.debug.assert(self.offsets[v] <= self.offsets[v + 1]);
-        std.debug.assert(self.offsets[v + 1] <= self.targets.len);
+        aegis.assert.invariant(v + 1 < self.offsets.len, "v + 1 < self.offsets.len");
+        aegis.assert.invariant(self.offsets[v] <= self.offsets[v + 1], "self.offsets[v] <= self.offsets[v + 1]");
+        aegis.assert.invariant(self.offsets[v + 1] <= self.targets.len, "self.offsets[v + 1] <= self.targets.len");
         return self.targets[self.offsets[v]..self.offsets[v + 1]];
     }
     /// The label of the neighbour at `index` in `targets`, 0 unlabelled.
     pub fn label(self: Adjacency, index: usize) u32 {
-        std.debug.assert(index < self.targets.len);
-        std.debug.assert(self.labels.len == 0 or self.labels.len == self.targets.len);
+        aegis.assert.invariant(index < self.targets.len, "index < self.targets.len");
+        aegis.assert.invariant(self.labels.len == 0 or self.labels.len == self.targets.len, "self.labels.len == 0 or self.labels.len == self.targets.len");
         return if (self.labels.len == 0) 0 else self.labels[index];
     }
 };
@@ -58,7 +58,7 @@ pub const Adjacency = struct {
 /// `marks` holds one entry per node, all false on entry.
 pub fn closure(gpa: std.mem.Allocator, adjacency: Adjacency, starts: []const u32, marks: []bool) std.mem.Allocator.Error!void {
     aegis.assert.invariant(adjacency.offsets.len == marks.len + 1, "a mark for every node");
-    for (marks) |marked| std.debug.assert(!marked);
+    for (marks) |marked| aegis.assert.invariant(!marked, "!marked");
     var queue: std.ArrayList(u32) = .empty;
     defer queue.deinit(gpa);
     for (starts) |v| for (adjacency.children(v)) |w| if (!marks[w]) {
@@ -122,8 +122,8 @@ pub fn distances(gpa: std.mem.Allocator, backward: Adjacency, targets: []const b
 /// followed edge leads to one. Inside a chain `bound` is `dist[v]` and the
 /// step must go one nearer; from its start it is `unreached`.
 pub fn step(forward: Adjacency, dist: []const u32, filter: Filter, v: u32, bound: u32) ?struct { node: u32, label: u32 } {
-    std.debug.assert(forward.offsets.len == dist.len + 1);
-    std.debug.assert(v < dist.len);
+    aegis.assert.invariant(forward.offsets.len == dist.len + 1, "forward.offsets.len == dist.len + 1");
+    aegis.assert.invariant(v < dist.len, "v < dist.len");
     var best: ?struct { node: u32, label: u32, dist: u32 } = null;
     for (forward.offsets[v]..forward.offsets[v + 1]) |k| {
         const w = forward.targets[k];
