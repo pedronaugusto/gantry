@@ -205,17 +205,21 @@ fn identIn(comptime lang: Syntax, c: u8) bool {
 fn lineEnd(t: []const u8, i: usize) usize {
     return std.mem.findScalarPos(u8, t, i, '\n') orelse t.len;
 }
-/// Nim block comments `#[ ]#` and `##[ ]##` nest.
+/// Nim block comments `#[ ]#` and doc block comments `##[ ]##` nest, each closing with its own
+/// mark: a doc comment's `]##`, so its second `#` is no line comment after it.
 fn nimComment(t: []const u8, start: usize) usize {
-    var i = start + (if (t[start + 1] == '#') @as(usize, 3) else 2);
+    const doc = t[start + 1] == '#';
+    const open: []const u8 = if (doc) "##[" else "#[";
+    const close: []const u8 = if (doc) "]##" else "]#";
+    var i = start + open.len;
     var depth: usize = 1;
     while (i < t.len) {
-        if (std.mem.startsWith(u8, t[i..], "#[")) {
+        if (std.mem.startsWith(u8, t[i..], open)) {
             depth += 1;
-            i += 2;
-        } else if (std.mem.startsWith(u8, t[i..], "]#")) {
+            i += open.len;
+        } else if (std.mem.startsWith(u8, t[i..], close)) {
             depth -= 1;
-            i += 2;
+            i += close.len;
             if (depth == 0) return i;
         } else i += 1;
     }

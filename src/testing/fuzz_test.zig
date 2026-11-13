@@ -430,6 +430,54 @@ test "fuzz: Zig test context changes kinds only" {
 
 // A word followed by an empty string and one more token read the string's
 // first byte, which is not there: a failing input the properties found.
+/// Words written hard against pieces a lexer skips (comments, text blocks, Nim's nested block
+/// comments) come out as word tokens, in order, each at its offset: a skipped piece ends exactly
+/// where it closes, never a byte later or sooner. Unlike the properties above, the answer is
+/// known before the lexer runs: the input is made from the words and pieces.
+fn checkSkipped(comptime syntax: lexer.Syntax, comptime pieces: []const []const u8) !void {
+    const Any = struct {
+        fn body(_: void, c: *shakedown.Case) anyerror!void {
+            const a = c.gpa;
+            var text: std.ArrayList(u8) = .empty;
+            defer text.deinit(a);
+            var words: std.ArrayList(struct { offset: usize, len: usize }) = .empty;
+            defer words.deinit(a);
+            const count = shakedown.gen.intRange(c.source, usize, 1, 24);
+            for (0..count) |n| {
+                // A word, then a piece with nothing between, then sometimes a space.
+                const at = text.items.len;
+                try text.print(a, "w{d}", .{n});
+                try words.append(a, .{ .offset = at, .len = text.items.len - at });
+                try text.appendSlice(a, pieces[shakedown.gen.intRange(c.source, usize, 0, pieces.len - 1)]);
+                if (shakedown.gen.boolean(c.source)) try text.append(a, ' ');
+            }
+            const lexed = try lexer.lex(syntax, a, text.items);
+            defer a.free(lexed);
+            errdefer std.debug.print("{t}: {s}\n", .{ syntax, text.items });
+            var found: usize = 0;
+            for (lexed) |token| {
+                if (token.kind != .word) continue;
+                if (found == words.items.len) return error.TestUnexpectedResult;
+                const want = words.items[found];
+                try testing.expectEqual(want.offset, token.offset);
+                try testing.expectEqualStrings(text.items[want.offset..][0..want.len], token.text);
+                found += 1;
+            }
+            try testing.expectEqual(words.items.len, found);
+        }
+    };
+    try shakedown.check(testing.allocator, {}, Any.body, .{});
+}
+
+test "fuzz: each lexer ends a piece it skips where the piece closes" {
+    try checkSkipped(.c, &.{ "/* a b */", "/**/", "// line\n" });
+    try checkSkipped(.rust, &.{ "/* a */", "/* outer /* inner */ still */", "// line\n" });
+    try checkSkipped(.java, &.{ "/* a */", "// line\n", "\"\"\"\nblock \"q\" \\\"\"\"\n text\n\"\"\"" });
+    try checkSkipped(.kotlin, &.{ "/* outer /* inner */ */", "\"\"\"\nraw\n\"\"\"" });
+    try checkSkipped(.nim, &.{ "#[ a ]#", "#[ outer #[ inner ]# still ]#", "##[ doc ]##", "# line\n" });
+    try checkSkipped(.python, &.{ "# line\n", "#\n" });
+}
+
 test "Rust recovery reads a word before an empty string" {
     var found = try f.imports(testing.allocator, .rust, "a \"\" b");
     defer found.deinit();
