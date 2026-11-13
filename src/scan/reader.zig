@@ -2,6 +2,7 @@
 const diagnostic_module = @import("diagnostic.zig");
 const types_module = @import("../types.zig");
 const std = @import("std");
+const aegis = @import("aegis");
 
 pub fn Reader(comptime Context: type, comptime read: anytype) type {
     comptime check(Context, read);
@@ -30,7 +31,7 @@ pub fn Reader(comptime Context: type, comptime read: anytype) type {
             var keys = self.unread.keyIterator();
             var i: usize = 0;
             while (keys.next()) |key| : (i += 1) paths[i] = files.getKey(key.*).?;
-            std.debug.assert(i == paths.len);
+            aegis.assert.invariant(i == paths.len, "every unread file is listed");
             std.mem.sort([]const u8, paths, {}, types_module.stringsLess);
             return paths;
         }

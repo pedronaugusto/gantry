@@ -4,6 +4,7 @@ const go_config = @import("lang/go/config.zig");
 const maven_module = @import("manifests/maven.zig");
 const nimble_module = @import("manifests/nimble.zig");
 const std = @import("std");
+const aegis = @import("aegis");
 const l = @import("lexer.zig");
 const t = @import("types.zig");
 const p = @import("path.zig");
@@ -46,7 +47,7 @@ pub fn read(arena: std.mem.Allocator, path: []const u8, text: []const u8) ReadEr
 }
 /// `read` for a path `supported` takes.
 pub fn readSupported(arena: std.mem.Allocator, path: []const u8, text: []const u8) ReadSupportedError!Declarations {
-    std.debug.assert(supported(path));
+    aegis.assert.invariant(supported(path), "readSupported reads a path supported takes");
     var out: std.ArrayList(t.Dependency) = .empty;
     var unsupported: std.ArrayList(t.UnsupportedReference) = .empty;
     const name = p.base(path);
@@ -63,7 +64,7 @@ pub fn readSupported(arena: std.mem.Allocator, path: []const u8, text: []const u
     } else if (std.mem.eql(u8, name, "pom.xml")) {
         try maven_module.parse(arena, path, text, &out, &unsupported);
     } else {
-        std.debug.assert(std.mem.eql(u8, name, "build.gradle") or std.mem.eql(u8, name, "build.gradle.kts"));
+        aegis.assert.invariant(std.mem.eql(u8, name, "build.gradle") or std.mem.eql(u8, name, "build.gradle.kts"), "the last supported manifest is Gradle's");
         try gradle_module.parse(arena, path, text, &out, &unsupported);
     }
     return .{ .dependencies = try out.toOwnedSlice(arena), .unsupported = try unsupported.toOwnedSlice(arena) };

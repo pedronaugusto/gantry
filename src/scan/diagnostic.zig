@@ -1,5 +1,6 @@
 //! Caller-owned scan failure output and borrowed pipeline progress.
 const std = @import("std");
+const aegis = @import("aegis");
 const t = @import("../types.zig");
 
 /// Initialize with `init` and release with `deinit`. Each diagnostic scan
@@ -170,7 +171,7 @@ pub const Progress = struct {
     }
     pub fn fail(progress: *const Progress, cause: anyerror) void {
         const d = progress.diagnostic orelse return;
-        std.debug.assert(d.failure == null);
+        aegis.assert.invariant(d.failure == null, "a scan fails once");
         // Reporting must preserve the original cause even if its allocator fails.
         const owned = if (progress.path) |path| d.gpa.dupe(u8, path) catch null else null;
         d.failure = .{ .path = owned, .phase = progress.phase, .cause = cause, .offset = progress.offset };

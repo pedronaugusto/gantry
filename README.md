@@ -1,14 +1,12 @@
 # gantry
 
-Work in progress.
-
 gantry recovers file dependencies from caller-selected source files, Markdown links and
 asset paths in Zig. It returns a graph with directory aggregation, layers, cycle
 witnesses and checks against caller-defined boundaries.
 
 ## Install
 
-Requires Zig 0.17.0. Fetch with `zig fetch --save
+Requires Zig 0.17. Fetch with `zig fetch --save
 git+https://github.com/pedronaugusto/gantry`, then obtain the `gantry` module through
 `b.dependency` and add it to your executable's imports. Forward your target and optimize
 settings.
@@ -20,6 +18,12 @@ for it. To scan Zig files, ask for it with `b.dependency("gantry", .{ .target = 
 `Options.frontends`, as the usage example does. A scan that reaches a `.zig` path without
 it fails with `error.FrontendMissing` before it reads anything, and `gantry.imports`
 reads the byte-lexer languages only: `importsWith` reads one frontend's.
+
+## Stability
+
+gantry is 0.x and tracks Zig 0.17.x. A breaking change comes only in a minor release
+(0.3 to 0.4), with a CHANGELOG entry saying what changed and what to write instead; a
+patch release never breaks.
 
 ## Usage
 

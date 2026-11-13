@@ -1,6 +1,7 @@
 //! Shared byte machinery, instantiated separately by each language module.
 //! Tokens retain source offsets. Comments and character literals never emit words.
 const std = @import("std");
+const aegis = @import("aegis");
 /// The rules a text is read with: each source language by its own name.
 /// Manifests borrow the nearest rules (TOML reads as Python, go.mod as Go),
 /// and Gradle build scripts are Groovy or Kotlin.
@@ -550,5 +551,5 @@ fn literal(comptime lang: Syntax, arena: std.mem.Allocator, text: []const u8, st
 }
 
 comptime {
-    std.debug.assert(space.len == 1 << @bitSizeOf(u8));
+    aegis.assert.invariant(space.len == 1 << @bitSizeOf(u8), "the whitespace table covers every byte");
 }

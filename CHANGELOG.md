@@ -12,6 +12,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The README states gantry's stability policy (0.x, tracking Zig 0.17.x; a breaking change only in a minor release, with its CHANGELOG entry; a patch release never breaks), where it said work was in progress.
+- The contracts left on `std.debug.assert` outside the hot paths (once per graph, scan, manifest or adjacency, and the compile-time layout checks) are `aegis.assert.invariant`; those per edge, per token, per byte and in the node accessors stay debug assertions until they are measured.
 - Pins glint 0.8.0.
 - Pins aegis breaking-0.3 (7bdb587), where `own.Lent` is gone: `DirReader.dir` stays the caller's `std.Io.Dir`, lent by value, which the reader never closes.
 - The manifest names no `.coexist`: gantry and its development preflight read Zig through one line of glint (0.7), and a coexisting glint would let a second line in unseen, in a workspace for every member.
