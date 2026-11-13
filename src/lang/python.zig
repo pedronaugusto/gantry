@@ -35,6 +35,7 @@ pub fn recoverTokens(arena: std.mem.Allocator, source: []const u8, ts: []const l
         // Enough for `.import_module(".x", package="p")`.
         var held: aegis.bounded.Array(l.Token, 10) = .init;
         for (ts[i + 1 ..]) |next| if (next.kind != .newline) {
+            // glint-ignore: Z026 -- a full window holds all the call needs: the rest goes unread
             held.appendSlice(&.{next}) catch break;
         };
         const ahead = held.constItems();

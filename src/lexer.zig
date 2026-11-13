@@ -153,9 +153,9 @@ const Stream = struct {
         try s.list.ensureTotalCapacityPrecise(arena, capacity);
     }
     inline fn push(s: *Stream, arena: std.mem.Allocator, token: Token) !void {
-        std.debug.assert(token.offset < token.end);
-        std.debug.assert(token.end <= s.total);
-        if (s.list.items.len > 0) std.debug.assert(s.list.items[s.list.items.len - 1].end <= token.offset);
+        aegis.assert.invariant(token.offset < token.end, "token.offset < token.end");
+        aegis.assert.invariant(token.end <= s.total, "token.end <= s.total");
+        if (s.list.items.len > 0) aegis.assert.invariant(s.list.items[s.list.items.len - 1].end <= token.offset, "s.list.items[s.list.items.len - 1].end <= token.offset");
         if (s.list.items.len == s.list.capacity) try s.grow(arena, token.end);
         s.list.appendAssumeCapacity(token);
     }
@@ -386,7 +386,7 @@ fn decodeImpl(arena: std.mem.Allocator, text: []const u8, javascript: bool) Deco
 
 /// Whitespace, comments, and opaque raw literals never produce operands.
 fn skipTrivia(comptime lang: Syntax, comptime newlines: bool, arena: std.mem.Allocator, text: []const u8, start: usize, out: anytype) !?usize {
-    std.debug.assert(start < text.len);
+    aegis.assert.invariant(start < text.len, "start < text.len");
     var i = start;
     const c = text[i];
     if (c == '\n') {

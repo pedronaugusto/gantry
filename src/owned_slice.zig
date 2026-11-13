@@ -35,7 +35,7 @@ pub fn Store(comptime T: type) type {
             return @fromBackingInt(@intCast(@intFromPtr(state)));
         }
         fn get(self: Owner) *State {
-            // aegis: design(A019): the address owner made from the state this handle owns; the handle is an enum so its state stays behind its accessors
+            // glint-ignore: P007 -- design: the address owner made from the state this handle owns; the handle is an enum so its state stays behind its accessors
             return @ptrFromInt(@backingInt(self));
         }
     };

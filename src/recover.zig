@@ -3,6 +3,7 @@ const types_module = @import("types.zig");
 const resolve_module = @import("resolve.zig");
 const std = @import("std");
 const p = @import("path.zig");
+const aegis = @import("aegis");
 const Spec = types_module.Spec;
 const Context = resolve_module.Context;
 pub const Names = std.StringHashMapUnmanaged(?[]const u8);
@@ -155,7 +156,7 @@ fn unescape(arena: std.mem.Allocator, name: []const u8) ![]const u8 {
     return out.toOwnedSlice(arena);
 }
 fn hexDigit(c: u8) u8 {
-    std.debug.assert(std.ascii.isHex(c));
+    aegis.assert.invariant(std.ascii.isHex(c), "std.ascii.isHex(c)");
     return if (c <= '9') c - '0' else (c | 0x20) - 'a' + 10;
 }
 pub fn linkTarget(ctx: Context, index: *const Names, from: []const u8, spec: Spec) std.mem.Allocator.Error!?[]const u8 {
