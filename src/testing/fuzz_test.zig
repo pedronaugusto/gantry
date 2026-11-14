@@ -14,6 +14,7 @@ const f = @import("support.zig");
 const lexer = @import("../lexer.zig");
 const tokens = @import("../tokens.zig");
 const manifests = @import("../manifests.zig");
+const jsonc = @import("../jsonc.zig");
 
 /// The longest input a property reads.
 const most = 4096;
@@ -464,6 +465,107 @@ fn checkSkipped(comptime syntax: lexer.Syntax, comptime pieces: []const []const 
                 found += 1;
             }
             try testing.expectEqual(words.items.len, found);
+        }
+    };
+    try shakedown.check(testing.allocator, {}, Any.body, .{});
+}
+
+// Cargo dependencies written in each form Cargo takes (a version string, an inline table with a
+// version and a path or a git source, dotted keys, a `[dependencies.name]` table) read back as
+// written: each once, in order, with its requirement, its source and where it comes from. As
+// with `checkSkipped`, the answer is known before the reader runs.
+test "fuzz: Cargo dependencies read back as written, in every form" {
+    const Any = struct {
+        fn body(_: void, c: *shakedown.Case) anyerror!void {
+            var arena: std.heap.ArenaAllocator = .init(c.gpa);
+            defer arena.deinit();
+            const a = arena.allocator();
+            const Want = struct { name: []const u8, requirement: []const u8, source: []const u8 = "", origin: []const u8 = "registry" };
+            var head: std.ArrayList(u8) = .empty;
+            var tables: std.ArrayList(u8) = .empty;
+            var listed: std.ArrayList(Want) = .empty;
+            var tabled: std.ArrayList(Want) = .empty;
+            try head.appendSlice(a, "[package]\nname = 'x'\n[dependencies]\n");
+            const suffixes = [_][]const u8{ "", "-core", "_sys", "2" };
+            for (0..shakedown.gen.intRange(c.source, usize, 0, 12)) |n| {
+                const name = try a.print("d{d}{s}", .{ n, suffixes[shakedown.gen.intRange(c.source, usize, 0, suffixes.len - 1)] });
+                const version = try a.print("{d}.{d}", .{ shakedown.gen.intRange(c.source, u8, 0, 99), shakedown.gen.intRange(c.source, u8, 0, 99) });
+                const local = try a.print("../{s}", .{name});
+                const remote = try a.print("https://h/{s}", .{name});
+                switch (shakedown.gen.intRange(c.source, u8, 0, 4)) {
+                    0 => {
+                        try head.print(a, "{s} = \"{s}\"\n", .{ name, version });
+                        try listed.append(a, .{ .name = name, .requirement = version });
+                    },
+                    1 => {
+                        try head.print(a, "{s} = {{ version = \"{s}\", path = \"{s}\" }}\n", .{ name, version, local });
+                        try listed.append(a, .{ .name = name, .requirement = version, .source = local, .origin = "local" });
+                    },
+                    2 => {
+                        try head.print(a, "{s} = {{ git = \"{s}\", version = \"{s}\" }}\n", .{ name, remote, version });
+                        try listed.append(a, .{ .name = name, .requirement = version, .source = remote, .origin = "remote" });
+                    },
+                    3 => {
+                        try head.print(a, "{s}.version = \"{s}\"\n{s}.path = \"{s}\"\n", .{ name, version, name, local });
+                        try listed.append(a, .{ .name = name, .requirement = version, .source = local, .origin = "local" });
+                    },
+                    else => {
+                        try tables.print(a, "[dependencies.{s}]\nversion = \"{s}\"\ngit = \"{s}\"\n", .{ name, version, remote });
+                        try tabled.append(a, .{ .name = name, .requirement = version, .source = remote, .origin = "remote" });
+                    },
+                }
+            }
+            const text = try std.mem.concat(a, u8, &.{ head.items, tables.items });
+            errdefer std.debug.print("Cargo.toml:\n{s}\n", .{text});
+            const read = try manifests.read(a, "Cargo.toml", text);
+            const wants = try std.mem.concat(a, Want, &.{ listed.items, tabled.items });
+            try testing.expectEqual(wants.len, read.dependencies.len);
+            for (wants, read.dependencies) |want, got| {
+                try testing.expectEqualStrings(want.name, got.name);
+                try testing.expectEqualStrings(want.requirement, got.requirement);
+                try testing.expectEqualStrings(want.source, got.source);
+                try testing.expectEqualStrings(want.origin, @tagName(got.origin));
+            }
+        }
+    };
+    try shakedown.check(testing.allocator, {}, Any.body, .{});
+}
+
+// A JSON-with-comments object whose string values hold what a comment or a trailing comma looks
+// like (`//`, `/*`, `*/`, `,` before `}`) and escaped quotes and backslashes, with comments and
+// a trailing comma between its members, reads back each value as written.
+test "fuzz: JSONC reads every string as written, between comments and trailing commas" {
+    const Any = struct {
+        fn body(_: void, c: *shakedown.Case) anyerror!void {
+            var arena: std.heap.ArenaAllocator = .init(c.gpa);
+            defer arena.deinit();
+            const a = arena.allocator();
+            const pieces = [_][]const u8{ "a", " ", "//", "/*", "*/", "\"", "\\", ",", "}", "]", "\\\"" };
+            const between = [_][]const u8{ "", " ", "\n", "// c \"q\n", "/* c, } */", "/**/" };
+            var out: std.Io.Writer.Allocating = .init(a);
+            const w = &out.writer;
+            var values: std.ArrayList([]const u8) = .empty;
+            try w.writeByte('{');
+            const count = shakedown.gen.intRange(c.source, usize, 0, 8);
+            for (0..count) |n| {
+                var value: std.ArrayList(u8) = .empty;
+                for (0..shakedown.gen.intRange(c.source, usize, 0, 6)) |_| try value.appendSlice(a, pieces[shakedown.gen.intRange(c.source, usize, 0, pieces.len - 1)]);
+                try values.append(a, value.items);
+                try w.writeAll(between[shakedown.gen.intRange(c.source, usize, 0, between.len - 1)]);
+                try w.print("\"k{d}\": ", .{n});
+                try std.json.Stringify.encodeJsonString(value.items, .{}, w);
+                if (n + 1 < count or shakedown.gen.boolean(c.source)) try w.writeByte(',');
+                try w.writeAll(between[shakedown.gen.intRange(c.source, usize, 0, between.len - 1)]);
+            }
+            try w.writeByte('}');
+            const text = out.written();
+            errdefer std.debug.print("jsonc: {s}\n", .{text});
+            const parsed = try jsonc.parse(a, a, text);
+            try testing.expectEqual(count, parsed.object.count());
+            for (values.items, 0..) |want, n| {
+                const got = parsed.object.get(try a.print("k{d}", .{n})) orelse return error.TestUnexpectedResult;
+                try testing.expectEqualStrings(want, got.string);
+            }
         }
     };
     try shakedown.check(testing.allocator, {}, Any.body, .{});
