@@ -17,6 +17,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The contracts left on `std.debug.assert` outside the hot paths (once per graph, scan, manifest or adjacency, and the compile-time layout checks) are `aegis.assert.invariant`; those per edge, per token, per byte and in the node accessors stay debug assertions until they are measured.
 - Pins glint 0.8.0.
 - Pins preflight ci-standard f991816 and shakedown 327bc61 (a fuzz crash kept with its message, input and tape), with glint 0.8 at 4de91e4 as bay tidy selects: the fuzz job builds its tests with `-Dci-fuzzing=true` (preflight 42a0de4), where fc52178 built them with no coverage instrumentation and Zig read the coverage file as corrupted (`pcs_len was zero`).
+- Moved with the family onto one aegis: aegis f52eabe, sweep 66e3941, glint-0.8 2c4fd101 and shakedown b168f3a; a plain consumer's build holds one aegis.
 - Pins aegis breaking-0.3 (7bdb587), where `own.Lent` is gone: `DirReader.dir` stays the caller's `std.Io.Dir`, lent by value, which the reader never closes.
 - The manifest names no `.coexist`: gantry and its development preflight read Zig through one line of glint (0.7), and a coexisting glint would let a second line in unseen, in a workspace for every member.
 - `ci/preflight.json` holds the findings gantry's aegis escapes cover, by reason and rule (`glint.escapes`: 4 A019 internal, the handles reading back the state they own), which preflight 0.18.6's lint holds it to. The five `no-danger` escapes went with the observers' context pointers.
