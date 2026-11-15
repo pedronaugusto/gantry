@@ -23,6 +23,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - The linear-scan property counts the thread's cycles on Windows, where the thread's CPU time moves only at the scheduler's tick (about 15.6 ms), so a short scan read 0 and four Windows legs failed linear work; Linux and macOS keep the thread's CPU time.
+- Loading configs no longer crashes in ReleaseFast on aarch64-macos when none of them could be read: Zig 0.17.0's LLVM 22 miscompiles the count of configs still to resolve (a loop that only subtracts, unrolled for an Apple CPU, joins its partial counts with subtractions), so 64 unread configs counted 64 - 128 and the cycle walk reached `unreachable`. The count is now taken upward and subtracted once.
 
 ## [0.3.4] - 2026-10-28
 

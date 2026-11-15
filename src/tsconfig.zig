@@ -91,10 +91,15 @@ pub fn load(arena: std.mem.Allocator, gpa: std.mem.Allocator, paths: []const []c
         }
         entries.items[i].parents = try parents.toOwnedSlice(arena);
     }
-    var remaining = entries.items.len;
+    // Counted up and subtracted once: Zig 0.17.0's LLVM 22, unrolling for an
+    // Apple CPU (ReleaseFast on aarch64-macos), splits a loop that only
+    // subtracts into partial counts and joins them with subtractions, so
+    // `remaining -= 1` per done entry left 64 entries, none done, at 64 - 128.
+    var settled: usize = 0;
     for (entries.items) |entry| if (entry.done) {
-        remaining -= 1;
+        settled += 1;
     };
+    var remaining = entries.items.len - settled;
     while (remaining > 0) {
         var made_progress = false;
         for (entries.items) |*entry| {
