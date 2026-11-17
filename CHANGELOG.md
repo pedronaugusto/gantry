@@ -8,11 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Breaking
 
+- The `zig` build option is gone: `gantry.zig` is always declared, over glint as a lazy dependency, and a project that never imports it compiles none of it. A library's build options are a defect once two dependents exist: two argument sets make two instances of gantry, and Zig refuses one file in two modules. Drop `.zig = true` from `b.dependency("gantry", ...)`; Zig refuses an argument gantry does not declare.
 - `DirReader.dir` is an `aegis.own.Unowned(std.Io.Dir)`: the caller's directory, lent and never closed by the reader, named as aegis names a handle its owner keeps. Write `.{ .dir = .of(dir) }` where `.{ .dir = dir }` was written.
 - `frontend.Observer` has no `frontend.Observer.context`: its `frontend.Observer.token` and `frontend.Observer.boundary` take the observer itself, which its owner embeds and reads itself back from with `@fieldParentPtr`, and a frontend's `recover` (`Frontend.recover`, `frontend.Frontend.recover`, and each language's `lex`) takes `?*Observer`. A context pointer was cast back on every call, with nothing to check the type it named. The zig frontend reads glint 0.8.0's `token.Observer` the same way.
 
 ### Changed
 
+- glint is pinned at glint-0.8's 774370b2, with preflight's next landing.
 - The README states gantry's stability policy (0.x, tracking Zig 0.17.x; a breaking change only in a minor release, with its CHANGELOG entry; a patch release never breaks), where it said work was in progress.
 - The contracts left on `std.debug.assert` outside the hot paths (once per graph, scan, manifest or adjacency, and the compile-time layout checks) are `aegis.assert.invariant`; those per edge, per token, per byte and in the node accessors stay debug assertions until they are measured.
 - Pins glint 0.8.0.

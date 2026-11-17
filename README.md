@@ -12,10 +12,10 @@ git+https://github.com/pedronaugusto/gantry`, then obtain the `gantry` module th
 settings.
 
 Zig is read by a module of its own, `gantry.zig`, built on [glint](https://github.com/pedronaugusto/glint)'s
-token tier. A project that never analyses Zig builds gantry without it and fetches nothing
-for it. To scan Zig files, ask for it with `b.dependency("gantry", .{ .target = target,
-.optimize = optimize, .zig = true })`, import `gantry.zig` and list its `frontend` in
-`Options.frontends`, as the usage example does. A scan that reaches a `.zig` path without
+token tier, always declared: a project that never imports it compiles none of it (glint is a
+lazy dependency, which Zig fetches when gantry's build declares the module). To scan Zig
+files, import `gantry.zig` and list its `frontend` in `Options.frontends`, as the usage
+example does. gantry takes no build option that changes what a consumer compiles. A scan that reaches a `.zig` path without
 it fails with `error.FrontendMissing` before it reads anything, and `gantry.imports`
 reads the byte-lexer languages only: `importsWith` reads one frontend's.
 

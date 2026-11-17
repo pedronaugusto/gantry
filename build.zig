@@ -1,8 +1,11 @@
 const std = @import("std");
 
 /// What a project that depends on gantry builds: the `gantry` module, its library,
-/// and with `-Dzig` the `gantry.zig` frontend, which fetches glint. The tests,
-/// example, checks and gate are `dev`'s.
+/// and the `gantry.zig` frontend over glint, always declared and compiled only by a
+/// project that imports it. A library takes no option that changes what a consumer
+/// compiles: two dependents asking for two argument sets would make two instances of
+/// gantry, and Zig refuses one file in two modules. The tests, example, checks and gate
+/// are `dev`'s.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -11,14 +14,11 @@ pub fn build(b: *std.Build) void {
     const sweep = b.dependency("sweep", .{ .target = target, .optimize = optimize }).module("sweep");
     const root = b.addModule("gantry", .{ .root_source_file = b.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis } } });
     b.installArtifact(b.addLibrary(.{ .name = "gantry", .root_module = root }));
-    // Zig is read by a frontend module on glint's token tier. A project that
-    // never analyses Zig builds without it and fetches nothing for it.
-    if (b.option(bool, "zig", "Build the gantry.zig frontend, which fetches glint") orelse false) {
-        // The module is declared either way, so a consumer can ask for it while glint is fetched.
-        const zig = b.addModule("gantry.zig", .{ .root_source_file = b.path("src/frontends/zig.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "gantry", .module = root }} });
-        // glint-ignore: Z026 -- not there on the first pass: Zig fetches glint and configures again, and the module takes it then
-        if (b.dependencyLazy("glint", .{ .target = target, .optimize = optimize })) |glint| zig.addImport("glint", glint.module("glint")) else |_| {}
-    }
+    // Zig is read by a frontend module on glint's token tier, declared while glint is still
+    // being fetched, so a consumer can ask for it on either pass.
+    const zig = b.addModule("gantry.zig", .{ .root_source_file = b.path("src/frontends/zig.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "gantry", .module = root }} });
+    // glint-ignore: Z026 -- not there on the first pass: Zig fetches glint and configures again, and the module takes it then
+    if (b.dependencyLazy("glint", .{ .target = target, .optimize = optimize })) |glint| zig.addImport("glint", glint.module("glint")) else |_| {}
 }
 
 /// gantry's development: its tests, example, checks and benchmarks under
@@ -27,13 +27,15 @@ pub fn dev(b: *std.Build, tools: type) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const test_filter = b.option([]const u8, "test-filter", "Select tests by name");
-    const package = b.dependency("gantry", .{ .target = target, .optimize = optimize, .zig = true });
+    const package = b.dependency("gantry", .{ .target = target, .optimize = optimize });
     const p = package.builder;
     const module = package.module("gantry");
     const zig_module = package.module("gantry.zig");
     const library = package.artifact("gantry");
     const aegis_package = p.dependency("aegis", .{ .target = target, .optimize = optimize });
     const sweep_package = p.dependency("sweep", .{ .target = target, .optimize = optimize });
+    // The frontend's, which a consumer fetches as gantry's build declares it.
+    const glint_package = p.dependency("glint", .{ .target = target, .optimize = optimize });
     const filters = if (test_filter) |filter| &.{filter} else &.{};
     // The tests are the core module's own, so they reach its files. The Zig frontend they scan
     // with imports the core, so the core imports it back here and nowhere else.
@@ -93,14 +95,14 @@ pub fn dev(b: *std.Build, tools: type) void {
     });
     // A project that depends on gantry by path, with no packages to
     // fetch: the build a consumer gets.
-    tools.preflight.addConsumerCheck(b, p, .{ .package = "gantry", .program = p.path("ci/consumer.zig"), .modules = &.{"gantry"}, .packages = &.{ sweep_package, aegis_package } });
+    tools.preflight.addConsumerCheck(b, p, .{ .package = "gantry", .program = p.path("ci/consumer.zig"), .modules = &.{"gantry"}, .packages = &.{ sweep_package, aegis_package, glint_package } });
 }
 
 /// gantry, its Zig frontend, aegis and shakedown in the mode a benchmark builds in:
 /// an imported module keeps its own mode, so a ReleaseFast benchmark over the
 /// Debug module would time the Debug module. `b` is the development build.
 fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.lang.Optimize) []const std.Build.Module.Import {
-    const p = b.dependency("gantry", .{ .target = target, .optimize = optimize, .zig = true }).builder;
+    const p = b.dependency("gantry", .{ .target = target, .optimize = optimize }).builder;
     const sweep = p.dependency("sweep", .{ .target = target, .optimize = optimize }).module("sweep");
     const aegis = p.dependency("aegis", .{ .target = target, .optimize = optimize }).module("aegis");
     const glint = p.dependency("glint", .{ .target = target, .optimize = optimize }).module("glint");
