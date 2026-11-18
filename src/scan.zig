@@ -44,20 +44,26 @@ pub const Paths = PathStore.Owner;
 /// allocator rather than staying resident for the rest of the scan.
 const scratch_kept = 1 << 20;
 
-/// What `imports` and `importsWith` fail with: `InvalidEscape` or
-/// `InvalidLiteral` for a string literal recovery cannot decode,
-/// `SourceTooLarge` for a file past what its frontend reads, `FrontendMissing`
-/// for a language that needs a frontend `imports` cannot give, or memory.
+/// What `imports` fails with: `InvalidEscape` or `InvalidLiteral` for a
+/// string literal recovery cannot decode, `SourceTooLarge` for a file past
+/// what its frontend reads, `FrontendMissing` for a language that needs a
+/// frontend the syntax does not give, or memory.
 pub const ImportsError = error{ InvalidEscape, InvalidLiteral, SourceTooLarge, FrontendMissing, OutOfMemory };
-/// Recovery from one source buffer in a language gantry's byte lexers read.
-/// A language a frontend reads (Zig) is `FrontendMissing` here; `importsWith`
-/// reads it.
-pub fn imports(gpa: std.mem.Allocator, language: Language, source: []const u8) ImportsError!Imports {
-    return importsFrom(gpa, &.{}, language, source);
-}
-/// Recovery from one source buffer, read by `frontend` in its language.
-pub fn importsWith(gpa: std.mem.Allocator, frontend: Frontend, source: []const u8) ImportsError!Imports {
-    return importsFrom(gpa, &.{frontend}, frontend.language, source);
+/// How `imports` reads a source buffer: in a language gantry's byte lexers
+/// read, or by a frontend in its own language.
+pub const Syntax = union(enum) {
+    /// The byte lexers' reading; a language a frontend reads (Zig) is
+    /// `FrontendMissing`.
+    language: Language,
+    /// The frontend's reading, in `Frontend.language`.
+    frontend: Frontend,
+};
+/// Recovery from one source buffer, read as `syntax` says.
+pub fn imports(gpa: std.mem.Allocator, source: []const u8, syntax: Syntax) ImportsError!Imports {
+    return switch (syntax) {
+        .language => |language| importsFrom(gpa, &.{}, language, source),
+        .frontend => |frontend| importsFrom(gpa, &.{frontend}, frontend.language, source),
+    };
 }
 fn importsFrom(gpa: std.mem.Allocator, frontends: []const Frontend, language: Language, source: []const u8) ImportsError!Imports {
     const result = try ImportStore.create(gpa);

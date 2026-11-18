@@ -194,7 +194,7 @@ fn importsWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, language: gantr
         source: []const u8,
         specs: usize = 0,
         fn op(c: *@This()) !void {
-            var found = try if (c.language == .zig) gantry.importsWith(c.gpa, zig.frontend, c.source) else gantry.imports(c.gpa, c.language, c.source);
+            var found = try if (c.language == .zig) gantry.imports(c.gpa, c.source, .{ .frontend = zig.frontend }) else gantry.imports(c.gpa, c.source, .{ .language = c.language });
             defer found.deinit();
             c.specs = found.items().len;
         }
@@ -542,7 +542,7 @@ fn kindsWorkload(gpa: std.mem.Allocator, io: std.Io, out: Out, file: []const u8)
         source: []const u8,
         counts: [3]usize = .{ 0, 0, 0 },
         fn op(c: *@This()) !void {
-            var found = try gantry.imports(c.gpa, .javascript, c.source);
+            var found = try gantry.imports(c.gpa, c.source, .{ .language = .javascript });
             defer found.deinit();
             c.counts = .{ 0, 0, 0 };
             for (found.items()) |spec| switch (spec.kind) {

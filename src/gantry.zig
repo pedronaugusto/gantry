@@ -67,16 +67,15 @@ pub const languageOf = options_module.languageOf;
 pub const kindsOf = scan_module.kindsOf;
 /// Raw lexical recovery, owning source bytes and every slice until deinit.
 pub const Imports = scan_module.Imports;
-/// Lexical recovery from one anonymous source buffer, in a language the byte
-/// lexers read.
+/// Lexical recovery from one anonymous source buffer, read as its `Syntax` says.
 pub const imports = scan_module.imports;
-/// Recovery from one anonymous source buffer, read by a frontend module.
-pub const importsWith = scan_module.importsWith;
+/// How `imports` reads a buffer: a language the byte lexers read, or a frontend module.
+pub const Syntax = scan_module.Syntax;
 /// What a language frontend yields to the core, and the seam a scan reaches it by. A frontend module (`gantry.zig`) imports this vocabulary from here.
 pub const frontend = @import("frontend.zig");
 /// A module that reads a language the byte lexers do not, as `Options.frontends` lists.
 pub const Frontend = frontend.Frontend;
-/// What `imports` and `importsWith` fail with.
+/// What `imports` fails with.
 pub const ImportsError = scan_module.ImportsError;
 /// read(scratch, io, context, path) returns `E!?[]const u8`. Bytes need
 /// only survive processing until the next read. Null records an unread path;
