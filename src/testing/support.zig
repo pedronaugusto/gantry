@@ -14,7 +14,7 @@ fn withZig(options: g.Options) g.Options {
 }
 /// `g.imports`, with Zig read by its frontend.
 pub fn imports(gpa: std.mem.Allocator, language: g.Language, source: []const u8) g.ImportsError!g.Imports {
-    return if (language == .zig) g.importsWith(gpa, zig.frontend, source) else g.imports(gpa, language, source);
+    return g.imports(gpa, source, if (language == .zig) .{ .frontend = zig.frontend } else .{ .language = language });
 }
 pub const Item = struct { path: []const u8, text: ?[]const u8 = "" };
 pub const Fixture = struct {

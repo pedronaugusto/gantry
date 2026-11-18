@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Breaking
+
+- `gantry.imports` and `gantry.importsWith` are one `gantry.imports(gpa, source, syntax)`, its `gantry.Syntax` either `.language` (the byte lexers; a frontend language is still `error.FrontendMissing`) or `.frontend` (that frontend's reading). Write `imports(gpa, source, .{ .language = l })` for `imports(gpa, l, source)` and `imports(gpa, source, .{ .frontend = f })` for `importsWith(gpa, f, source)`.
+
 ## [0.4.0] - 2026-11-25
 
 ### Breaking

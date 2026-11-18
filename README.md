@@ -17,7 +17,8 @@ lazy dependency, which Zig fetches when gantry's build declares the module). To 
 files, import `gantry.zig` and list its `frontend` in `Options.frontends`, as the usage
 example does. gantry takes no build option that changes what a consumer compiles. A scan that reaches a `.zig` path without
 it fails with `error.FrontendMissing` before it reads anything, and `gantry.imports`
-reads the byte-lexer languages only: `importsWith` reads one frontend's.
+reads one buffer as its `Syntax` says: `.{ .language = l }` by the byte lexers, or
+`.{ .frontend = f }` by that frontend.
 
 ## Stability
 

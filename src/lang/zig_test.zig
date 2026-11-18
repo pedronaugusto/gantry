@@ -329,9 +329,20 @@ test "Zig files without their frontend fail the scan before anything is read" {
     defer listed.deinit();
 }
 
+test "imports reads a byte-lexer language under .language and a frontend's under .frontend" {
+    var lexed = try g.imports(a, "import x from \"./x.js\";", .{ .language = .javascript });
+    defer lexed.deinit();
+    try std.testing.expectEqual(1, lexed.items().len);
+    try std.testing.expectEqualStrings("./x.js", lexed.items()[0].name);
+    var read = try g.imports(a, "const y = @import(\"y.zig\");", .{ .frontend = support.zig.frontend });
+    defer read.deinit();
+    try std.testing.expectEqual(1, read.items().len);
+    try std.testing.expectEqualStrings("y.zig", read.items()[0].name);
+}
+
 test "Zig single-file recovery needs its frontend and reports it" {
-    try std.testing.expectError(error.FrontendMissing, g.imports(a, .zig, "const x = @import(\"x.zig\");"));
-    var imports = try g.importsWith(a, support.zig.frontend, "const x = @import(\"x.zig\");");
+    try std.testing.expectError(error.FrontendMissing, g.imports(a, "const x = @import(\"x.zig\");", .{ .language = .zig }));
+    var imports = try g.imports(a, "const x = @import(\"x.zig\");", .{ .frontend = support.zig.frontend });
     defer imports.deinit();
     try std.testing.expectEqual(1, imports.items().len);
     try std.testing.expectEqualStrings("x.zig", imports.items()[0].name);
