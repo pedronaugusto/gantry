@@ -20,6 +20,10 @@
             .hash = "glint-0.7.5-3jcpoS9uIQC3WGAQx-cfRCpziL1dbeYgf9JzcoeZSdTx",
             .lazy = true,
         },
+        .xenoglyph = .{
+            .url = "git+https://github.com/pedronaugusto/xenoglyph#ab4d38189cb723e4f102b611ed818380da56c750",
+            .hash = "xenoglyph-0.5.1-YKXZlcMCVABOnefwWET72nJLsmnBsMepiQwrB2Ll5HI9",
+        },
     },
     .dev_dependencies = .{
         .preflight = .{

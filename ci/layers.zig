@@ -22,6 +22,7 @@ pub const layers: []const gantry.rules.Layer = &.{
     } },
     .{ .name = "recovery and configuration", .patterns = &.{
         "src/imports.zig",
+        "src/references.zig",
         "src/lang/go/build.zig",
         "src/lang/go/config.zig",
         "src/manifests/**",
@@ -83,6 +84,7 @@ const package_references = [_]gantry.rules.ReferenceRule{
         "builtin",
         "aegis",
         "sweep",
+        "xenoglyph",
         "glint",
         "shakedown",
     } },
@@ -134,6 +136,7 @@ pub const required = [_][]const u8{
     "src/resolve.zig",
     "src/graph.zig",
     "src/rules/dependency_check.zig",
+    "src/references.zig",
     "src/recover.zig",
     "src/scan/options.zig",
     "src/rules.zig",

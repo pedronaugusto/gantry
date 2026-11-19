@@ -12,6 +12,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `DirReader.dir` is an `aegis.own.Unowned(std.Io.Dir)`: the caller's directory, lent and never closed by the reader, named as aegis names a handle its owner keeps. Write `.{ .dir = .of(dir) }` where `.{ .dir = dir }` was written.
 - `frontend.Observer` has no `frontend.Observer.context`: its `frontend.Observer.token` and `frontend.Observer.boundary` take the observer itself, which its owner embeds and reads itself back from with `@fieldParentPtr`, and a frontend's `recover` (`Frontend.recover`, `frontend.Frontend.recover`, and each language's `lex`) takes `?*Observer`. A context pointer was cast back on every call, with nothing to check the type it named. The zig frontend reads glint 0.8.0's `token.Observer` the same way.
 
+### Added
+
+- Markdown recovery reads CommonMark's reference links (0.31.2, §4.7 and §6.3): link reference definitions (`[label]: destination "title"`, a destination in angle brackets or with balanced parentheses, a title in quotes or parentheses, over lines but no blank one), and the full (`[text][label]`), collapsed (`[label][]`) and shortcut (`[label]`) references to them, images too; a reference is a link to its definition's destination, at the reference. Labels match as CommonMark matches them: fully case folded, whitespace collapsed; the first definition of a label wins. A definition is read where a paragraph could begin, never in a fence, an indented code block or a paragraph's continuation; definitions inside block quotes and list items are not read. A label, and the link text read as a reference, is at most 999 bytes, so the scan stays linear. A project whose documents link by reference had those edges missing from its graph. Depends on xenoglyph (ab4d381, the one glint takes through ensign), for the folding.
+
 ### Changed
 
 - glint is pinned at glint-0.8's 774370b2, with preflight's next landing.

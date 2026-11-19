@@ -21,6 +21,7 @@ const nim_test_module = @import("lang/nim_test.zig");
 const java_test_module = @import("lang/java_test.zig");
 const zig_test_module = @import("lang/zig_test.zig");
 const recovery_test_module = @import("testing/recovery_test.zig");
+const reference_links_test_module = @import("testing/reference_links_test.zig");
 const properties_test_module = @import("testing/properties_test.zig");
 const memory_test_module = @import("testing/memory_test.zig");
 const hostile_test_module = @import("testing/hostile_test.zig");
@@ -65,6 +66,7 @@ test {
     _ = java_test_module;
     _ = zig_test_module;
     _ = recovery_test_module;
+    _ = reference_links_test_module;
     _ = properties_test_module;
     _ = memory_test_module;
 }

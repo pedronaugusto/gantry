@@ -199,8 +199,9 @@ import nothing reaches stays `import` and is `dead` on its reference: no build c
 An edge's kind follows its importer, so a production file that imports a test file gives
 an `import` edge a rule can forbid. The target decides too only where an import names more
 than the file: a Go or Java package import, whose test files a non-test build leaves out,
-and a Rust `mod` of a `cfg(test)` file. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links and one-line wiki links while
-excluding fenced code and comments. Asset recovery matches path tokens in supported text
+and a Rust `mod` of a `cfg(test)` file. `kindsOf(path)` says which kinds a scan reads from a file, by its name. Markdown recovery handles inline relative links, CommonMark's reference links (a
+definition and the full, collapsed and shortcut references to it) and one-line wiki links
+while excluding fenced code and comments. Asset recovery matches path tokens in supported text
 files. Manifest declarations from `build.zig.zon`, `package.json`, `Cargo.toml`,
 `go.mod`, `pyproject.toml`, `pom.xml`, `build.gradle`, `build.gradle.kts`
 (`manifests.names`) and `.nimble` files (`manifests.extensions`) remain separate from file

@@ -4,6 +4,7 @@ const resolve_module = @import("resolve.zig");
 const std = @import("std");
 const p = @import("path.zig");
 const aegis = @import("aegis");
+const references = @import("references.zig");
 const Spec = types_module.Spec;
 const Context = resolve_module.Context;
 pub const Names = std.StringHashMapUnmanaged(?[]const u8);
@@ -17,11 +18,16 @@ pub fn names(arena: std.mem.Allocator, paths: []const []const u8) std.mem.Alloca
     }
     return map;
 }
+/// Inline links, wiki links and CommonMark's reference links
+/// (`references.zig`): a definition read first, a full, collapsed or
+/// shortcut reference taken where its label is defined, at the reference.
 /// Every search for a closer is bounded or remembered, so the time is linear
 /// in the text however many openers lack a closer.
 pub fn links(arena: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error![]const Spec {
     var out: std.ArrayList(Spec) = .empty;
     var spans = try CodeSpans.init(arena, text);
+    const definitions = try references.read(arena, text);
+    var definition: usize = 0;
     var i: usize = 0;
     var fence: u8 = 0;
     var fence_len: usize = 0;
@@ -47,6 +53,12 @@ pub fn links(arena: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error
         }
         if (fence != 0) {
             i += 1;
+            continue;
+        }
+        // A definition is no link: its destination counts where a reference names it.
+        while (definition < definitions.spans.items.len and definitions.spans.items[definition].end <= i) definition += 1;
+        if (definition < definitions.spans.items.len and definitions.spans.items[definition].start <= i) {
+            i = definitions.spans.items[definition].end;
             continue;
         }
         if (std.mem.startsWith(u8, text[i..], "<!--")) {
@@ -76,6 +88,11 @@ pub fn links(arena: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error
             i = end + 2;
             continue;
         }
+        if (text[i] == '[') if (try reference(arena, text, i, &definitions)) |found| {
+            try appendDestination(&out, arena, found.destination, i);
+            i = found.end;
+            continue;
+        };
         if (std.mem.startsWith(u8, text[i..], "](")) {
             var start = i + 2;
             while (start < text.len and std.ascii.isWhitespace(text[start])) : (start += 1) {}
@@ -100,15 +117,43 @@ pub fn links(arena: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error
                     if (std.ascii.isWhitespace(c) and depth == 0) break;
                 }
             }
-            const raw = text[start..end];
-            const name = raw[0 .. std.mem.findScalar(u8, raw, '#') orelse raw.len];
-            if (name.len > 0 and std.mem.findScalar(u8, name, ':') == null and name[0] != '/') try out.append(arena, .{ .name = try unescape(arena, name), .offset = i });
+            try appendDestination(&out, arena, text[start..end], i);
             i = end;
             continue;
         }
         i += 1;
     }
     return out.toOwnedSlice(arena);
+}
+
+/// A link's destination as a file in the project: its fragment dropped, and
+/// nothing when it is empty, a URL with a scheme, or absolute.
+fn appendDestination(out: *std.ArrayList(Spec), arena: std.mem.Allocator, raw: []const u8, offset: usize) std.mem.Allocator.Error!void {
+    const name = raw[0 .. std.mem.findScalar(u8, raw, '#') orelse raw.len];
+    if (name.len > 0 and std.mem.findScalar(u8, name, ':') == null and name[0] != '/') try out.append(arena, .{ .name = try unescape(arena, name), .offset = offset });
+}
+
+const Reference = struct { destination: []const u8, end: usize };
+
+/// The reference whose `[` is at `i`, when its label is defined: full
+/// (`[text][label]`), collapsed (`[label][]`) or shortcut (`[label]`). Null
+/// otherwise, and for an inline link, which the `](` branch reads.
+fn reference(arena: std.mem.Allocator, text: []const u8, i: usize, definitions: *const references.Definitions) std.mem.Allocator.Error!?Reference {
+    if (definitions.targets.count() == 0) return null;
+    const close = references.textEnd(text, i) orelse return null;
+    const after = close + 1;
+    if (after < text.len and text[after] == '(') return null;
+    if (after < text.len and text[after] == '[') {
+        if (after + 1 < text.len and text[after + 1] == ']') {
+            const found = try definitions.get(arena, text[i + 1 .. close]) orelse return null;
+            return .{ .destination = found, .end = after + 2 };
+        }
+        const label_close = references.labelEnd(text, after) orelse return null;
+        const found = try definitions.get(arena, text[after + 1 .. label_close]) orelse return null;
+        return .{ .destination = found, .end = label_close + 1 };
+    }
+    const found = try definitions.get(arena, text[i + 1 .. close]) orelse return null;
+    return .{ .destination = found, .end = after };
 }
 /// Backtick runs by length, so a code span finds the next run of its own
 /// length (CommonMark's closer) without searching the text again.

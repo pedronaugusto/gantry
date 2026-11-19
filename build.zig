@@ -10,9 +10,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const aegis = b.dependency("aegis", .{ .target = target, .optimize = optimize }).module("aegis");
-    // Path rules use sweep; semantic scalar domains use aegis.
+    // Path rules use sweep; semantic scalar domains use aegis; Markdown link
+    // labels fold by xenoglyph.
     const sweep = b.dependency("sweep", .{ .target = target, .optimize = optimize }).module("sweep");
-    const root = b.addModule("gantry", .{ .root_source_file = b.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis } } });
+    const xenoglyph = b.dependency("xenoglyph", .{ .target = target, .optimize = optimize }).module("xenoglyph");
+    const root = b.addModule("gantry", .{ .root_source_file = b.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis }, .{ .name = "xenoglyph", .module = xenoglyph } } });
     b.installArtifact(b.addLibrary(.{ .name = "gantry", .root_module = root }));
     // Zig is read by a frontend module on glint's token tier, declared while glint is still
     // being fetched, so a consumer can ask for it on either pass.
@@ -34,6 +36,7 @@ pub fn dev(b: *std.Build, tools: type) void {
     const library = package.artifact("gantry");
     const aegis_package = p.dependency("aegis", .{ .target = target, .optimize = optimize });
     const sweep_package = p.dependency("sweep", .{ .target = target, .optimize = optimize });
+    const xenoglyph_package = p.dependency("xenoglyph", .{ .target = target, .optimize = optimize });
     // The frontend's, which a consumer fetches as gantry's build declares it.
     const glint_package = p.dependency("glint", .{ .target = target, .optimize = optimize });
     const filters = if (test_filter) |filter| &.{filter} else &.{};
@@ -95,7 +98,7 @@ pub fn dev(b: *std.Build, tools: type) void {
     });
     // A project that depends on gantry by path, with no packages to
     // fetch: the build a consumer gets.
-    tools.preflight.addConsumerCheck(b, p, .{ .package = "gantry", .program = p.path("ci/consumer.zig"), .modules = &.{"gantry"}, .packages = &.{ sweep_package, aegis_package, glint_package } });
+    tools.preflight.addConsumerCheck(b, p, .{ .package = "gantry", .program = p.path("ci/consumer.zig"), .modules = &.{"gantry"}, .packages = &.{ sweep_package, aegis_package, xenoglyph_package, glint_package } });
 }
 
 /// gantry, its Zig frontend, aegis and shakedown in the mode a benchmark builds in:
@@ -106,7 +109,8 @@ fn benchImports(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.l
     const sweep = p.dependency("sweep", .{ .target = target, .optimize = optimize }).module("sweep");
     const aegis = p.dependency("aegis", .{ .target = target, .optimize = optimize }).module("aegis");
     const glint = p.dependency("glint", .{ .target = target, .optimize = optimize }).module("glint");
-    const root = b.createModule(.{ .root_source_file = p.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis } } });
+    const xenoglyph = p.dependency("xenoglyph", .{ .target = target, .optimize = optimize }).module("xenoglyph");
+    const root = b.createModule(.{ .root_source_file = p.path("src/gantry.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "sweep", .module = sweep }, .{ .name = "aegis", .module = aegis }, .{ .name = "xenoglyph", .module = xenoglyph } } });
     const zig = b.createModule(.{ .root_source_file = p.path("src/frontends/zig.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "gantry", .module = root }, .{ .name = "glint", .module = glint } } });
     return b.allocator.dupe(std.Build.Module.Import, &.{
         .{ .name = "gantry", .module = root },
