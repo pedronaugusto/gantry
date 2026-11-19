@@ -18,6 +18,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- gantry's own development holds it to the family's policy: `"policy": "family"` in ci/preflight.json, beside the hardened profile ci/workflow.json already declares; the hardened and hardened-tsan legs pass.
 - glint is pinned at glint-0.8's 774370b2, with preflight's next landing.
 - The README states gantry's stability policy (0.x, tracking Zig 0.17.x; a breaking change only in a minor release, with its CHANGELOG entry; a patch release never breaks), where it said work was in progress.
 - The contracts left on `std.debug.assert` outside the hot paths (once per graph, scan, manifest or adjacency, and the compile-time layout checks) are `aegis.assert.invariant`; those per edge, per token, per byte and in the node accessors stay debug assertions until they are measured.
