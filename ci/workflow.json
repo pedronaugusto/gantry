@@ -12,7 +12,6 @@
     "x86_64-freebsd",
     "x86_64-netbsd"
   ],
-  "compile_once": true,
   "hardened": true,
   "test_job_timeout": 40
 }
