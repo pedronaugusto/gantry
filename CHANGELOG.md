@@ -18,6 +18,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Pins aegis 0.4.0, sweep 0.4.1 and xenoglyph 0.6.1, their releases, and glint 91c4533 (on aegis 0.4.0 and ensign 0.4.0), the commit preflight pins: every graph through gantry holds one hash of each.
 - gantry's own development holds it to the family's policy: `"policy": "family"` in ci/preflight.json, beside the hardened profile ci/workflow.json already declares; the hardened and hardened-tsan legs pass.
 - glint is pinned at glint-0.8's 774370b2, with preflight's next landing.
 - The README states gantry's stability policy (0.x, tracking Zig 0.17.x; a breaking change only in a minor release, with its CHANGELOG entry; a patch release never breaks), where it said work was in progress.
