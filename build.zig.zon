@@ -16,8 +16,8 @@
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint#91c4533f701faa4f8b2c87693e2409affd62d628",
-            .hash = "glint-0.7.5-3jcpobUgIAAm7BBYePtwL1298W-jyp88GMaaLWcq4he0",
+            .url = "git+https://github.com/pedronaugusto/glint#2ad8f9d7a2f4dd34f9154462e31c0c2efb11ad1c",
+            .hash = "glint-0.7.5-3jcpoR7hIQBE5aAokGBhA4bcCN5bjLi_wrTn2U2Znfzc",
             .lazy = true,
         },
         .xenoglyph = .{
@@ -27,8 +27,8 @@
     },
     .dev_dependencies = .{
         .preflight = .{
-            .url = "git+https://github.com/pedronaugusto/preflight#a4c8d3c9d975cd59428c19da7fa2438adf63d5bd",
-            .hash = "preflight-0.18.6-LX1Zwtw7HwD6RvwErRwKQyz3sTSEj89X2ih2zv0h6_p5",
+            .url = "git+https://github.com/pedronaugusto/preflight#4b63ed1e519262a2b28e8a583d40f54d17761ecd",
+            .hash = "preflight-0.18.6-LX1ZwuviHwDm0klU700YMbucBZqeHNVv7h1DTJfluE6K",
         },
 
         .shakedown = .{
