@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-25
+
 ### Breaking
 
 - The `zig` build option is gone: `gantry.zig` is always declared, over glint as a lazy dependency, and a project that never imports it compiles none of it. A library's build options are a defect once two dependents exist: two argument sets make two instances of gantry, and Zig refuses one file in two modules. Drop `.zig = true` from `b.dependency("gantry", ...)`; Zig refuses an argument gantry does not declare.
