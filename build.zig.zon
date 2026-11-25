@@ -16,8 +16,8 @@
         },
 
         .glint = .{
-            .url = "git+https://github.com/pedronaugusto/glint#2ad8f9d7a2f4dd34f9154462e31c0c2efb11ad1c",
-            .hash = "glint-0.7.5-3jcpoR7hIQBE5aAokGBhA4bcCN5bjLi_wrTn2U2Znfzc",
+            .url = "git+https://github.com/pedronaugusto/glint?ref=v0.8.0#3f810af78d4308ee9607b86fc53e21572ab0deb1",
+            .hash = "glint-0.8.0-3jcpoW1UIQAgXBSekVdSWKJHgbzCSkvPWJr-DyD2V6Zi",
             .lazy = true,
         },
         .xenoglyph = .{
